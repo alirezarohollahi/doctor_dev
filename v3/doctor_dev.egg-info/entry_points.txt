@@ -1,0 +1,3 @@
+[console_scripts]
+doctor-dev = doctor_dev.main:main
+doctor-devctl = doctor_dev.ctl:main
