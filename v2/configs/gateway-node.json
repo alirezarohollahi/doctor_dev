@@ -2,9 +2,9 @@
   "manager": {
     "name": "Gateway-Node",
     "host": "0.0.0.0",
-    "port": 7002,
-    "public_host": "GATEWAY_NODE_PUBLIC_IP_OR_DNS",
-    "api_token": "CHANGE_ME_SECRET_TOKEN",
+    "port": 17002,
+    "public_host": "zayflow.com",
+    "api_token": "admin123",
     "log_file": "./logs/gateway-node.log"
   },
   "groups": [
@@ -48,31 +48,31 @@
   "remote_dependencies": [
     {
       "name": "Forigen-Node-Group-1",
-      "manager_url": "http://FORIGEN_NODE_PUBLIC_IP_OR_DNS:7003",
+      "manager_url": "http://91.107.149.134:17002",
       "group_name": "Forigen-Node-Group-1",
-      "token": "CHANGE_ME_SECRET_TOKEN",
-      "sync_interval_seconds": 10
+      "token": "admin123",
+      "sync_interval_seconds": 5
     },
     {
       "name": "Forigen-Node-Group-2",
-      "manager_url": "http://FORIGEN_NODE_PUBLIC_IP_OR_DNS:7003",
+      "manager_url": "http://91.107.149.134:17002",
       "group_name": "Forigen-Node-Group-2",
-      "token": "CHANGE_ME_SECRET_TOKEN",
-      "sync_interval_seconds": 10
+      "token": "admin123",
+      "sync_interval_seconds": 5
     },
     {
       "name": "Forigen-Node-Group-3",
-      "manager_url": "http://FORIGEN_NODE_PUBLIC_IP_OR_DNS:7003",
+      "manager_url": "http://91.107.149.134:17002",
       "group_name": "Forigen-Node-Group-3",
-      "token": "CHANGE_ME_SECRET_TOKEN",
-      "sync_interval_seconds": 10
+      "token": "admin123",
+      "sync_interval_seconds": 5
     },
     {
       "name": "Forigen-Node-Group-Sub",
-      "manager_url": "http://FORIGEN_NODE_PUBLIC_IP_OR_DNS:7003",
+      "manager_url": "http://91.107.149.134:17002",
       "group_name": "Forigen-Node-Group-Sub",
-      "token": "CHANGE_ME_SECRET_TOKEN",
-      "sync_interval_seconds": 10
+      "token": "admin123",
+      "sync_interval_seconds": 5
     }
   ]
 }

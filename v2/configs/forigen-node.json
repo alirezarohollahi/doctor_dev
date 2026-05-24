@@ -2,9 +2,9 @@
   "manager": {
     "name": "Forigen-Node",
     "host": "0.0.0.0",
-    "port": 7003,
-    "public_host": "FORIGEN_NODE_PUBLIC_IP_OR_DNS",
-    "api_token": "CHANGE_ME_SECRET_TOKEN",
+    "port": 17002,
+    "public_host": "91.107.149.134",
+    "api_token": "admin123",
     "log_file": "./logs/forigen-node.log"
   },
   "groups": [
@@ -13,7 +13,7 @@
       "process_count": 3,
       "listen_host": "0.0.0.0",
       "port_mode": "random",
-      "targets": [{"type": "static", "host": "127.0.0.1", "port": 10000}],
+      "targets": [{"type": "static", "host": "127.0.0.1", "port": 38377}],
       "strategy": "round_robin",
       "enabled": true
     },
@@ -22,7 +22,7 @@
       "process_count": 3,
       "listen_host": "0.0.0.0",
       "port_mode": "random",
-      "targets": [{"type": "static", "host": "127.0.0.1", "port": 10001}],
+      "targets": [{"type": "static", "host": "127.0.0.1", "port": 21432}],
       "strategy": "round_robin",
       "enabled": true
     },
@@ -31,7 +31,7 @@
       "process_count": 3,
       "listen_host": "0.0.0.0",
       "port_mode": "random",
-      "targets": [{"type": "static", "host": "127.0.0.1", "port": 10002}],
+      "targets": [{"type": "static", "host": "127.0.0.1", "port": 33234}],
       "strategy": "round_robin",
       "enabled": true
     },
@@ -40,7 +40,7 @@
       "process_count": 1,
       "listen_host": "0.0.0.0",
       "port_mode": "random",
-      "targets": [{"type": "static", "host": "127.0.0.1", "port": 9999}],
+      "targets": [{"type": "static", "host": "127.0.0.1", "port": 2096}],
       "strategy": "round_robin",
       "enabled": true
     }

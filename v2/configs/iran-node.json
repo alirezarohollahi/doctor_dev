@@ -2,9 +2,9 @@
   "manager": {
     "name": "Iran-Node",
     "host": "0.0.0.0",
-    "port": 7001,
-    "public_host": "IRAN_NODE_PUBLIC_IP_OR_DNS",
-    "api_token": "CHANGE_ME_SECRET_TOKEN",
+    "port": 17002,
+    "public_host": "78.109.198.157",
+    "api_token": "admin123",
     "log_file": "./logs/iran-node.log"
   },
   "groups": [
@@ -48,31 +48,31 @@
   "remote_dependencies": [
     {
       "name": "Gateway-Node-Group-1",
-      "manager_url": "http://GATEWAY_NODE_PUBLIC_IP_OR_DNS:7002",
+      "manager_url": "http://zayflow.com:17002",
       "group_name": "Gateway-Node-Group-1",
-      "token": "CHANGE_ME_SECRET_TOKEN",
-      "sync_interval_seconds": 10
+      "token": "admin123",
+      "sync_interval_seconds": 5
     },
     {
       "name": "Gateway-Node-Group-2",
-      "manager_url": "http://GATEWAY_NODE_PUBLIC_IP_OR_DNS:7002",
+      "manager_url": "http://zayflow.com:17002",
       "group_name": "Gateway-Node-Group-2",
-      "token": "CHANGE_ME_SECRET_TOKEN",
-      "sync_interval_seconds": 10
+      "token": "admin123",
+      "sync_interval_seconds": 5
     },
     {
       "name": "Gateway-Node-Group-3",
-      "manager_url": "http://GATEWAY_NODE_PUBLIC_IP_OR_DNS:7002",
+      "manager_url": "http://zayflow.com:17002",
       "group_name": "Gateway-Node-Group-3",
-      "token": "CHANGE_ME_SECRET_TOKEN",
-      "sync_interval_seconds": 10
+      "token": "admin123",
+      "sync_interval_seconds": 5
     },
     {
       "name": "Gateway-Node-Group-Sub",
-      "manager_url": "http://GATEWAY_NODE_PUBLIC_IP_OR_DNS:7002",
+      "manager_url": "http://zayflow.com:17002",
       "group_name": "Gateway-Node-Group-Sub",
-      "token": "CHANGE_ME_SECRET_TOKEN",
-      "sync_interval_seconds": 10
+      "token": "admin123",
+      "sync_interval_seconds": 5
     }
   ]
 }
