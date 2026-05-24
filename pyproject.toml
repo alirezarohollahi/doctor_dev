@@ -1,0 +1,21 @@
+[project]
+name = "doctor-dev"
+version = "0.1.0"
+description = "Async multi-node TCP forwarding group manager"
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi>=0.110.0",
+  "uvicorn[standard]>=0.27.0",
+  "pydantic>=2.6.0",
+  "pydantic-settings>=2.2.0",
+  "httpx>=0.26.0",
+  "python-dotenv>=1.0.0"
+]
+
+[project.scripts]
+doctor-dev = "doctor_dev.main:main"
+doctor-devctl = "doctor_dev.ctl:main"
+
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"

@@ -1,0 +1,78 @@
+{
+  "manager": {
+    "name": "Iran-Node",
+    "host": "0.0.0.0",
+    "port": 17002,
+    "public_host": "78.109.198.157",
+    "api_token": "admin123",
+    "log_file": "./logs/iran-node.log"
+  },
+  "groups": [
+    {
+      "name": "Iran-Node-Group-1",
+      "process_count": 3,
+      "listen_host": "0.0.0.0",
+      "port_mode": "random",
+      "targets": [{"type": "remote_group", "dependency": "Gateway-Node-Group-1"}],
+      "strategy": "round_robin",
+      "enabled": true
+    },
+    {
+      "name": "Iran-Node-Group-2",
+      "process_count": 4,
+      "listen_host": "0.0.0.0",
+      "port_mode": "random",
+      "targets": [{"type": "remote_group", "dependency": "Gateway-Node-Group-2"}],
+      "strategy": "round_robin",
+      "enabled": true
+    },
+    {
+      "name": "Iran-Node-Group-3",
+      "process_count": 5,
+      "listen_host": "0.0.0.0",
+      "port_mode": "random",
+      "targets": [{"type": "remote_group", "dependency": "Gateway-Node-Group-3"}],
+      "strategy": "round_robin",
+      "enabled": true
+    },
+    {
+      "name": "Iran-Node-Group-Sub",
+      "process_count": 1,
+      "listen_host": "0.0.0.0",
+      "port_mode": "random",
+      "targets": [{"type": "remote_group", "dependency": "Gateway-Node-Group-Sub"}],
+      "strategy": "round_robin",
+      "enabled": true
+    }
+  ],
+  "remote_dependencies": [
+    {
+      "name": "Gateway-Node-Group-1",
+      "manager_url": "http://zayflow.com:17002",
+      "group_name": "Gateway-Node-Group-1",
+      "token": "admin123",
+      "sync_interval_seconds": 5
+    },
+    {
+      "name": "Gateway-Node-Group-2",
+      "manager_url": "http://zayflow.com:17002",
+      "group_name": "Gateway-Node-Group-2",
+      "token": "admin123",
+      "sync_interval_seconds": 5
+    },
+    {
+      "name": "Gateway-Node-Group-3",
+      "manager_url": "http://zayflow.com:17002",
+      "group_name": "Gateway-Node-Group-3",
+      "token": "admin123",
+      "sync_interval_seconds": 5
+    },
+    {
+      "name": "Gateway-Node-Group-Sub",
+      "manager_url": "http://zayflow.com:17002",
+      "group_name": "Gateway-Node-Group-Sub",
+      "token": "admin123",
+      "sync_interval_seconds": 5
+    }
+  ]
+}
