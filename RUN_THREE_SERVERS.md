@@ -54,7 +54,7 @@ Forigen-Node -> 127.0.0.1:10000, 10001, 10002, 9999
 unzip doctor_dev.zip
 cd doctor_dev
 python3 -m venv .venv
-    source .venv/bin/activate
+source .venv/bin/activate
 pip install -e .
 ```
 
