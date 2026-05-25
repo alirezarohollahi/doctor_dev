@@ -1,1 +1,9 @@
 /configs.back
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Runtime/generated folders
+logs/
+run/
