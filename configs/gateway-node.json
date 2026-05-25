@@ -10,69 +10,14 @@
   "groups": [
     {
       "name": "Gateway-Node-Group-1",
-      "process_count": 4,
-      "listen_host": "0.0.0.0",
-      "port_mode": "random",
-      "targets": [{"type": "remote_group", "dependency": "Forigen-Node-Group-1"}],
-      "strategy": "round_robin",
-      "enabled": true
-    },
-    {
-      "name": "Gateway-Node-Group-2",
-      "process_count": 3,
-      "listen_host": "0.0.0.0",
-      "port_mode": "random",
-      "targets": [{"type": "remote_group", "dependency": "Forigen-Node-Group-2"}],
-      "strategy": "round_robin",
-      "enabled": true
-    },
-    {
-      "name": "Gateway-Node-Group-3",
-      "process_count": 3,
-      "listen_host": "0.0.0.0",
-      "port_mode": "random",
-      "targets": [{"type": "remote_group", "dependency": "Forigen-Node-Group-3"}],
-      "strategy": "round_robin",
-      "enabled": true
-    },
-    {
-      "name": "Gateway-Node-Group-Sub",
       "process_count": 1,
       "listen_host": "0.0.0.0",
       "port_mode": "random",
-      "targets": [{"type": "remote_group", "dependency": "Forigen-Node-Group-Sub"}],
+      "targets": [{"type": "static", "host": "127.0.0.1", "port": 29681}],
       "strategy": "round_robin",
       "enabled": true
     }
   ],
   "remote_dependencies": [
-    {
-      "name": "Forigen-Node-Group-1",
-      "manager_url": "http://91.107.245.106:17002",
-      "group_name": "Forigen-Node-Group-1",
-      "token": "admin123",
-      "sync_interval_seconds": 5
-    },
-    {
-      "name": "Forigen-Node-Group-2",
-      "manager_url": "http://91.107.245.106:17002",
-      "group_name": "Forigen-Node-Group-2",
-      "token": "admin123",
-      "sync_interval_seconds": 5
-    },
-    {
-      "name": "Forigen-Node-Group-3",
-      "manager_url": "http://91.107.245.106:17002",
-      "group_name": "Forigen-Node-Group-3",
-      "token": "admin123",
-      "sync_interval_seconds": 5
-    },
-    {
-      "name": "Forigen-Node-Group-Sub",
-      "manager_url": "http://91.107.245.106:17002",
-      "group_name": "Forigen-Node-Group-Sub",
-      "token": "admin123",
-      "sync_interval_seconds": 5
-    }
   ]
 }
