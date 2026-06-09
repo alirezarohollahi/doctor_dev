@@ -32,6 +32,15 @@
                   {"type": "static", "host": "127.0.0.1", "port": 1008}],
       "strategy": "round_robin",
       "enabled": true
+    },
+    {
+      "name": "freedom-000-node-group-3",
+      "process_count": 3,
+      "listen_host": "0.0.0.0",
+      "port_mode": "random",
+      "targets": [{"type": "static", "host": "127.0.0.1", "port": 443}],
+      "strategy": "round_robin",
+      "enabled": true
     }
   ],
   "remote_dependencies": []
