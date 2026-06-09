@@ -1,0 +1,38 @@
+{
+  "manager": {
+    "name": "freedom-000-node",
+    "host": "0.0.0.0",
+    "port": 17002,
+    "public_host": "docnode.pangshanbebazar.ir",
+    "api_token": "yaNtOybPhroLdMnuRi0Dg8yE",
+    "log_file": "./logs/freedom-000-node.log"
+  },
+  "groups": [
+    {
+      "name": "freedom-000-node-group-1",
+      "process_count": 5,
+      "listen_host": "0.0.0.0",
+      "port_mode": "random",
+      "targets": [{"type": "static", "host": "127.0.0.1", "port": 1000},
+                  {"type": "static", "host": "127.0.0.1", "port": 1001},
+                  {"type": "static", "host": "127.0.0.1", "port": 1002},
+                  {"type": "static", "host": "127.0.0.1", "port": 1003},
+                  {"type": "static", "host": "127.0.0.1", "port": 1004},
+                  {"type": "static", "host": "127.0.0.1", "port": 1005}],
+      "strategy": "round_robin",
+      "enabled": true
+    },
+    {
+      "name": "freedom-000-node-group-2",
+      "process_count": 5,
+      "listen_host": "0.0.0.0",
+      "port_mode": "random",
+      "targets": [{"type": "static", "host": "127.0.0.1", "port": 1006},
+                  {"type": "static", "host": "127.0.0.1", "port": 1007},
+                  {"type": "static", "host": "127.0.0.1", "port": 1008}],
+      "strategy": "round_robin",
+      "enabled": true
+    }
+  ],
+  "remote_dependencies": []
+}

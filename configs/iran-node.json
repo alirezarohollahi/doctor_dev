@@ -12,8 +12,8 @@
       "name": "Iran-Node-Group-1",
       "process_count": 1,
       "listen_host": "0.0.0.0",
-      "port_mode": "static",
-      "listen_ports": [48947],
+      "port_mode": "fixed",
+      "fixed_ports": [48947],
       "targets": [{"type": "remote_group", "dependency": "Gateway-Node-Group-1"}],
       "strategy": "round_robin",
       "enabled": true
@@ -22,8 +22,8 @@
       "name": "Iran-Node-Group-2",
       "process_count": 1,
       "listen_host": "0.0.0.0",
-      "port_mode": "static",
-      "listen_ports": [33241],
+      "port_mode": "fixed",
+      "fixed_ports": [33241],
       "targets": [{"type": "remote_group", "dependency": "Gateway-Node-Group-2"}],
       "strategy": "round_robin",
       "enabled": true
@@ -32,8 +32,8 @@
       "name": "Iran-Node-Group-3",
       "process_count": 1,
       "listen_host": "0.0.0.0",
-      "port_mode": "static",
-      "listen_ports": [47237],
+      "port_mode": "fixed",
+      "fixed_ports": [47237],
       "targets": [{"type": "remote_group", "dependency": "Gateway-Node-Group-3"}],
       "strategy": "round_robin",
       "enabled": true
@@ -42,8 +42,8 @@
       "name": "Iran-Node-Group-Sub",
       "process_count": 1,
       "listen_host": "0.0.0.0",
-      "port_mode": "static",
-      "listen_ports": [2096],
+      "port_mode": "fixed",
+      "fixed_ports": [2096],
       "targets": [{"type": "remote_group", "dependency": "Gateway-Node-Group-Sub"}],
       "strategy": "round_robin",
       "enabled": true
