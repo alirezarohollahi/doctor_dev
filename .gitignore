@@ -10,3 +10,4 @@ run/
 
 /.venv
 /DocNodes.back
+*.pem
