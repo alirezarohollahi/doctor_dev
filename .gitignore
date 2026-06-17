@@ -7,6 +7,7 @@ __pycache__/
 # Runtime/generated folders
 logs/
 run/
+cert/
 
 /.venv
 /DocNodes.back

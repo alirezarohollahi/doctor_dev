@@ -24,7 +24,7 @@
       "targets": [
         {
           "type": "remote_group",
-          "dependency": "freedom-000-node-group-1"
+          "dependency": "freedom-001-node-group-1"
         }
       ],
       "strategy": "round_robin",
@@ -33,9 +33,9 @@
   ],
   "remote_dependencies": [
     {
-      "name": "freedom-000-node-group-1",
-      "manager_url": "http://104.252.77.120:8080",
-      "group_name": "freedom-000-node-group-1",
+      "name": "freedom-001-node-group-1",
+      "manager_url": "http://161.35.209.106:8080/",
+      "group_name": "freedom-001-node-group-1",
       "token": "X9ExBmzE7PmiBehaTtgj3TNiJyyqJGn3ss5EgCaxaPQ=",
       "sync_interval_seconds": 5
     }

@@ -3,7 +3,7 @@
     "name": "freedom-001-node",
     "host": "0.0.0.0",
     "port": 8080,
-    "public_host": "104.252.77.120",
+    "public_host": "161.35.209.106",
     "api_token": "X9ExBmzE7PmiBehaTtgj3TNiJyyqJGn3ss5EgCaxaPQ=",
     "log_file": "./logs/freedom-001-node.log"
   },
@@ -12,7 +12,7 @@
       "name": "freedom-001-node-group-1",
       "process_count": 8,
       "listen_host": "0.0.0.0",
-      "public_host": "104.252.77.120",
+      "public_host": "161.35.209.106",
       "port_mode": "random",
       "fixed_ports": [],
       "targets": [
