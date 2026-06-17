@@ -11,3 +11,5 @@ run/
 /.venv
 /DocNodes.back
 *.pem
+merge_folder.py
+merged_codes.txt

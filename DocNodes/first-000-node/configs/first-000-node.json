@@ -2,63 +2,35 @@
   "manager": {
     "name": "first-000-node",
     "host": "0.0.0.0",
-    "port": 17002,
-    "public_host": "iran.pangshanbebazar.ir",
-    "api_token": "yaNtOybPhroLdMnuRi0Dg8yE",
+    "port": 8080,
+    "public_host": "docterdev.runflare.run",
+    "api_token": "X9ExBmzE7PmiBehaTtgj3TNiJyyqJGn3ss5EgCaxaPQ=",
     "log_file": "./logs/first-000-node.log"
   },
   "groups": [
     {
       "name": "first-000-node-group-1",
-      "process_count": 6,
+      "process_count": 1,
       "listen_host": "0.0.0.0",
+      "public_host": "docterdev.runflare.run",
       "port_mode": "fixed",
-      "fixed_ports": [1000,1001,1002,1003,1004,1005],
-      "targets": [{"type": "remote_group", "dependency": "second-000-node-group-1"}],
-      "strategy": "round_robin",
-      "enabled": true
-    },  
-    {
-      "name": "first-000-node-group-2",
-      "process_count": 3,
-      "listen_host": "0.0.0.0",
-      "port_mode": "fixed",
-      "fixed_ports": [1006,1007,1008],
-      "targets": [{"type": "remote_group", "dependency": "second-000-node-group-2"}],
-      "strategy": "round_robin",
-      "enabled": true
-    },  
-    {
-      "name": "first-000-node-group-3",
-      "process_count": 5,
-      "listen_host": "0.0.0.0",
-      "port_mode": "fixed",
-      "fixed_ports": [1500,1501,1502,1503,1504],
-      "targets": [{"type": "remote_group", "dependency": "freedom-000-node-group-3"}],
+      "fixed_ports": [80],
+      "targets": [
+        {
+          "type": "remote_group",
+          "dependency": "freedom-000-node-group-1"
+        }
+      ],
       "strategy": "round_robin",
       "enabled": true
     }
   ],
   "remote_dependencies": [
     {
-      "name": "freedom-000-node-group-3",
-      "manager_url": "http://docnode.pangshanbebazar.ir:17002",
-      "group_name": "freedom-000-node-group-3",
-      "token": "yaNtOybPhroLdMnuRi0Dg8yE",
-      "sync_interval_seconds": 5
-    },
-    {
-      "name": "second-000-node-group-1",
-      "manager_url": "http://zayflow.com:17002",
-      "group_name": "second-000-node-group-1",
-      "token": "yaNtOybPhroLdMnuRi0Dg8yE",
-      "sync_interval_seconds": 5
-    },
-    {
-      "name": "second-000-node-group-2",
-      "manager_url": "http://zayflow.com:17002",
-      "group_name": "second-000-node-group-2",
-      "token": "yaNtOybPhroLdMnuRi0Dg8yE",
+      "name": "freedom-000-node-group-1",
+      "manager_url": "http://104.252.77.120:8080",
+      "group_name": "freedom-000-node-group-1",
+      "token": "X9ExBmzE7PmiBehaTtgj3TNiJyyqJGn3ss5EgCaxaPQ=",
       "sync_interval_seconds": 5
     }
   ]
