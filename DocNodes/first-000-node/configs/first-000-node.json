@@ -10,11 +10,17 @@
   "groups": [
     {
       "name": "first-000-node-group-1",
-      "process_count": 1,
+      "process_count": 5,
       "listen_host": "0.0.0.0",
       "public_host": "docterdev.runflare.run",
       "port_mode": "fixed",
-      "fixed_ports": [80],
+      "fixed_ports": [
+        80,
+        8000,
+        3000,
+        2083,
+        2087
+      ],
       "targets": [
         {
           "type": "remote_group",

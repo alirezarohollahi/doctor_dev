@@ -1,0 +1,17 @@
+[Unit]
+Description=Doctor Admin - freedom-001-node
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/doctor_dev
+EnvironmentFile=/home/doctor_dev/DocNodes/freedom-001-node/configs/freedom-001-node.env
+ExecStart=/home/doctor_dev/.venv/bin/python /home/doctor_dev/main.py --env /home/doctor_dev/DocNodes/freedom-001-node/configs/freedom-001-node.env
+Restart=always
+RestartSec=3
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

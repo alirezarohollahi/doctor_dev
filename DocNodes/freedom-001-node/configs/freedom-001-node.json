@@ -1,15 +1,15 @@
 {
   "manager": {
-    "name": "freedom-000-node",
+    "name": "freedom-001-node",
     "host": "0.0.0.0",
     "port": 8080,
     "public_host": "104.252.77.120",
     "api_token": "X9ExBmzE7PmiBehaTtgj3TNiJyyqJGn3ss5EgCaxaPQ=",
-    "log_file": "./logs/freedom-000-node.log"
+    "log_file": "./logs/freedom-001-node.log"
   },
   "groups": [
     {
-      "name": "freedom-000-node-group-1",
+      "name": "freedom-001-node-group-1",
       "process_count": 8,
       "listen_host": "0.0.0.0",
       "public_host": "104.252.77.120",
