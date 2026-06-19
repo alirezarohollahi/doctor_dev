@@ -3,43 +3,50 @@
     "name": "freedom-001-node",
     "host": "0.0.0.0",
     "port": 8080,
-    "public_host": "161.35.209.106",
+    "public_host": "freedom001.pangshanbebazar.ir",
     "api_token": "X9ExBmzE7PmiBehaTtgj3TNiJyyqJGn3ss5EgCaxaPQ=",
     "log_file": "./logs/freedom-001-node.log"
   },
   "groups": [
     {
       "name": "freedom-001-node-group-1",
-      "process_count": 8,
+      "process_count": 6,
       "listen_host": "0.0.0.0",
-      "public_host": "161.35.209.106",
-      "port_mode": "random",
-      "fixed_ports": [],
+      "public_host": "freedom001.pangshanbebazar.ir",
+      "port_mode": "fixed",
+      "fixed_ports": [
+        80,
+        8880,
+        2052,
+        2082,
+        2086,
+        2095
+      ],
       "targets": [
         {
           "type": "static",
           "host": "127.0.0.1",
-          "port": 31249
+          "port": 31298
         },
         {
           "type": "static",
           "host": "127.0.0.1",
-          "port": 30483
+          "port": 32293
         },
         {
           "type": "static",
           "host": "127.0.0.1",
-          "port": 31042
+          "port": 31154
         },
         {
           "type": "static",
           "host": "127.0.0.1",
-          "port": 30759
+          "port": 30331
         },
         {
           "type": "static",
           "host": "127.0.0.1",
-          "port": 32592
+          "port": 31103
         }
       ],
       "strategy": "round_robin",
