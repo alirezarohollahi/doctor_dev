@@ -10,7 +10,7 @@
   "groups": [
     {
       "name": "freedom-001-node-group-1",
-      "process_count": 5,
+      "process_count": 6,
       "listen_host": "0.0.0.0",
       "public_host": "freedom001-ams.pangshanbebazar.ir",
       "port_mode": "fixed",
