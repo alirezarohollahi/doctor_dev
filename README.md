@@ -289,3 +289,11 @@ DOCTOR_DEV_AGENT_PORT=9101 \
 DOCTOR_DEV_AGENT_API_KEY='replace-with-uuid' \
 python -m doctor_dev_agent
 ```
+
+## Installer safety notes
+
+The Linux installers are defensive against bad interactive input. File paths are normalized before use: surrounding quotes, pasted whitespace, environment variables, `~`, and accidental trailing backslashes are handled. If a certificate path is wrong, the installer will ask again instead of crashing.
+
+Panel installation completes and prints the Panel URL/admin credentials before the optional local Node installation is started. If the optional Node installer is cancelled or fails, the Panel remains installed and can be used normally.
+
+When the bootstrap installer detects an existing Panel or Node installation, it warns at the beginning and the Python installer asks whether to remove the old installation and continue from a clean state.

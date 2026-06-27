@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import getpass
 import shutil
+import subprocess
 from pathlib import Path
 
 from install_common import (
@@ -13,6 +14,7 @@ from install_common import (
     PANEL_SERVICE,
     SYSTEMD_ROOT,
     ask,
+    ask_choice,
     ask_int,
     ask_yes_no,
     clone_or_update_repo,
@@ -24,6 +26,7 @@ from install_common import (
     generate_self_signed_cert,
     install_system_packages,
     issue_lets_encrypt,
+    prompt_and_copy_existing_cert,
     random_admin_username,
     random_password,
     reload_systemd,
@@ -60,25 +63,44 @@ def configure_certificate(mode: str, public_host: str) -> tuple[str, str, str]:
 
     alias = ask("Certificate alias", public_host.replace(".", "-"))
     if mode == "domain-https":
-        use_existing = ask_yes_no("Do you want to provide existing certificate files?", default=False)
-        if use_existing:
-            fullchain = ask("Path to fullchain.pem")
-            privkey = ask("Path to privkey.pem")
-            cert_path, key_path = copy_existing_cert(alias, fullchain, privkey)
-        else:
-            email = ask("Email for Let's Encrypt notices")
-            cert_path, key_path = issue_lets_encrypt(public_host, email)
-        return str(cert_path), str(key_path), f"https://{public_host}"
+        while True:
+            use_existing = ask_yes_no("Do you want to provide existing certificate files?", default=False)
+            if use_existing:
+                copied = prompt_and_copy_existing_cert(alias)
+                if copied is None:
+                    print("Certificate setup was not completed.")
+                    if ask_yes_no("Generate/issue certificate instead?", default=True):
+                        use_existing = False
+                    else:
+                        continue
+                else:
+                    cert_path, key_path = copied
+                    return str(cert_path), str(key_path), f"https://{public_host}"
+            if not use_existing:
+                email = ask("Email for Let's Encrypt notices")
+                try:
+                    cert_path, key_path = issue_lets_encrypt(public_host, email)
+                    return str(cert_path), str(key_path), f"https://{public_host}"
+                except Exception as exc:
+                    print(f"Let's Encrypt failed: {exc}")
+                    print("You can fix DNS/firewall and retry, or provide existing certificate files.")
+                    continue
 
-    use_existing = ask_yes_no("Do you want to provide certificate files for this IP?", default=True)
-    if use_existing:
-        fullchain = ask("Path to fullchain.pem")
-        privkey = ask("Path to privkey.pem")
-        cert_path, key_path = copy_existing_cert(alias, fullchain, privkey)
-    else:
-        print("WARNING: self-signed certificates trigger browser warnings and are not trusted by default.")
-        cert_path, key_path = generate_self_signed_cert(public_host, alias)
-    return str(cert_path), str(key_path), f"https://{public_host}"
+    while True:
+        use_existing = ask_yes_no("Do you want to provide certificate files for this IP?", default=True)
+        if use_existing:
+            copied = prompt_and_copy_existing_cert(alias)
+            if copied is not None:
+                cert_path, key_path = copied
+                return str(cert_path), str(key_path), f"https://{public_host}"
+            print("Certificate setup was not completed.")
+            if not ask_yes_no("Choose certificate mode again?", default=True):
+                continue
+        else:
+            print("WARNING: self-signed certificates trigger browser warnings and are not trusted by default.")
+            if ask_yes_no("Generate self-signed certificate now?", default=True):
+                cert_path, key_path = generate_self_signed_cert(public_host, alias)
+                return str(cert_path), str(key_path), f"https://{public_host}"
 
 
 def write_panel_service(env_file: Path) -> None:
@@ -127,7 +149,7 @@ def main() -> None:
     print("1) IP without certificate")
     print("2) Domain with certificate")
     print("3) IP with certificate")
-    choice = ask("Choose mode", "1")
+    choice = ask_choice("Choose mode", {"1", "2", "3"}, "1")
     if choice == "2":
         mode = "domain-https"
         public_host = ask("Domain name, e.g. panel.example.com")
@@ -142,7 +164,7 @@ def main() -> None:
         default_port = 8088
 
     bind_host = ask("Panel bind host", "0.0.0.0")
-    port = ask_int("Panel port", default_port)
+    port = ask_int("Panel port", default_port, minimum=1, maximum=65535)
     certfile, keyfile, base_url = configure_certificate(mode, public_host)
     if port not in {80, 443}:
         base_url = f"{base_url}:{port}"
@@ -153,11 +175,13 @@ def main() -> None:
         admin_password = random_password()
     else:
         admin_user = ask("Admin username", "admin")
-        password_1 = getpass.getpass("Admin password: ")
-        password_2 = getpass.getpass("Repeat admin password: ")
-        if password_1 != password_2 or not password_1:
-            raise SystemExit("Admin passwords do not match or are empty.")
-        admin_password = password_1
+        while True:
+            password_1 = getpass.getpass("Admin password: ")
+            password_2 = getpass.getpass("Repeat admin password: ")
+            if password_1 and password_1 == password_2:
+                admin_password = password_1
+                break
+            print("Admin passwords do not match or are empty. Please try again.")
 
     panel_env = CONFIG_ROOT / "panel" / "panel.env"
     write_env_file(
@@ -207,11 +231,6 @@ def main() -> None:
         print("Manual panel start command:")
         print(f"  set -a && . {panel_env} && set +a && {INSTALL_ROOT}/.venv/bin/python -m doctor_dev_panel")
 
-    install_node_here = ask_yes_no("Do you want to install a Node on this server too?", default=False)
-    if install_node_here:
-        node_installer = INSTALL_ROOT / "scripts" / "install_node.py"
-        run([str(INSTALL_ROOT / ".venv" / "bin" / "python"), str(node_installer)])
-
     print("\nPanel installation completed.")
     print(f"Panel URL: {base_url}")
     print(f"Admin username: {admin_user}")
@@ -220,6 +239,17 @@ def main() -> None:
     if use_systemd:
         print(f"Service: {PANEL_SERVICE}")
         print(f"Logs: journalctl -u {PANEL_SERVICE} -f")
+
+    install_node_here = ask_yes_no("Do you want to install a Node on this server too?", default=False)
+    if install_node_here:
+        node_installer = INSTALL_ROOT / "scripts" / "install_node.py"
+        try:
+            run([str(INSTALL_ROOT / ".venv" / "bin" / "python"), str(node_installer)])
+        except subprocess.CalledProcessError as exc:
+            print("\nNode installation failed or was cancelled, but the Panel installation is still complete.")
+            print(f"Node installer exit code: {exc.returncode}")
+            print("You can retry later with:")
+            print(f"  sudo {INSTALL_ROOT}/.venv/bin/python {node_installer}")
 
 
 if __name__ == "__main__":

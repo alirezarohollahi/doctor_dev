@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from secrets import token_urlsafe
 from typing import Iterable
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 REPO_URL = "https://github.com/alirezarohollahi/doctor_dev"
 INSTALL_ROOT = Path(os.getenv("DOCTOR_DEV_INSTALL_ROOT", "/opt/doctor_dev"))
@@ -151,27 +151,92 @@ def install_certbot_if_needed() -> None:
     run([*platform.install_command, platform.certbot_package])
 
 
+def clean_input(value: str) -> str:
+    """Normalize interactive answers without changing their meaning.
+
+    Users often paste paths wrapped in quotes or with a trailing backslash from shell
+    line continuations.  A prompt must never crash just because of that.
+    """
+    value = (value or "").strip().strip("\r\n")
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+        value = value[1:-1].strip()
+    # A trailing backslash in an interactive installer is almost always accidental.
+    while value.endswith("\\"):
+        value = value[:-1].rstrip()
+    return value
+
+
+def clean_path_input(value: str) -> str:
+    value = clean_input(value)
+    # Remove a single escaped-space style only at line ends; keep normal Linux paths intact.
+    return os.path.expandvars(value)
+
+
+def normalize_existing_file_path(value: str) -> Path:
+    cleaned = clean_path_input(value)
+    if not cleaned:
+        raise ValueError("path is empty")
+    return Path(cleaned).expanduser().resolve()
+
+
 def ask(prompt: str, default: str | None = None) -> str:
     suffix = f" [{default}]" if default is not None else ""
-    value = input(f"{prompt}{suffix}: ").strip()
+    value = clean_input(input(f"{prompt}{suffix}: "))
     return value if value else (default or "")
 
 
 def ask_yes_no(prompt: str, default: bool = True) -> bool:
     default_text = "Y/n" if default else "y/N"
-    value = input(f"{prompt} [{default_text}]: ").strip().lower()
-    if not value:
-        return default
-    return value in {"y", "yes", "1", "true", "on"}
+    while True:
+        value = clean_input(input(f"{prompt} [{default_text}]: ")).lower()
+        if not value:
+            return default
+        if value in {"y", "yes", "1", "true", "on"}:
+            return True
+        if value in {"n", "no", "0", "false", "off"}:
+            return False
+        print("Please answer yes or no.")
 
 
-def ask_int(prompt: str, default: int) -> int:
+def ask_choice(prompt: str, choices: set[str], default: str) -> str:
+    while True:
+        value = ask(prompt, default)
+        if value in choices:
+            return value
+        print(f"Invalid choice. Allowed values: {', '.join(sorted(choices))}")
+
+
+def ask_int(prompt: str, default: int, *, minimum: int | None = None, maximum: int | None = None) -> int:
     while True:
         value = ask(prompt, str(default))
         try:
-            return int(value)
+            number = int(value)
         except ValueError:
             print("Please enter a valid number.")
+            continue
+        if minimum is not None and number < minimum:
+            print(f"Number must be >= {minimum}.")
+            continue
+        if maximum is not None and number > maximum:
+            print(f"Number must be <= {maximum}.")
+            continue
+        return number
+
+
+def ask_existing_file(prompt: str, *, default: str | None = None, allow_cancel: bool = True) -> Path | None:
+    while True:
+        value = ask(prompt, default)
+        if allow_cancel and clean_input(value).lower() in {"q", "quit", "cancel", "back", "skip"}:
+            return None
+        try:
+            path = normalize_existing_file_path(value)
+        except ValueError as exc:
+            print(f"Invalid path: {exc}")
+            continue
+        if path.is_file():
+            return path
+        print(f"File not found: {path}")
+        print("Enter a valid file path, or type 'back' to choose another option.")
 
 
 def random_password() -> str:
@@ -184,6 +249,15 @@ def random_admin_username() -> str:
 
 def make_uuid() -> str:
     return str(uuid4())
+
+
+def ask_uuid(prompt: str, default: str | None = None) -> str:
+    while True:
+        value = ask(prompt, default or make_uuid())
+        try:
+            return str(UUID(value))
+        except Exception:
+            print("Please enter a valid UUID, or press Enter to use the generated one.")
 
 
 def server_public_ip_guess() -> str:
@@ -337,11 +411,11 @@ def issue_lets_encrypt(domain: str, email: str) -> tuple[Path, Path]:
     return base / "fullchain.pem", base / "privkey.pem"
 
 
-def copy_existing_cert(alias: str, fullchain_path: str, privkey_path: str) -> tuple[Path, Path]:
-    src_full = Path(fullchain_path).expanduser().resolve()
-    src_key = Path(privkey_path).expanduser().resolve()
+def copy_existing_cert(alias: str, fullchain_path: str | Path, privkey_path: str | Path) -> tuple[Path, Path]:
+    src_full = fullchain_path if isinstance(fullchain_path, Path) else normalize_existing_file_path(fullchain_path)
+    src_key = privkey_path if isinstance(privkey_path, Path) else normalize_existing_file_path(privkey_path)
     if not src_full.is_file() or not src_key.is_file():
-        raise SystemExit("Certificate path is invalid. fullchain.pem and privkey.pem must exist.")
+        raise ValueError("Certificate path is invalid. fullchain.pem and privkey.pem must exist.")
     dest_dir = CONFIG_ROOT / "certs" / sanitize_service_part(alias)
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest_full = dest_dir / "fullchain.pem"
@@ -351,6 +425,23 @@ def copy_existing_cert(alias: str, fullchain_path: str, privkey_path: str) -> tu
     dest_key.chmod(0o600)
     dest_full.chmod(0o644)
     return dest_full, dest_key
+
+
+def prompt_and_copy_existing_cert(alias: str) -> tuple[Path, Path] | None:
+    print("Type 'back' at any certificate path prompt to return to the previous menu.")
+    while True:
+        fullchain = ask_existing_file("Path to fullchain.pem")
+        if fullchain is None:
+            return None
+        privkey = ask_existing_file("Path to privkey.pem")
+        if privkey is None:
+            return None
+        try:
+            return copy_existing_cert(alias, fullchain, privkey)
+        except Exception as exc:
+            print(f"Certificate copy failed: {exc}")
+            if not ask_yes_no("Try certificate paths again?", default=True):
+                return None
 
 
 def uninstall_all(remove_data: bool = False) -> None:

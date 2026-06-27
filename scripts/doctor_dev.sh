@@ -12,6 +12,31 @@ need_root() {
   fi
 }
 
+existing_panel_detected() {
+  [ -f /etc/doctor_dev/panel/panel.env ] || [ -f /etc/systemd/system/doctor-dev-panel.service ]
+}
+
+existing_node_detected() {
+  find /etc/doctor_dev/nodes -mindepth 2 -maxdepth 2 -name node.env 2>/dev/null | grep -q . \
+    || find /etc/systemd/system -maxdepth 1 -name 'doctor-dev-node-*.service' 2>/dev/null | grep -q .
+}
+
+confirm_existing_install() {
+  local role="$1"
+  if [ "$role" = "panel" ] && existing_panel_detected; then
+    echo "Existing Doctor Dev Panel installation detected."
+    echo "The Python installer will ask whether to remove it and start clean before changing it."
+    read -r -p "Continue to the Panel installer? [y/N]: " ans
+    case "${ans,,}" in y|yes) ;; *) echo "Cancelled."; exit 1 ;; esac
+  fi
+  if [ "$role" = "node" ] && existing_node_detected; then
+    echo "Existing Doctor Dev Node installation detected."
+    echo "The Python installer will ask which node to remove/reinstall before changing it."
+    read -r -p "Continue to the Node installer? [y/N]: " ans
+    case "${ans,,}" in y|yes) ;; *) echo "Cancelled."; exit 1 ;; esac
+  fi
+}
+
 has_cmd() { command -v "$1" >/dev/null 2>&1; }
 
 install_base_packages() {
@@ -80,11 +105,13 @@ need_root
 
 case "$CMD" in
   install|install-panel)
+    confirm_existing_install panel
     install_base_packages
     prepare_repo
     run_installer install_panel.py
     ;;
   install-node)
+    confirm_existing_install node
     install_base_packages
     prepare_repo
     run_installer install_node.py

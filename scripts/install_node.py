@@ -11,7 +11,9 @@ from install_common import (
     NODE_SERVICE_PREFIX,
     SYSTEMD_ROOT,
     ask,
+    ask_choice,
     ask_int,
+    ask_uuid,
     ask_yes_no,
     clone_or_update_repo,
     copy_existing_cert,
@@ -22,6 +24,7 @@ from install_common import (
     generate_self_signed_cert,
     install_system_packages,
     make_uuid,
+    prompt_and_copy_existing_cert,
     reload_systemd,
     require_root,
     sanitize_service_part,
@@ -52,21 +55,24 @@ def remove_existing_node(node_name: str, remove_data: bool) -> None:
 
 
 def configure_node_certificate(node_name: str) -> tuple[str, str]:
-    print("\nNode certificate mode:")
-    print("1) No API certificate")
-    print("2) Existing fullchain/privkey")
-    print("3) Generate self-signed certificate")
-    choice = ask("Choose mode", "1")
-    if choice == "2":
-        fullchain = ask("Path to fullchain.pem")
-        privkey = ask("Path to privkey.pem")
-        cert_path, key_path = copy_existing_cert(f"node-{node_name}", fullchain, privkey)
-        return str(cert_path), str(key_path)
-    if choice == "3":
-        common_name = ask("Certificate CN / DNS / IP", node_name)
-        cert_path, key_path = generate_self_signed_cert(common_name, f"node-{node_name}")
-        return str(cert_path), str(key_path)
-    return "", ""
+    while True:
+        print("\nNode certificate mode:")
+        print("1) No API certificate")
+        print("2) Existing fullchain/privkey")
+        print("3) Generate self-signed certificate")
+        choice = ask_choice("Choose mode", {"1", "2", "3"}, "1")
+        if choice == "2":
+            copied = prompt_and_copy_existing_cert(f"node-{node_name}")
+            if copied is not None:
+                cert_path, key_path = copied
+                return str(cert_path), str(key_path)
+            print("Certificate setup was cancelled. Choose another mode.")
+            continue
+        if choice == "3":
+            common_name = ask("Certificate CN / DNS / IP", node_name)
+            cert_path, key_path = generate_self_signed_cert(common_name, f"node-{node_name}")
+            return str(cert_path), str(key_path)
+        return "", ""
 
 
 def write_node_service(node_name: str, env_file: Path) -> str:
@@ -98,7 +104,7 @@ WantedBy=multi-user.target
 def parse_ports(value: str) -> list[int]:
     ports: list[int] = []
     for raw in value.split(","):
-        raw = raw.strip()
+        raw = raw.strip().strip("\\")
         if not raw:
             continue
         port = int(raw)
@@ -130,18 +136,18 @@ def main() -> None:
             raise SystemExit("Node installation cancelled. Existing installation was not changed.")
 
     bind_host = ask("Node API bind host", "0.0.0.0")
-    api_port = ask_int("Node API port", 9101)
+    api_port = ask_int("Node API port", 9101, minimum=1, maximum=65535)
     public_address = ask("Node public address or domain", "127.0.0.1")
     print("\nAPI protocol:")
     print("1) rest")
     print("2) grpc metadata only")
-    proto_choice = ask("Choose protocol", "1")
+    proto_choice = ask_choice("Choose protocol", {"1", "2"}, "1")
     protocol = "grpc" if proto_choice == "2" else "rest"
     if protocol == "grpc":
         print("Note: current runtime API is REST; grpc is stored in config for future-compatible node metadata.")
 
     generated_key = make_uuid()
-    api_key = ask("Node API key UUID", generated_key)
+    api_key = ask_uuid("Node API key UUID", generated_key)
 
     while True:
         try:
