@@ -44,10 +44,7 @@
 
   <main id="appView" class="app-shell hidden" aria-label="Doctor Dev application">
     <aside class="sidebar">
-      <div class="side-brand">
-        <div class="side-logo">D</div>
-        <div><strong>Doctor Dev</strong><span>Admin Panel</span></div>
-      </div>
+      <div class="side-brand"><div class="side-logo">D</div><div><strong>Doctor Dev</strong><span>Admin Panel</span></div></div>
       <nav class="side-nav" aria-label="Main navigation">
         <button class="nav-item active" data-page="dashboard"><span>⌂</span> Dashboard</button>
         <button class="nav-item" data-page="nodes"><span>⌘</span> Nodes</button>
@@ -77,24 +74,64 @@
           <div class="panel-head"><div><h3>Nodes</h3><p>Manage node records. Status checks use API Port and the node TLS certificate when provided.</p></div><button class="primary-small" id="createNodeButton" type="button">Create Node</button></div>
           <div id="nodesEmpty" class="empty-state">No nodes yet. Create your first node.</div>
           <div class="table-wrap hidden" id="nodesTableWrap">
-            <table class="nodes-table">
-              <thead><tr><th>Status</th><th>Name</th><th>Address</th><th>Node Port</th><th>API Port</th><th>Protocol</th><th>TLS</th><th>Enabled</th><th>Actions</th></tr></thead>
-              <tbody id="nodesTableBody"></tbody>
-            </table>
+            <table class="nodes-table"><thead><tr><th>Status</th><th>Name</th><th>Address</th><th>Node Port</th><th>API Port</th><th>Protocol</th><th>TLS</th><th>Enabled</th><th>Actions</th></tr></thead><tbody id="nodesTableBody"></tbody></table>
           </div>
         </div>
       </section>
 
       <section id="coresPage" class="page">
         <div class="panel-card">
-          <div class="panel-head"><div><h3>Cores</h3><p>Create routing cores, attach them to a node, define inbounds and route traffic to static targets or balancers.</p></div><button class="primary-small" id="createCoreButton" type="button">Create Core</button></div>
+          <div class="panel-head"><div><h3>Cores</h3><p>Create a core with only a name and target node. Open it to edit inbounds, routing, balancers and dependencies.</p></div><button class="primary-small" id="createCoreButton" type="button">Create Core</button></div>
           <div id="coresEmpty" class="empty-state">No cores yet. Create a core and assign it to a node.</div>
-          <div class="table-wrap hidden" id="coresTableWrap">
-            <table class="nodes-table">
-              <thead><tr><th>Status</th><th>Name</th><th>Node</th><th>Inbounds</th><th>Balancers</th><th>Enabled</th><th>Actions</th></tr></thead>
-              <tbody id="coresTableBody"></tbody>
-            </table>
+          <div class="core-grid" id="coresGrid"></div>
+        </div>
+      </section>
+
+      <section id="coreEditorPage" class="page">
+        <div class="core-editor-shell">
+          <div class="editor-toolbar">
+            <button id="backToCores" class="ghost-btn" type="button">← Back</button>
+            <label class="field editor-title-field"><span>Core Name</span><input id="editorCoreName" type="text" placeholder="docnode-000" /></label>
+            <label class="field editor-node-field"><span>Node</span><select id="editorCoreNode"></select></label>
+            <label class="enable-control editor-enable"><span>Enabled</span><span class="switch"><input id="editorCoreEnabled" type="checkbox" checked /><span></span></span></label>
+            <button id="saveCoreEditor" class="primary-small" type="button">Save</button>
           </div>
+
+          <div class="tabs" role="tablist" aria-label="Core editor sections">
+            <button class="tab active" data-core-tab="inbounds" type="button">↓ Inbounds</button>
+            <button class="tab" data-core-tab="routing" type="button">⌘ Routing</button>
+            <button class="tab" data-core-tab="balancers" type="button">⚖ Balancers</button>
+            <button class="tab" data-core-tab="dependencies" type="button">↔ Dependencies</button>
+            <button class="tab" data-core-tab="preview" type="button">{} Preview</button>
+          </div>
+
+          <section class="tab-panel active" id="tabInbounds">
+            <div class="panel-head compact"><div><h3>Inbounds</h3><p>Define listeners only: name, bind IP and port allocation. Routing is configured in the Routing tab.</p></div><button id="addInboundButton" class="primary-small" type="button">+ Add Inbound</button></div>
+            <div id="inboundEditorList" class="builder-list"></div>
+          </section>
+
+          <section class="tab-panel" id="tabRouting">
+            <div class="panel-head compact"><div><h3>Inbound Routing</h3><p>For each inbound, choose a direct static target or route it to a balancer alias.</p></div></div>
+            <div id="routingEditorList" class="builder-list"></div>
+          </section>
+
+          <section class="tab-panel" id="tabBalancers">
+            <div class="panel-head compact"><div><h3>Balancers</h3><p>Balancers are aliases that distribute traffic to static endpoints or to existing node inbounds.</p></div><button id="addBalancerButton" class="primary-small" type="button">+ Add Balancer</button></div>
+            <div id="balancerEditorList" class="builder-list"></div>
+          </section>
+
+          <section class="tab-panel" id="tabDependencies">
+            <div class="panel-head compact"><div><h3>Dependencies</h3><p>Optional ordering and safety dependencies for apply/deploy steps.</p></div><button id="addDependencyButton" class="primary-small" type="button">+ Add Dependency</button></div>
+            <div id="dependencyEditorList" class="builder-list"></div>
+          </section>
+
+          <section class="tab-panel" id="tabPreview">
+            <div class="panel-head compact"><div><h3>Config Preview</h3><p>Preview the normalized node-side config that will be used by the runtime in the next step.</p></div><button id="refreshPreviewButton" class="ghost-btn" type="button">Refresh Preview</button></div>
+            <pre id="corePreviewBox" class="preview-box">Save the core first, then refresh preview.</pre>
+          </section>
+
+          <p id="coreEditorMessage" class="message"></p>
+          <div class="bottom-save"><label class="checkline"><input id="restartNodesAfterSave" type="checkbox" checked /> Restart Nodes after apply later</label><button id="saveCoreEditorBottom" class="primary-small" type="button">Save Core</button></div>
         </div>
       </section>
     </section>
@@ -102,84 +139,34 @@
 
   <div id="nodeModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="nodeModalTitle">
     <div class="modal-card">
-      <div class="modal-header">
-        <div><h2 id="nodeModalTitle">Create Node</h2><p id="nodeModalSubtitle">Add a node definition and check its control-plane API.</p></div>
-        <button id="closeNodeModal" class="icon-btn" type="button" aria-label="Close">×</button>
-      </div>
-
+      <div class="modal-header"><div><h2 id="nodeModalTitle">Create Node</h2><p id="nodeModalSubtitle">Add a node definition and check its control-plane API.</p></div><button id="closeNodeModal" class="icon-btn" type="button" aria-label="Close">×</button></div>
       <form id="nodeForm" class="node-form">
         <input type="hidden" id="nodeId" />
-        <div class="status-line">
-          <span class="status-label">Status</span>
-          <span id="nodeStatusDot" class="status-dot yellow"></span>
-          <strong id="nodeStatusText">Pending Check</strong>
-          <label class="enable-control"><span>Enabled</span><span class="switch"><input id="nodeEnabled" type="checkbox" checked /><span></span></span></label>
-          <button id="checkNodeStatus" class="ghost-btn" type="button" title="Check this node now">↻ Check Status</button>
-        </div>
-
+        <div class="status-line"><span class="status-label">Status</span><span id="nodeStatusDot" class="status-dot yellow"></span><strong id="nodeStatusText">Pending Check</strong><label class="enable-control"><span>Enabled</span><span class="switch"><input id="nodeEnabled" type="checkbox" checked /><span></span></span></label><button id="checkNodeStatus" class="ghost-btn" type="button" title="Check this node now">↻ Check Status</button></div>
         <div class="modal-grid">
           <div class="left-fields">
             <label class="field"><span>Node Name</span><input id="nodeName" type="text" placeholder="freedom-000-node" required /></label>
             <div class="two-col"><label class="field"><span>Node Address</span><input id="nodeAddress" type="text" placeholder="node.example.com" required /><small>Domain or IP of the installed node.</small></label><label class="field"><span>Node Port</span><input id="nodePort" type="number" min="1" max="65535" value="62050" required /><small>Data-plane listener port. It is not used for panel health checks.</small></label></div>
             <label class="field"><span>API Key</span><div class="inline-input"><input id="apiKey" type="text" placeholder="Enter the node API key" required /><button id="generateApiKey" type="button" title="Generate API key">↻</button></div><small>Must match API_KEY in the node env file.</small></label>
-
-            <details class="advanced" open>
-              <summary>⚙ Advanced Settings</summary>
-              <div class="advanced-grid">
-                <label class="field"><span>Usage Ratio</span><input id="usageRatio" type="number" min="0" step="0.01" value="1" /></label>
-                <label class="field"><span>API Port</span><input id="apiPort" type="number" min="1" max="65535" value="62051" /><small>Control-plane port used by health/status/config requests.</small></label>
-                <label class="field wide"><span>Connection Type</span><select id="connectionType"><option value="grpc">gRPC</option><option value="rest">REST</option></select><small>Data-plane protocol preference. Node API is currently REST over HTTP/HTTPS.</small></label>
-                <label class="field"><span>Keep Alive</span><input id="keepAliveValue" type="number" min="1" value="60" /></label>
-                <label class="field"><span>Interval Unit</span><select id="keepAliveUnit"><option value="seconds">Seconds</option><option value="minutes">Minutes</option><option value="hours">Hours</option></select></label>
-                <label class="field wide"><span>Data Limit</span><input id="dataLimitGb" type="number" min="0" step="0.01" placeholder="Enter data limit (GB)" /></label>
-                <label class="field"><span>Default Timeout</span><input id="defaultTimeout" type="number" min="1" value="10" /></label>
-                <label class="field"><span>Internal Timeout</span><input id="internalTimeout" type="number" min="1" value="15" /></label>
-                <label class="field wide"><span>Proxy URL</span><input id="proxyUrl" type="text" placeholder="socks5://127.0.0.1:1080" /></label>
-              </div>
-            </details>
+            <details class="advanced" open><summary>⚙ Advanced Settings</summary><div class="advanced-grid"><label class="field"><span>Usage Ratio</span><input id="usageRatio" type="number" min="0" step="0.01" value="1" /></label><label class="field"><span>API Port</span><input id="apiPort" type="number" min="1" max="65535" value="62051" /><small>Control-plane port used by health/status/config requests.</small></label><label class="field wide"><span>Connection Type</span><select id="connectionType"><option value="grpc">gRPC</option><option value="rest">REST</option></select><small>Data-plane protocol preference. Node API is currently REST over HTTP/HTTPS.</small></label><label class="field"><span>Keep Alive</span><input id="keepAliveValue" type="number" min="1" value="60" /></label><label class="field"><span>Interval Unit</span><select id="keepAliveUnit"><option value="seconds">Seconds</option><option value="minutes">Minutes</option><option value="hours">Hours</option></select></label><label class="field wide"><span>Data Limit</span><input id="dataLimitGb" type="number" min="0" step="0.01" placeholder="Enter data limit (GB)" /></label><label class="field"><span>Default Timeout</span><input id="defaultTimeout" type="number" min="1" value="10" /></label><label class="field"><span>Internal Timeout</span><input id="internalTimeout" type="number" min="1" value="15" /></label><label class="field wide"><span>Proxy URL</span><input id="proxyUrl" type="text" placeholder="socks5://127.0.0.1:1080" /></label></div></details>
           </div>
           <label class="field cert-field"><span>Node API TLS Certificate <em>optional</em></span><textarea id="certificate" placeholder="Paste the node public certificate PEM here. The panel will use it to verify HTTPS requests to API Port."></textarea><small>Only the public certificate belongs here. Private keys stay on the node server.</small></label>
         </div>
-
         <p id="nodeMessage" class="message"></p>
         <div class="modal-actions"><button id="deleteNodeButton" class="danger-btn hidden" type="button">Delete</button><span></span><button class="ghost-btn" id="cancelNodeButton" type="button">Cancel</button><button class="primary-small" type="submit">Save Node</button></div>
       </form>
     </div>
   </div>
 
-  <div id="coreModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="coreModalTitle">
-    <div class="modal-card extra-wide">
-      <div class="modal-header">
-        <div><h2 id="coreModalTitle">Create Core</h2><p id="coreModalSubtitle">Choose a node, add inbounds and wire targets or balancers.</p></div>
-        <button id="closeCoreModal" class="icon-btn" type="button" aria-label="Close">×</button>
-      </div>
-
-      <form id="coreForm" class="node-form">
-        <input type="hidden" id="coreId" />
-        <div class="status-line">
-          <span class="status-label">Core</span>
-          <span class="status-dot yellow"></span>
-          <strong id="coreStatusText">Ready</strong>
-          <label class="enable-control"><span>Enabled</span><span class="switch"><input id="coreEnabled" type="checkbox" checked /><span></span></span></label>
-        </div>
-
-        <div class="two-col">
-          <label class="field"><span>Core Name</span><input id="coreName" type="text" placeholder="core-us-main" required /></label>
-          <label class="field"><span>Apply to Node</span><select id="coreNode" required></select><small>The selected node receives this routing core in later apply/deploy steps.</small></label>
-        </div>
-
-        <section class="builder-section">
-          <div class="builder-head"><div><h3>Inbounds</h3><p>Each inbound binds to an IP and one or more ports. It can forward directly or to a balancer alias.</p></div><button id="addInboundButton" class="ghost-btn" type="button">+ Add Inbound</button></div>
-          <div id="inboundList" class="builder-list"></div>
-        </section>
-
-        <section class="builder-section">
-          <div class="builder-head"><div><h3>Balancers</h3><p>Balancers are logical aliases that distribute traffic across static endpoints or existing node inbounds.</p></div><button id="addBalancerButton" class="ghost-btn" type="button">+ Add Balancer</button></div>
-          <div id="balancerList" class="builder-list"></div>
-        </section>
-
-        <p id="coreMessage" class="message"></p>
-        <div class="modal-actions"><button id="deleteCoreButton" class="danger-btn hidden" type="button">Delete</button><span></span><button class="ghost-btn" id="cancelCoreButton" type="button">Cancel</button><button class="primary-small" type="submit">Save Core</button></div>
+  <div id="coreCreateModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="coreCreateTitle">
+    <div class="modal-card small-modal">
+      <div class="modal-header"><div><h2 id="coreCreateTitle">Create Core</h2><p>Only choose a name and the node that will receive this core.</p></div><button id="closeCoreCreateModal" class="icon-btn" type="button" aria-label="Close">×</button></div>
+      <form id="coreCreateForm" class="node-form">
+        <label class="field"><span>Core Name</span><input id="createCoreName" type="text" placeholder="docnode-000" required /></label>
+        <label class="field"><span>Apply to Node</span><select id="createCoreNode" required></select><small>Inbounds, routing, balancers and dependencies are edited after the core is created.</small></label>
+        <label class="checkline"><input id="createCoreEnabled" type="checkbox" checked /> Enabled</label>
+        <p id="coreCreateMessage" class="message"></p>
+        <div class="modal-actions"><span></span><span></span><button class="ghost-btn" id="cancelCoreCreateButton" type="button">Cancel</button><button class="primary-small" type="submit">Create Core</button></div>
       </form>
     </div>
   </div>

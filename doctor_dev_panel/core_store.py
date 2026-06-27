@@ -185,6 +185,18 @@ def normalize_balancer(payload: dict[str, Any], index: int = 0) -> dict[str, Any
     }
 
 
+def normalize_dependency(payload: dict[str, Any], index: int = 0) -> dict[str, Any]:
+    dep_type = _clean_name(payload.get("type"), "core").lower()
+    if dep_type not in {"core", "node"}:
+        dep_type = "core"
+    return {
+        "type": dep_type,
+        "ref_id": _clean_name(payload.get("ref_id"), ""),
+        "required": bool(payload.get("required", True)),
+        "notes": _clean_name(payload.get("notes"), ""),
+    }
+
+
 def normalize_core(payload: dict[str, Any], existing: dict[str, Any] | None = None) -> dict[str, Any]:
     now = _now()
     base = dict(existing or {})
@@ -203,8 +215,12 @@ def normalize_core(payload: dict[str, Any], existing: dict[str, Any] | None = No
     balancers_payload = base.get("balancers")
     if not isinstance(balancers_payload, list):
         balancers_payload = []
+    dependencies_payload = base.get("dependencies")
+    if not isinstance(dependencies_payload, list):
+        dependencies_payload = []
     base["inbounds"] = [normalize_inbound(item, idx) for idx, item in enumerate(inbounds_payload)]
     base["balancers"] = [normalize_balancer(item, idx) for idx, item in enumerate(balancers_payload)]
+    base["dependencies"] = [normalize_dependency(item, idx) for idx, item in enumerate(dependencies_payload)]
     base.setdefault("last_applied_at", None)
     base.setdefault("last_error", "")
     return base

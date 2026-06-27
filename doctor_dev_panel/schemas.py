@@ -79,9 +79,17 @@ class CoreBalancerBody(BaseModel):
     notes: str = Field(default="", max_length=500)
 
 
+class CoreDependencyBody(BaseModel):
+    type: Literal["core", "node"] = "core"
+    ref_id: str = Field(default="", max_length=120)
+    required: bool = True
+    notes: str = Field(default="", max_length=500)
+
+
 class CoreBody(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     node_id: str = Field(min_length=1, max_length=120)
     enabled: bool = True
     inbounds: list[CoreInboundBody] = Field(default_factory=list)
     balancers: list[CoreBalancerBody] = Field(default_factory=list)
+    dependencies: list[CoreDependencyBody] = Field(default_factory=list)

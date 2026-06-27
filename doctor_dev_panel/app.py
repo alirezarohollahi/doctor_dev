@@ -165,10 +165,10 @@ async def panel_summary(user: str = Depends(require_admin)) -> dict:
     return {
         "ok": True,
         "user": user,
-        "phase": "core-routing-foundation",
+        "phase": "core-editor-ui-foundation",
         "nodes_total": len(nodes),
         "nodes_enabled": len([node for node in nodes if node.get("enabled")]),
-        "message": "Node API checks, TLS certificate handling and core routing foundation are ready.",
+        "message": "Node API checks, TLS certificate handling and the core editor UI are ready.",
         "cores_total": len(list_cores()),
     }
 
