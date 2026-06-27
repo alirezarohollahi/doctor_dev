@@ -1,7 +1,7 @@
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
-const state = { user: null, nodes: [], page: 'dashboard', editingNode: null };
+const state = { user: null, nodes: [], page: 'dashboard', editingNode: null, lastFormCheck: null };
 
 const loginView = $('#loginView');
 const appView = $('#appView');
@@ -29,7 +29,7 @@ async function api(path, options = {}) {
     ...options,
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.detail || 'Request failed.');
+  if (!response.ok) throw new Error(data.detail || data.message || 'Request failed.');
   return data;
 }
 
@@ -119,7 +119,8 @@ async function loadNodes() {
 
 function statusFor(node) {
   if (!node.enabled) return 'disabled';
-  return node.status && node.status !== 'unknown' ? node.status : 'pending';
+  const status = String(node.status || 'pending').toLowerCase();
+  return ['disabled', 'pending', 'running', 'error'].includes(status) && status !== 'disabled' ? status : 'pending';
 }
 
 function renderNodes() {
@@ -140,9 +141,11 @@ function renderNodes() {
       <td>${escapeHtml(node.api_port ?? '-')}</td>
       <td>${escapeHtml((node.connection_type || 'grpc').toUpperCase())}</td>
       <td>${node.enabled ? 'Yes' : 'No'}</td>
-      <td><div class="row-actions"><button class="mini-btn" data-edit="${node.id}">Edit</button><button class="mini-btn" data-delete="${node.id}">Delete</button></div></td>`;
+      <td><div class="row-actions"><button class="mini-btn" data-check="${node.id}">Check</button><button class="mini-btn" data-edit="${node.id}">Edit</button><button class="mini-btn" data-delete="${node.id}">Delete</button></div></td>`;
+    if (node.last_error) tr.title = node.last_error;
     body.appendChild(tr);
   }
+  $$('[data-check]').forEach((button) => button.addEventListener('click', () => checkSavedNode(button.dataset.check, button)));
   $$('[data-edit]').forEach((button) => button.addEventListener('click', () => openNodeModal(state.nodes.find((node) => node.id === button.dataset.edit))));
   $$('[data-delete]').forEach((button) => button.addEventListener('click', () => deleteNode(button.dataset.delete)));
 }
@@ -163,17 +166,30 @@ function escapeHtml(value) {
   return String(value).replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
 }
 
-function updateStatusPreview() {
-  const status = $('#nodeEnabled').checked ? 'pending' : 'disabled';
+function setStatusPreview(status, message = '') {
   $('#nodeStatusText').textContent = statusLabel(status);
   $('#nodeStatusDot').classList.remove('gray', 'red', 'yellow');
   const klass = statusDotClass(status);
   if (klass) $('#nodeStatusDot').classList.add(klass);
+  if (message) setMessage(nodeMessage, message, status === 'running' ? 'success' : status === 'error' ? 'error' : '');
+}
+
+function updateStatusPreview() {
+  if (!$('#nodeEnabled').checked) {
+    setStatusPreview('disabled');
+    return;
+  }
+  if (state.lastFormCheck) {
+    setStatusPreview(state.lastFormCheck.ok ? 'running' : 'error');
+    return;
+  }
+  setStatusPreview('pending');
 }
 
 function resetNodeForm() {
   nodeForm.reset();
   state.editingNode = null;
+  state.lastFormCheck = null;
   $('#nodeId').value = '';
   $('#nodePort').value = '62050';
   $('#apiPort').value = '62051';
@@ -183,11 +199,11 @@ function resetNodeForm() {
   $('#keepAliveUnit').value = 'seconds';
   $('#defaultTimeout').value = '10';
   $('#internalTimeout').value = '15';
-  $('#nodeEnabled').checked = false;
+  $('#nodeEnabled').checked = true;
   updateStatusPreview();
   $('#deleteNodeButton').classList.add('hidden');
   $('#nodeModalTitle').textContent = 'Create Node';
-  $('#nodeModalSubtitle').textContent = 'Add a node definition to the panel.';
+  $('#nodeModalSubtitle').textContent = 'Add a node definition and check its status.';
   setMessage(nodeMessage, '');
 }
 
@@ -195,6 +211,7 @@ function openNodeModal(node = null) {
   resetNodeForm();
   if (node) {
     state.editingNode = node;
+    state.lastFormCheck = null;
     $('#nodeId').value = node.id || '';
     $('#nodeName').value = node.name || '';
     $('#nodeAddress').value = node.address || '';
@@ -211,7 +228,8 @@ function openNodeModal(node = null) {
     $('#defaultTimeout').value = node.default_timeout || 10;
     $('#internalTimeout').value = node.internal_timeout || 15;
     $('#proxyUrl').value = node.proxy_url || '';
-    updateStatusPreview();
+    setStatusPreview(statusFor(node));
+    if (node.last_error) setMessage(nodeMessage, node.last_error, 'error');
     $('#deleteNodeButton').classList.remove('hidden');
     $('#nodeModalTitle').textContent = 'Edit Node';
     $('#nodeModalSubtitle').textContent = node.name || 'Update node definition.';
@@ -273,6 +291,55 @@ async function deleteNode(id) {
   }
 }
 
+async function checkSavedNode(id, button = null) {
+  if (!id) return;
+  const oldText = button ? button.textContent : '';
+  if (button) { button.disabled = true; button.textContent = 'Checking...'; }
+  try {
+    const data = await api(`/api/nodes/${encodeURIComponent(id)}/check`, { method: 'POST' });
+    await loadNodes();
+    if (!data.ok) alert(data.message || 'Node is not reachable.');
+  } catch (error) {
+    alert(error.message || 'Cannot check node.');
+  } finally {
+    if (button) { button.disabled = false; button.textContent = oldText; }
+  }
+}
+
+async function checkFormNode() {
+  setMessage(nodeMessage, 'Checking node status...');
+  const button = $('#checkNodeStatus');
+  button.disabled = true;
+  try {
+    const payload = nodePayload();
+    if (!payload.name) payload.name = 'temporary-check';
+    if (!payload.address) throw new Error('Node Address is required for status check.');
+    if (!payload.api_key) throw new Error('API Key is required for status check.');
+
+    let data;
+    if (state.editingNode && state.editingNode.id) {
+      // Save first so the stored status and table are updated from the real node record.
+      await api(`/api/nodes/${encodeURIComponent(state.editingNode.id)}`, { method: 'PUT', body: JSON.stringify(payload) });
+      data = await api(`/api/nodes/${encodeURIComponent(state.editingNode.id)}/check`, { method: 'POST' });
+      await loadNodes();
+    } else {
+      data = await api('/api/nodes/check', { method: 'POST', body: JSON.stringify(payload) });
+    }
+
+    state.lastFormCheck = data;
+    if (data.ok) {
+      setStatusPreview('running', `Node is reachable: ${data.url || ''}`.trim());
+    } else {
+      setStatusPreview('error', data.message || 'Node is not reachable.');
+    }
+  } catch (error) {
+    state.lastFormCheck = { ok: false };
+    setStatusPreview('error', error.message || 'Cannot check node.');
+  } finally {
+    button.disabled = false;
+  }
+}
+
 $('#generateApiKey').addEventListener('click', async () => {
   try {
     const data = await api('/api/nodes/api-key', { method: 'POST' });
@@ -288,7 +355,8 @@ $('#closeNodeModal').addEventListener('click', closeNodeModal);
 $('#cancelNodeButton').addEventListener('click', closeNodeModal);
 $('#deleteNodeButton').addEventListener('click', () => state.editingNode && deleteNode(state.editingNode.id));
 $('#refreshButton').addEventListener('click', () => { loadSummary(); loadNodes(); });
-$('#nodeEnabled').addEventListener('change', updateStatusPreview);
+$('#nodeEnabled').addEventListener('change', () => { state.lastFormCheck = null; updateStatusPreview(); });
+$('#checkNodeStatus').addEventListener('click', checkFormNode);
 nodeModal.addEventListener('click', (event) => { if (event.target === nodeModal) closeNodeModal(); });
 
 checkSession();

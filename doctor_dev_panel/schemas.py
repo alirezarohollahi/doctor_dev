@@ -14,7 +14,7 @@ class NodeBody(BaseModel):
     node_port: int = Field(default=62050, ge=1, le=65535)
     api_key: str = Field(min_length=1, max_length=255)
     certificate: str = Field(default="", max_length=20000)
-    enabled: bool = False
+    enabled: bool = True
 
     # Reserved for upcoming runtime/config phases. The panel stores them now,
     # but no runtime forwarding logic is attached in this foundation step.

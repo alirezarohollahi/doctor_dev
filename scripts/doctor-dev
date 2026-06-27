@@ -47,22 +47,26 @@ help_screen() {
   cecho "  doctor-dev [command]"
   echo
   cecho "${BOLD}Service commands:${RESET}"
-  cecho "  ${GREEN}start${RESET}             - Start panel service"
-  cecho "  ${GREEN}stop${RESET}              - Stop panel service"
-  cecho "  ${GREEN}restart${RESET}           - Restart panel service"
-  cecho "  ${GREEN}status${RESET}            - Show systemd status"
-  cecho "  ${GREEN}logs${RESET}              - Follow service logs"
-  cecho "  ${GREEN}health${RESET}            - Call local /health endpoint"
+  cecho "  ${GREEN}start${RESET}              - Start panel service"
+  cecho "  ${GREEN}stop${RESET}               - Stop panel service"
+  cecho "  ${GREEN}restart${RESET}            - Restart panel service"
+  cecho "  ${GREEN}status${RESET}             - Show systemd status"
+  cecho "  ${GREEN}logs${RESET}               - Follow service logs"
+  cecho "  ${GREEN}health${RESET}             - Call local /health endpoint"
+  cecho "  ${GREEN}service install${RESET}    - Create/enable systemd service for the panel"
+  cecho "  ${GREEN}service remove${RESET}     - Stop/disable/remove systemd service"
+  cecho "  ${GREEN}service enable${RESET}     - Enable panel service at boot"
+  cecho "  ${GREEN}service disable${RESET}    - Disable panel service at boot"
   echo
   cecho "${BOLD}Config commands:${RESET}"
-  cecho "  ${GREEN}config edit${RESET}       - Edit panel environment config"
-  cecho "  ${GREEN}update${RESET}            - Download installer and run update-panel"
+  cecho "  ${GREEN}config edit${RESET}        - Edit panel environment config"
+  cecho "  ${GREEN}update${RESET}             - Download installer and run update-panel"
   echo
   cecho "${BOLD}Admin commands:${RESET}"
-  cecho "  ${GREEN}admin list${RESET}        - List panel admins"
-  cecho "  ${GREEN}admin add USER${RESET}    - Add admin or update password"
-  cecho "  ${GREEN}admin remove USER${RESET} - Remove admin"
-  cecho "  ${GREEN}admin passwd USER${RESET} - Change admin password"
+  cecho "  ${GREEN}admin list${RESET}         - List panel admins"
+  cecho "  ${GREEN}admin add USER${RESET}     - Add admin or update password"
+  cecho "  ${GREEN}admin remove USER${RESET}  - Remove admin"
+  cecho "  ${GREEN}admin passwd USER${RESET}  - Change admin password"
   echo
   cecho "${BOLD}Directories:${RESET}"
   cecho "  App directory:  ${BLUE}${APP_DIR}${RESET}"
@@ -93,6 +97,47 @@ run_admin_cli() {
   fi
 }
 
+write_service_unit() {
+  require_systemctl
+  local env_file="$(active_env_file)"
+  [[ -d "$APP_DIR" ]] || { cecho "${RED}App directory not found: $APP_DIR${RESET}"; exit 1; }
+  [[ -x "$APP_DIR/.venv/bin/python" ]] || { cecho "${RED}Virtualenv not found: $APP_DIR/.venv${RESET}"; exit 1; }
+  [[ -f "$env_file" ]] || { cecho "${RED}Env file not found: $env_file${RESET}"; exit 1; }
+  sudo tee "/etc/systemd/system/${SERVICE_NAME}.service" >/dev/null <<SERVICE
+[Unit]
+Description=Doctor Dev Panel
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=$APP_DIR
+Environment=DOCTOR_DEV_ENV=$env_file
+Environment=PYTHONPATH=$APP_DIR
+ExecStart=$APP_DIR/.venv/bin/python $APP_DIR/main.py --env $env_file
+Restart=always
+RestartSec=3
+KillSignal=SIGTERM
+TimeoutStopSec=30
+User=root
+
+[Install]
+WantedBy=multi-user.target
+SERVICE
+  sudo systemctl daemon-reload
+  sudo systemctl enable "$SERVICE_NAME" >/dev/null
+  cecho "${GREEN}✓ Panel service installed/enabled: ${SERVICE_NAME}${RESET}"
+}
+
+remove_service_unit() {
+  require_systemctl
+  sudo systemctl stop "$SERVICE_NAME" 2>/dev/null || true
+  sudo systemctl disable "$SERVICE_NAME" 2>/dev/null || true
+  sudo rm -f "/etc/systemd/system/${SERVICE_NAME}.service"
+  sudo systemctl daemon-reload
+  cecho "${GREEN}✓ Panel service removed: ${SERVICE_NAME}${RESET}"
+}
+
 cmd="${1:-help}"
 case "$cmd" in
   start)
@@ -105,6 +150,16 @@ case "$cmd" in
     require_systemctl; systemctl status "$SERVICE_NAME" --no-pager ;;
   logs)
     require_systemctl; journalctl -u "$SERVICE_NAME" -f -n "${2:-120}" ;;
+  service)
+    sub="${2:-}"
+    case "$sub" in
+      install) write_service_unit ;;
+      remove|uninstall) remove_service_unit ;;
+      enable) require_systemctl; sudo systemctl enable "$SERVICE_NAME" ;;
+      disable) require_systemctl; sudo systemctl disable "$SERVICE_NAME" ;;
+      *) cecho "${YELLOW}Usage: doctor-dev service [install|remove|enable|disable]${RESET}"; exit 2 ;;
+    esac
+    ;;
   config)
     sub="${2:-}"
     if [[ "$sub" == "edit" ]]; then
@@ -127,7 +182,9 @@ case "$cmd" in
     ;;
   health)
     port="$(safe_env_get PORT)"; port="${port:-8080}"
-    curl -fsS "http://127.0.0.1:${port}/health" || {
+    use_tls="$(safe_env_get USE_TLS)"; scheme="http"; curl_opts="-fsS"
+    if [[ "$use_tls" == "1" ]]; then scheme="https"; curl_opts="-fkS"; fi
+    curl $curl_opts "${scheme}://127.0.0.1:${port}/health" || {
       cecho "${YELLOW}Local health check failed. Is the service running on port ${port}?${RESET}"; exit 1;
     }
     echo

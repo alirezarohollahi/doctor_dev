@@ -291,9 +291,32 @@ install_panel(){
 }
 
 update_panel(){
-  header "Doctor Dev Panel Updater" "Pull latest code, keep config, restart service"
-  need_root; stop_service "$PANEL_SERVICE_NAME"; install_packages; clone_or_update_repo "$PANEL_APP_DIR" "update"; validate_project_tree "$PANEL_APP_DIR"; setup_venv "$PANEL_APP_DIR"; install_panel_cli
-  if [[ -f "$PANEL_ENV_FILE" || -f "$PANEL_APP_DIR/.env" ]]; then ln -sfn "$PANEL_ENV_FILE" "$PANEL_APP_DIR/.env" 2>/dev/null || true; write_panel_service; if systemctl list-unit-files | grep -q "^${PANEL_SERVICE_NAME}.service"; then systemctl restart "$PANEL_SERVICE_NAME"; ok "Panel service restarted."; else warn "Panel service does not exist yet. Run install-panel once."; fi; else warn "No panel environment file found. Run install-panel once."; fi
+  header "Doctor Dev Panel Updater" "Pull latest code, keep config, reinstall service, restart"
+  need_root
+  stop_service "$PANEL_SERVICE_NAME"
+  install_packages
+  clone_or_update_repo "$PANEL_APP_DIR" "update"
+  validate_project_tree "$PANEL_APP_DIR"
+  setup_venv "$PANEL_APP_DIR"
+  install_panel_cli
+
+  if [[ ! -f "$PANEL_ENV_FILE" && -f "$PANEL_APP_DIR/.env" && ! -L "$PANEL_APP_DIR/.env" ]]; then
+    warn "Migrating legacy env file from $PANEL_APP_DIR/.env to $PANEL_ENV_FILE"
+    prepare_panel_dirs
+    cp "$PANEL_APP_DIR/.env" "$PANEL_ENV_FILE"
+    chmod 600 "$PANEL_ENV_FILE" || true
+  fi
+
+  if [[ -f "$PANEL_ENV_FILE" ]]; then
+    ln -sfn "$PANEL_ENV_FILE" "$PANEL_APP_DIR/.env" 2>/dev/null || true
+    write_panel_service
+    systemctl enable "$PANEL_SERVICE_NAME" >/dev/null
+    systemctl restart "$PANEL_SERVICE_NAME"
+    ok "Panel service installed/enabled/restarted: $PANEL_SERVICE_NAME"
+  else
+    warn "No panel environment file found at $PANEL_ENV_FILE."
+    warn "Code was updated, but the service cannot start until install-panel creates the env."
+  fi
   ok "Panel update finished."
 }
 
@@ -393,15 +416,36 @@ install_node(){
 }
 
 update_node(){
-  header "Doctor Dev Node Updater" "Pull latest code, keep node config, restart service"
-  need_root; install_packages
+  header "Doctor Dev Node Updater" "Pull latest code, keep node config, reinstall service, restart"
+  need_root
+  install_packages
   local cli_name
   cli_name="${DOCTOR_DEV_NODE_CLI_NAME:-}"
   [[ -z "$cli_name" ]] && cli_name="$(ask "Node CLI name" "docter-node")"
   node_vars "$cli_name"
   stop_service "$NODE_SERVICE_NAME"
-  clone_or_update_repo "$NODE_APP_DIR" "update"; validate_project_tree "$NODE_APP_DIR"; setup_venv "$NODE_APP_DIR"; install_node_cli
-  if [[ -f "$NODE_ENV_FILE" || -f "$NODE_APP_DIR/.env" ]]; then ln -sfn "$NODE_ENV_FILE" "$NODE_APP_DIR/.env" 2>/dev/null || true; write_node_service; if systemctl list-unit-files | grep -q "^${NODE_SERVICE_NAME}.service"; then systemctl restart "$NODE_SERVICE_NAME"; ok "Node service restarted."; else warn "Node service does not exist yet. Run install-node once."; fi; else warn "No node environment file found. Run install-node once."; fi
+  clone_or_update_repo "$NODE_APP_DIR" "update"
+  validate_project_tree "$NODE_APP_DIR"
+  setup_venv "$NODE_APP_DIR"
+  install_node_cli
+
+  if [[ ! -f "$NODE_ENV_FILE" && -f "$NODE_APP_DIR/.env" && ! -L "$NODE_APP_DIR/.env" ]]; then
+    warn "Migrating legacy env file from $NODE_APP_DIR/.env to $NODE_ENV_FILE"
+    mkdir -p "$NODE_CONFIG_DIR"
+    cp "$NODE_APP_DIR/.env" "$NODE_ENV_FILE"
+    chmod 600 "$NODE_ENV_FILE" || true
+  fi
+
+  if [[ -f "$NODE_ENV_FILE" ]]; then
+    ln -sfn "$NODE_ENV_FILE" "$NODE_APP_DIR/.env" 2>/dev/null || true
+    write_node_service
+    systemctl enable "$NODE_SERVICE_NAME" >/dev/null
+    systemctl restart "$NODE_SERVICE_NAME"
+    ok "Node service installed/enabled/restarted: $NODE_SERVICE_NAME"
+  else
+    warn "No node environment file found at $NODE_ENV_FILE."
+    warn "Code was updated, but the service cannot start until install-node creates the env."
+  fi
   ok "Node update finished."
 }
 

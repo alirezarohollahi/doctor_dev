@@ -40,16 +40,20 @@ help_screen(){
   cecho "  ${CLI_NAME} [command]"
   echo
   cecho "${BOLD}Service commands:${RESET}"
-  cecho "  ${GREEN}start${RESET}           - Start node service"
-  cecho "  ${GREEN}stop${RESET}            - Stop node service"
-  cecho "  ${GREEN}restart${RESET}         - Restart node service"
-  cecho "  ${GREEN}status${RESET}          - Show systemd status"
-  cecho "  ${GREEN}logs${RESET}            - Follow service logs"
-  cecho "  ${GREEN}health${RESET}          - Call local /health endpoint"
+  cecho "  ${GREEN}start${RESET}              - Start node service"
+  cecho "  ${GREEN}stop${RESET}               - Stop node service"
+  cecho "  ${GREEN}restart${RESET}            - Restart node service"
+  cecho "  ${GREEN}status${RESET}             - Show systemd status"
+  cecho "  ${GREEN}logs${RESET}               - Follow service logs"
+  cecho "  ${GREEN}health${RESET}             - Call local /health endpoint"
+  cecho "  ${GREEN}service install${RESET}    - Create/enable systemd service for this node"
+  cecho "  ${GREEN}service remove${RESET}     - Stop/disable/remove systemd service"
+  cecho "  ${GREEN}service enable${RESET}     - Enable node service at boot"
+  cecho "  ${GREEN}service disable${RESET}    - Disable node service at boot"
   echo
   cecho "${BOLD}Config commands:${RESET}"
-  cecho "  ${GREEN}config edit${RESET}     - Edit node environment config"
-  cecho "  ${GREEN}update${RESET}          - Download installer and run update-node"
+  cecho "  ${GREEN}config edit${RESET}        - Edit node environment config"
+  cecho "  ${GREEN}update${RESET}             - Download installer and run update-node"
   echo
   cecho "${BOLD}Directories:${RESET}"
   cecho "  App directory:  ${BLUE}${APP_DIR}${RESET}"
@@ -58,6 +62,47 @@ help_screen(){
   cecho "${CYAN}${BOLD}============================================================${RESET}"
 }
 require_systemctl(){ command -v systemctl >/dev/null 2>&1 || { cecho "${RED}systemctl not found.${RESET}"; exit 1; }; }
+
+write_service_unit(){
+  require_systemctl
+  [[ -d "$APP_DIR" ]] || { cecho "${RED}App directory not found: $APP_DIR${RESET}"; exit 1; }
+  [[ -x "$APP_DIR/.venv/bin/python" ]] || { cecho "${RED}Virtualenv not found: $APP_DIR/.venv${RESET}"; exit 1; }
+  [[ -f "$ENV_FILE" ]] || { cecho "${RED}Env file not found: $ENV_FILE${RESET}"; exit 1; }
+  sudo tee "/etc/systemd/system/${SERVICE_NAME}.service" >/dev/null <<SERVICE
+[Unit]
+Description=Doctor Dev Node - $CLI_NAME
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=$APP_DIR
+Environment=DOCTOR_DEV_NODE_ENV=$ENV_FILE
+Environment=PYTHONPATH=$APP_DIR
+ExecStart=$APP_DIR/.venv/bin/python -m doctor_dev_node.server --env $ENV_FILE
+Restart=always
+RestartSec=3
+KillSignal=SIGTERM
+TimeoutStopSec=30
+User=root
+
+[Install]
+WantedBy=multi-user.target
+SERVICE
+  sudo systemctl daemon-reload
+  sudo systemctl enable "$SERVICE_NAME" >/dev/null
+  cecho "${GREEN}✓ Node service installed/enabled: ${SERVICE_NAME}${RESET}"
+}
+
+remove_service_unit(){
+  require_systemctl
+  sudo systemctl stop "$SERVICE_NAME" 2>/dev/null || true
+  sudo systemctl disable "$SERVICE_NAME" 2>/dev/null || true
+  sudo rm -f "/etc/systemd/system/${SERVICE_NAME}.service"
+  sudo systemctl daemon-reload
+  cecho "${GREEN}✓ Node service removed: ${SERVICE_NAME}${RESET}"
+}
+
 cmd="${1:-help}"
 case "$cmd" in
   start) require_systemctl; sudo systemctl start "$SERVICE_NAME" ;;
@@ -65,6 +110,16 @@ case "$cmd" in
   restart) require_systemctl; sudo systemctl restart "$SERVICE_NAME" ;;
   status) require_systemctl; systemctl status "$SERVICE_NAME" --no-pager ;;
   logs) require_systemctl; journalctl -u "$SERVICE_NAME" -f -n "${2:-120}" ;;
+  service)
+    sub="${2:-}"
+    case "$sub" in
+      install) write_service_unit ;;
+      remove|uninstall) remove_service_unit ;;
+      enable) require_systemctl; sudo systemctl enable "$SERVICE_NAME" ;;
+      disable) require_systemctl; sudo systemctl disable "$SERVICE_NAME" ;;
+      *) cecho "${YELLOW}Usage: ${CLI_NAME} service [install|remove|enable|disable]${RESET}"; exit 2 ;;
+    esac
+    ;;
   config)
     sub="${2:-}"
     if [[ "$sub" == "edit" ]]; then sudo mkdir -p "$CONFIG_DIR"; sudo "$(editor_cmd)" "$ENV_FILE"; else cecho "${YELLOW}Usage: ${CLI_NAME} config edit${RESET}"; exit 2; fi

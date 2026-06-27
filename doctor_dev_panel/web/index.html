@@ -67,13 +67,13 @@
         <div class="stat-grid">
           <article class="stat-card"><span>Total Nodes</span><strong id="totalNodes">0</strong><p>Saved node definitions.</p></article>
           <article class="stat-card"><span>Enabled Nodes</span><strong id="enabledNodes">0</strong><p>Marked as enabled in panel.</p></article>
-          <article class="stat-card"><span>Runtime</span><strong>Base</strong><p>No runtime logic is attached yet.</p></article>
+          <article class="stat-card"><span>Runtime</span><strong>Base</strong><p>Status check is attached; runtime logic comes next.</p></article>
         </div>
       </section>
 
       <section id="nodesPage" class="page">
         <div class="panel-card">
-          <div class="panel-head"><div><h3>Nodes</h3><p>Manage node records. Real health checks and remote actions will be added later.</p></div><button class="primary-small" id="createNodeButton" type="button">Create Node</button></div>
+          <div class="panel-head"><div><h3>Nodes</h3><p>Manage node records. Health check is available now; runtime actions will be added in the next phases.</p></div><button class="primary-small" id="createNodeButton" type="button">Create Node</button></div>
           <div id="nodesEmpty" class="empty-state">No nodes yet. Create your first node.</div>
           <div class="table-wrap hidden" id="nodesTableWrap">
             <table class="nodes-table">
@@ -89,7 +89,7 @@
   <div id="nodeModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="nodeModalTitle">
     <div class="modal-card">
       <div class="modal-header">
-        <div><h2 id="nodeModalTitle">Create Node</h2><p id="nodeModalSubtitle">Add a node definition to the panel.</p></div>
+        <div><h2 id="nodeModalTitle">Create Node</h2><p id="nodeModalSubtitle">Add a node definition and check its status.</p></div>
         <button id="closeNodeModal" class="icon-btn" type="button" aria-label="Close">×</button>
       </div>
 
@@ -98,9 +98,9 @@
         <div class="status-line">
           <span class="status-label">Status</span>
           <span id="nodeStatusDot" class="status-dot gray"></span>
-          <strong id="nodeStatusText">Disabled</strong>
-          <label class="enable-control"><span>Enabled</span><span class="switch"><input id="nodeEnabled" type="checkbox" /><span></span></span></label>
-          <button class="ghost-btn disabled" type="button" title="Runtime check will be added later">↻ Check Status</button>
+          <strong id="nodeStatusText">Pending Check</strong>
+          <label class="enable-control"><span>Enabled</span><span class="switch"><input id="nodeEnabled" type="checkbox" checked /><span></span></span></label>
+          <button id="checkNodeStatus" class="ghost-btn" type="button" title="Check this node now">↻ Check Status</button>
         </div>
 
         <div class="modal-grid">

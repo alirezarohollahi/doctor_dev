@@ -8,7 +8,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-
 VALID_STATUSES = {"disabled", "pending", "running", "error"}
 
 
@@ -39,7 +38,7 @@ def generate_api_key() -> str:
 
 
 def empty_store() -> dict[str, Any]:
-    return {"version": 2, "nodes": []}
+    return {"version": 3, "nodes": []}
 
 
 def load_store() -> dict[str, Any]:
@@ -52,7 +51,7 @@ def load_store() -> dict[str, Any]:
         raise RuntimeError(f"Cannot read nodes store: {path}: {exc}") from exc
     if not isinstance(loaded, dict):
         return empty_store()
-    loaded.setdefault("version", 2)
+    loaded.setdefault("version", 3)
     if not isinstance(loaded.get("nodes"), list):
         loaded["nodes"] = []
     return loaded
@@ -89,15 +88,17 @@ def normalize_node(payload: dict[str, Any], existing: dict[str, Any] | None = No
     base["updated_at"] = now
 
     # Core Configuration is intentionally not part of Create Node anymore.
-    # Keep old records compatible but do not require or display it.
     base.pop("core_configuration", None)
 
-    base["enabled"] = bool(base.get("enabled", False))
+    # New nodes are enabled by default. Existing disabled nodes remain disabled unless edited.
+    base["enabled"] = bool(base.get("enabled", True))
     if not base["enabled"]:
         base["status"] = "disabled"
     else:
         status = str(base.get("status") or "pending").lower()
         base["status"] = status if status in VALID_STATUSES and status != "disabled" else "pending"
+    base.setdefault("last_checked_at", None)
+    base.setdefault("last_error", "")
     return base
 
 
@@ -117,7 +118,7 @@ def create_node(payload: dict[str, Any]) -> dict[str, Any]:
     data = load_store()
     node = normalize_node(payload)
     data.setdefault("nodes", []).append(node)
-    data["version"] = 2
+    data["version"] = 3
     save_store(data)
     return node
 
@@ -130,9 +131,30 @@ def update_node(node_id: str, payload: dict[str, Any]) -> dict[str, Any] | None:
             payload = dict(payload)
             payload["id"] = node_id
             nodes[index] = normalize_node(payload, existing=node)
-            data["version"] = 2
+            data["version"] = 3
             save_store(data)
             return nodes[index]
+    return None
+
+
+def set_node_check_result(node_id: str, *, ok: bool, error: str = "", details: dict[str, Any] | None = None) -> dict[str, Any] | None:
+    data = load_store()
+    nodes = data.setdefault("nodes", [])
+    for index, node in enumerate(nodes):
+        if node.get("id") == node_id:
+            updated = normalize_node(node, existing=node)
+            # Health check result is stored even if the node is disabled, but disabled nodes
+            # still display as Disabled until the user enables them.
+            if updated.get("enabled"):
+                updated["status"] = "running" if ok else "error"
+            updated["last_checked_at"] = _now()
+            updated["last_error"] = "" if ok else str(error or "Unknown error")[:500]
+            if details is not None:
+                updated["last_check_details"] = details
+            nodes[index] = updated
+            data["version"] = 3
+            save_store(data)
+            return updated
     return None
 
 
@@ -143,6 +165,6 @@ def remove_node(node_id: str) -> bool:
     if len(next_nodes) == len(nodes):
         return False
     data["nodes"] = next_nodes
-    data["version"] = 2
+    data["version"] = 3
     save_store(data)
     return True
