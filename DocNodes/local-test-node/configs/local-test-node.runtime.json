@@ -1,0 +1,24 @@
+{
+  "groups": {
+    "local-admin-loopback": {
+      "name": "local-admin-loopback",
+      "processes": [
+        {
+          "active_connections": 0,
+          "bytes_in": 0,
+          "bytes_out": 0,
+          "connection_count": 0,
+          "group_name": "local-admin-loopback",
+          "last_error": null,
+          "listen_host": "127.0.0.1",
+          "listen_port": 18080,
+          "process_id": "local-admin-loopback-1",
+          "public_host": "127.0.0.1",
+          "status": "running"
+        }
+      ],
+      "status": "running"
+    }
+  },
+  "remote_dependencies": {}
+}

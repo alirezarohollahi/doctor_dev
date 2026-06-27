@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "doctor-dev"
+version = "1.0.0"
+description = "Doctor Dev multi-node panel with local runtime test lab, config versioning, diff, rollback and audit log"
+requires-python = ">=3.10"
+dependencies = ["fastapi>=0.110", "uvicorn[standard]>=0.27", "pydantic>=2.6", "httpx>=0.27", "python-multipart>=0.0.9"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["doctor_dev_panel*", "doctor_dev_agent*", "doctor_dev_shared*"]

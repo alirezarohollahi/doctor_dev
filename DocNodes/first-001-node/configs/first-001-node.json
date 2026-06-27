@@ -1,3 +1,4 @@
+
 {
   "manager": {
     "name": "first-001-node",
@@ -25,6 +26,10 @@
         {
           "type": "remote_group",
           "dependency": "freedom-001-node-group-1"
+        },
+        {
+          "type": "remote_group",
+          "dependency": "freedom-001-node-group-2"
         }
       ],
       "strategy": "round_robin",
@@ -34,10 +39,18 @@
   "remote_dependencies": [
     {
       "name": "freedom-001-node-group-1",
-      "manager_url": "http://freedom001-ams.pangshanbebazar.ir:8080/",
+      "manager_url": "http://freedom001-de.pangshanbebazar.ir:8080/",
       "group_name": "freedom-001-node-group-1",
+      "token": "X9ExBmzE7PmiBehaTtgj3TNiJyyqJGn3ss5EgCaxaPQ=",
+      "sync_interval_seconds": 5
+    },
+    {
+      "name": "freedom-001-node-group-2",
+      "manager_url": "http://freedom001-de-p.pangshanbebazar.ir:8080",
+      "group_name": "freedom-001-node-group-2",
       "token": "X9ExBmzE7PmiBehaTtgj3TNiJyyqJGn3ss5EgCaxaPQ=",
       "sync_interval_seconds": 5
     }
   ]
 }
+

@@ -1,16 +1,13 @@
-/configs.back
-# Python cache files
 __pycache__/
-*.py[cod]
-*$py.class
-
-# Runtime/generated folders
+*.pyc
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+data/
 logs/
-run/
-cert/
-
-/.venv
-/DocNodes.back
-*.pem
-merge_folder.py
-merged_codes.txt
+configs/generated/
+*.zip
+.idea/
+.vscode/

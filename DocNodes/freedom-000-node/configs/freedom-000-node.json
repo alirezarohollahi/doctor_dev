@@ -1,9 +1,10 @@
+
 {
   "manager": {
     "name": "freedom-000-node",
     "host": "0.0.0.0",
     "port": 8080,
-    "public_host": "104.252.77.120",
+    "public_host": "freedom000-us.pangshanbebazar.ir",
     "api_token": "X9ExBmzE7PmiBehaTtgj3TNiJyyqJGn3ss5EgCaxaPQ=",
     "log_file": "./logs/freedom-000-node.log"
   },
@@ -12,7 +13,7 @@
       "name": "freedom-000-node-group-1",
       "process_count": 8,
       "listen_host": "0.0.0.0",
-      "public_host": "104.252.77.120",
+      "public_host": "freedom000-us.pangshanbebazar.ir",
       "port_mode": "random",
       "fixed_ports": [],
       "targets": [
@@ -44,7 +45,62 @@
       ],
       "strategy": "round_robin",
       "enabled": true
+    },
+    {
+      "name": "freedom-000-node-group-2",
+      "process_count": 4,
+      "listen_host": "0.0.0.0",
+      "public_host": "freedom000-us-p.pangshanbebazar.ir",
+      "port_mode": "fixed",
+      "fixed_ports": [2053,2083,2096,8443],
+      "targets": [
+        {
+          "type": "static",
+          "host": "127.0.0.1",
+          "port": 31249
+        },
+        {
+          "type": "static",
+          "host": "127.0.0.1",
+          "port": 30483
+        },
+        {
+          "type": "static",
+          "host": "127.0.0.1",
+          "port": 31042
+        },
+        {
+          "type": "static",
+          "host": "127.0.0.1",
+          "port": 30759
+        },
+        {
+          "type": "static",
+          "host": "127.0.0.1",
+          "port": 32592
+        }
+      ],
+      "strategy": "round_robin",
+      "enabled": false
+    },
+    {
+      "name": "freedom-000-node-group-3",
+      "process_count": 8,
+      "listen_host": "0.0.0.0",
+      "public_host": "freedom000-us.pangshanbebazar.ir",
+      "port_mode": "random",
+      "fixed_ports": [],
+      "targets": [
+        {
+          "type": "static",
+          "host": "127.0.0.1",
+          "port": 51321
+        }
+      ],
+      "strategy": "round_robin",
+      "enabled": true
     }
   ],
   "remote_dependencies": []
 }
+

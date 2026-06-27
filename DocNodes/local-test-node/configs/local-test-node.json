@@ -1,0 +1,32 @@
+{
+  "manager": {
+    "name": "local-test-node",
+    "host": "127.0.0.1",
+    "port": 8080,
+    "public_host": "127.0.0.1",
+    "api_token": "local-test-token-only",
+    "log_file": "./logs/local-test-node.log"
+  },
+  "groups": [
+    {
+      "name": "local-admin-loopback",
+      "process_count": 1,
+      "listen_host": "127.0.0.1",
+      "public_host": "127.0.0.1",
+      "port_mode": "fixed",
+      "fixed_ports": [
+        18080
+      ],
+      "targets": [
+        {
+          "type": "static",
+          "host": "127.0.0.1",
+          "port": 8080
+        }
+      ],
+      "strategy": "round_robin",
+      "enabled": true
+    }
+  ],
+  "remote_dependencies": []
+}

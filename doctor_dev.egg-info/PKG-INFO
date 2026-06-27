@@ -1,0 +1,10 @@
+Metadata-Version: 2.4
+Name: doctor-dev
+Version: 1.0.0
+Summary: Doctor Dev multi-node panel with local runtime test lab, config versioning, diff, rollback and audit log
+Requires-Python: >=3.10
+Requires-Dist: fastapi>=0.110
+Requires-Dist: uvicorn[standard]>=0.27
+Requires-Dist: pydantic>=2.6
+Requires-Dist: httpx>=0.27
+Requires-Dist: python-multipart>=0.0.9
