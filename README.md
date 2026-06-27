@@ -159,7 +159,18 @@ Node information is saved to:
 
 ## CLI commands
 
-### Panel CLI
+#
+## Login Page
+
+The panel now uses a full web login page instead of relying on the browser Basic Auth popup.
+
+- Open the Panel URL printed by the installer.
+- Enter the admin username and password generated during installation.
+- Credentials are stored on the server at `/etc/doctor_dev/panel/admin_credentials.txt` with restrictive permissions.
+- CLI access still supports Basic Auth internally, so `doctor-panel nodes list`, `doctor-panel cert list`, and other CLI commands continue to work.
+- Sessions are stored in an HTTP-only cookie. You can tune the lifetime with `DOCTOR_DEV_SESSION_TTL_SECONDS` in `/etc/doctor_dev/panel/panel.env`.
+
+## Panel CLI
 
 ```bash
 doctor-panel status

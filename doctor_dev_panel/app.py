@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import base64
 import difflib
+import hashlib
+import hmac
 import json
 import os
 import secrets
+import time
 from typing import Any
 
 import httpx
@@ -39,14 +42,78 @@ from .ui import FRONTEND_HTML
 
 app = FastAPI(title="Doctor Dev Panel", version="1.0.0")
 
+SESSION_COOKIE = "doctor_dev_panel_session"
+AUTH_PUBLIC_PATHS = {"/", "/health", "/api/auth/login", "/api/auth/logout", "/api/auth/me"}
+
 
 def _auth_enabled() -> bool:
     return os.getenv("DOCTOR_DEV_AUTH_REQUIRED", "0").lower() in {"1", "true", "yes", "on"}
 
 
+def _admin_username() -> str:
+    return os.getenv("DOCTOR_DEV_ADMIN_USERNAME", "admin")
+
+
+def _admin_password() -> str:
+    return os.getenv("DOCTOR_DEV_ADMIN_PASSWORD", "admin")
+
+
+def _session_ttl_seconds() -> int:
+    try:
+        return max(300, int(os.getenv("DOCTOR_DEV_SESSION_TTL_SECONDS", str(12 * 60 * 60))))
+    except ValueError:
+        return 12 * 60 * 60
+
+
+def _cookie_secure() -> bool:
+    if os.getenv("DOCTOR_DEV_COOKIE_SECURE"):
+        return os.getenv("DOCTOR_DEV_COOKIE_SECURE", "0").lower() in {"1", "true", "yes", "on"}
+    return os.getenv("DOCTOR_DEV_PANEL_PUBLIC_URL", "").lower().startswith("https://")
+
+
+def _app_secret() -> bytes:
+    secret = os.getenv("DOCTOR_DEV_APP_SECRET") or os.getenv("DOCTOR_DEV_ADMIN_PASSWORD") or "doctor-dev-development-secret"
+    return secret.encode("utf-8")
+
+
+def _b64_encode(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).decode("ascii").rstrip("=")
+
+
+def _b64_decode(value: str) -> bytes:
+    return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
+
+
+def _make_session(username: str) -> str:
+    payload = {"sub": username, "iat": int(time.time()), "exp": int(time.time()) + _session_ttl_seconds(), "nonce": secrets.token_urlsafe(18)}
+    body = _b64_encode(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
+    sig = hmac.new(_app_secret(), body.encode("ascii"), hashlib.sha256).hexdigest()
+    return f"{body}.{sig}"
+
+
+def _verify_session(token: str | None) -> str | None:
+    if not token or "." not in token:
+        return None
+    try:
+        body, sig = token.split(".", 1)
+        expected = hmac.new(_app_secret(), body.encode("ascii"), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(sig, expected):
+            return None
+        payload = json.loads(_b64_decode(body).decode("utf-8"))
+        if int(payload.get("exp", 0)) < int(time.time()):
+            return None
+        if not secrets.compare_digest(str(payload.get("sub", "")), _admin_username()):
+            return None
+        return str(payload.get("sub"))
+    except Exception:
+        return None
+
+
+def _check_password(username: str, password: str) -> bool:
+    return secrets.compare_digest(username, _admin_username()) and secrets.compare_digest(password, _admin_password())
+
+
 def _basic_auth_ok(header: str | None) -> bool:
-    expected_user = os.getenv("DOCTOR_DEV_ADMIN_USERNAME", "admin")
-    expected_password = os.getenv("DOCTOR_DEV_ADMIN_PASSWORD", "admin")
     if not header or not header.lower().startswith("basic "):
         return False
     try:
@@ -54,18 +121,25 @@ def _basic_auth_ok(header: str | None) -> bool:
         user, password = raw.split(":", 1)
     except Exception:
         return False
-    return secrets.compare_digest(user, expected_user) and secrets.compare_digest(password, expected_password)
+    return _check_password(user, password)
+
+
+def _request_user(request: Request) -> str | None:
+    if not _auth_enabled():
+        return _admin_username()
+    if _basic_auth_ok(request.headers.get("authorization")):
+        return _admin_username()
+    return _verify_session(request.cookies.get(SESSION_COOKIE))
 
 
 @app.middleware("http")
-async def basic_auth_middleware(request: Request, call_next):
-    if _auth_enabled() and request.url.path not in {"/health"}:
-        if not _basic_auth_ok(request.headers.get("authorization")):
-            return JSONResponse(
-                {"detail": "authentication required"},
-                status_code=401,
-                headers={"WWW-Authenticate": 'Basic realm="Doctor Dev Panel"'},
-            )
+async def auth_middleware(request: Request, call_next):
+    path = request.url.path
+    if _auth_enabled() and path not in AUTH_PUBLIC_PATHS and not path.startswith("/docs") and not path.startswith("/openapi"):
+        if not _request_user(request):
+            if path.startswith("/api/"):
+                return JSONResponse({"detail": "login required"}, status_code=401)
+            return JSONResponse({"detail": "login required"}, status_code=401)
     return await call_next(request)
 
 
@@ -77,6 +151,40 @@ async def startup() -> None:
 @app.get("/", response_class=HTMLResponse)
 async def index() -> HTMLResponse:
     return HTMLResponse(FRONTEND_HTML)
+
+
+@app.get("/api/auth/me")
+async def auth_me(request: Request) -> dict[str, Any]:
+    user = _request_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="login required")
+    return {"ok": True, "user_name": user, "auth_required": _auth_enabled()}
+
+
+@app.post("/api/auth/login")
+async def auth_login(body: dict[str, Any]) -> JSONResponse:
+    username = str(body.get("username") or body.get("user_name") or "")
+    password = str(body.get("password") or "")
+    if not _check_password(username, password):
+        raise HTTPException(status_code=401, detail="invalid username or password")
+    response = JSONResponse({"ok": True, "user_name": username})
+    response.set_cookie(
+        SESSION_COOKIE,
+        _make_session(username),
+        httponly=True,
+        secure=_cookie_secure(),
+        samesite="lax",
+        max_age=_session_ttl_seconds(),
+        path="/",
+    )
+    return response
+
+
+@app.post("/api/auth/logout")
+async def auth_logout() -> JSONResponse:
+    response = JSONResponse({"ok": True})
+    response.delete_cookie(SESSION_COOKIE, path="/")
+    return response
 
 
 @app.get("/health")

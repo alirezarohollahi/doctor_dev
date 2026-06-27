@@ -193,6 +193,8 @@ def main() -> None:
             "DOCTOR_DEV_AUTH_REQUIRED": "1",
             "DOCTOR_DEV_ADMIN_USERNAME": admin_user,
             "DOCTOR_DEV_ADMIN_PASSWORD": admin_password,
+            "DOCTOR_DEV_APP_SECRET": random_password(),
+            "DOCTOR_DEV_SESSION_TTL_SECONDS": str(12 * 60 * 60),
             "DOCTOR_DEV_DATA_DIR": str(DATA_ROOT / "panel"),
             "DOCTOR_DEV_LOG_DIR": str(LOG_ROOT / "panel"),
             "DOCTOR_DEV_CONFIG_DIR": str(CONFIG_ROOT / "panel" / "generated"),
