@@ -2,14 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import ssl
 import tempfile
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
 
-from fastapi import Depends, FastAPI, HTTPException, Request as FastAPIRequest
+from fastapi import Depends, FastAPI, HTTPException, Query, Request as FastAPIRequest
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -19,8 +20,11 @@ from .core_store import build_node_config, create_core, get_core, inbound_catalo
 from .auth import authenticate, make_session, require_admin
 from .config import APP_TITLE, SECURITY_HEADERS, SESSION_COOKIE, WEB_DIR
 from .node_store import create_node, generate_api_key, get_node, list_nodes, remove_node, set_node_check_result, update_node
+from .logging_utils import filter_lines, panel_log_file, setup_panel_logging, tail_file
 from .schemas import CoreBody, LoginBody, NodeBody
 
+setup_panel_logging()
+logger = logging.getLogger("doctor_dev_panel.app")
 app = FastAPI(title=APP_TITLE, version=__version__, docs_url=None, redoc_url=None)
 
 assets_dir = WEB_DIR / "assets"
@@ -110,12 +114,34 @@ async def check_node_payload(payload: dict) -> dict:
     return await asyncio.to_thread(_check_node_sync, payload)
 
 
+def _node_api_url(node: dict, path: str) -> tuple[str, str, str]:
+    host, explicit_scheme = _node_host(str(node.get("address", "")))
+    certificate = str(node.get("certificate") or "").strip()
+    scheme = explicit_scheme or ("https" if certificate else "http")
+    port = int(node.get("api_port") or 62051)
+    return f"{scheme}://{host}:{port}{path}", scheme, certificate
+
+
+def _read_node_api(node: dict, path: str, *, timeout: float = 5.0) -> dict:
+    url, scheme, certificate = _node_api_url(node, path)
+    status_code, data = _read_url(url, str(node.get("api_key") or ""), certificate=certificate if scheme == "https" else "", timeout=timeout)
+    if not (200 <= status_code < 300):
+        raise RuntimeError(f"{url} returned HTTP {status_code}")
+    return data
+
+
 @app.middleware("http")
 async def security_headers(request: FastAPIRequest, call_next):
-    response = await call_next(request)
+    try:
+        response = await call_next(request)
+    except Exception:
+        logger.exception("unhandled request error: %s %s", request.method, request.url.path)
+        raise
     for key, value in SECURITY_HEADERS.items():
         response.headers[key] = value
     response.headers["X-Doctor-Dev"] = APP_TITLE
+    if request.url.path.startswith("/api/") or request.url.path == "/health":
+        logger.info("%s %s -> %s", request.method, request.url.path, response.status_code)
     return response
 
 
@@ -235,6 +261,7 @@ async def api_create_core(body: CoreBody, user: str = Depends(require_admin)) ->
     if not get_node(body.node_id):
         raise HTTPException(status_code=400, detail="Selected node does not exist.")
     core = create_core(body.model_dump())
+    logger.info("core created: id=%s name=%s node_id=%s by=%s", core.get("id"), core.get("name"), core.get("node_id"), user)
     return {"ok": True, "core": core}
 
 
@@ -245,6 +272,7 @@ async def api_update_core(core_id: str, body: CoreBody, user: str = Depends(requ
     core = update_core(core_id, body.model_dump())
     if not core:
         raise HTTPException(status_code=404, detail="Core not found.")
+    logger.info("core updated: id=%s name=%s node_id=%s by=%s", core.get("id"), core.get("name"), core.get("node_id"), user)
     return {"ok": True, "core": core}
 
 
@@ -252,6 +280,7 @@ async def api_update_core(core_id: str, body: CoreBody, user: str = Depends(requ
 async def api_delete_core(core_id: str, user: str = Depends(require_admin)) -> dict:
     if not remove_core(core_id):
         raise HTTPException(status_code=404, detail="Core not found.")
+    logger.info("core deleted: id=%s by=%s", core_id, user)
     return {"ok": True}
 
 
@@ -275,6 +304,49 @@ async def api_node_config_preview(node_id: str, user: str = Depends(require_admi
     if not get_node(node_id):
         raise HTTPException(status_code=404, detail="Node not found.")
     return {"ok": True, "config": build_node_config(node_id)}
+
+
+@app.get("/api/logs/sources")
+async def api_log_sources(user: str = Depends(require_admin)) -> dict:
+    nodes = list_nodes()
+    sources = [{"id": "panel", "label": "Panel logs", "kind": "panel", "status": "local"}]
+    for node in nodes:
+        sources.append({
+            "id": f"node:{node.get('id')}",
+            "label": f"Node: {node.get('name') or node.get('address')}",
+            "kind": "node",
+            "node_id": node.get("id"),
+            "status": node.get("status", "pending"),
+        })
+    return {"ok": True, "sources": sources}
+
+
+@app.get("/api/logs")
+async def api_logs(
+    source: str = Query("panel"),
+    limit: int = Query(300, ge=1, le=5000),
+    level: str = Query("all"),
+    q: str = Query(""),
+    user: str = Depends(require_admin),
+) -> dict:
+    logger.info("logs requested source=%s limit=%s level=%s query=%s by=%s", source, limit, level, q, user)
+    if source == "panel":
+        path = panel_log_file()
+        lines = filter_lines(tail_file(path, limit=max(limit, 1)), level=level, query=q)
+        return {"ok": True, "source": "panel", "path": str(path), "lines": lines[-limit:], "level": level, "query": q}
+    if source.startswith("node:"):
+        node_id = source.split(":", 1)[1]
+        node = get_node(node_id)
+        if not node:
+            raise HTTPException(status_code=404, detail="Node not found.")
+        try:
+            qs = "?" + urlencode({"limit": limit, "level": level, "q": q})
+            data = await asyncio.to_thread(_read_node_api, node, f"/logs{qs}")
+            return {"ok": True, "source": source, "node": node, "lines": data.get("lines", []), "path": data.get("path", ""), "level": level, "query": q}
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("cannot read node logs: node_id=%s", node_id)
+            return {"ok": False, "source": source, "node": node, "lines": [], "error": str(exc)}
+    raise HTTPException(status_code=400, detail="Unknown log source.")
 
 
 @app.get("/health")

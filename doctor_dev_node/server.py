@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import tempfile
 from datetime import datetime, timezone
@@ -14,8 +15,10 @@ from pydantic import BaseModel
 
 from . import __version__
 from .env_loader import load_env_file
+from .logging_utils import filter_lines, node_log_file, setup_node_logging, tail_file
 
 app = FastAPI(title="Doctor Dev Node", version=__version__, docs_url=None, redoc_url=None)
+logger = logging.getLogger("doctor_dev_node.server")
 
 
 def api_key() -> str:
@@ -107,6 +110,7 @@ class ApplyConfigBody(BaseModel):
 
 @app.get("/health")
 async def health() -> dict:
+    logger.info("health check requested")
     return {
         "status": "ok",
         "app": "Doctor Dev Node",
@@ -126,6 +130,7 @@ async def health() -> dict:
 @app.get("/status")
 async def status(authorization: str | None = Header(default=None)) -> dict:
     check_auth(authorization)
+    logger.info("status requested")
     return {
         "status": "running",
         "version": __version__,
@@ -144,7 +149,16 @@ async def status(authorization: str | None = Header(default=None)) -> dict:
 @app.get("/config")
 async def get_config(authorization: str | None = Header(default=None)) -> dict:
     check_auth(authorization)
+    logger.info("config requested")
     return {"ok": True, "config": read_routing_config(), "summary": runtime_summary()}
+
+
+@app.get("/logs")
+async def logs(limit: int = 300, level: str = "all", q: str = "", authorization: str | None = Header(default=None)) -> dict:
+    check_auth(authorization)
+    path = node_log_file()
+    lines = filter_lines(tail_file(path, limit=max(limit, 1)), level=level, query=q)
+    return {"ok": True, "source": "node", "path": str(path), "limit": limit, "level": level, "query": q, "lines": lines[-limit:]}
 
 
 @app.post("/config/apply")
@@ -153,6 +167,7 @@ async def apply_config(body: ApplyConfigBody, authorization: str | None = Header
     data = body.model_dump()
     data["applied_at"] = now()
     write_routing_config(data)
+    logger.info("routing config applied: node_id=%s cores=%s", data.get("node_id"), len(data.get("cores") or []))
     return {"ok": True, "message": "Routing config saved on node.", "summary": runtime_summary()}
 
 
@@ -168,6 +183,8 @@ def main() -> None:
     args = build_parser().parse_args()
     if args.env and Path(args.env).exists():
         load_env_file(args.env)
+    log_path = setup_node_logging()
+    logger.info("starting node server env=%s log=%s", args.env, log_path)
     host = args.host or os.getenv("NODE_HOST", "127.0.0.1")
     port = args.port or int(os.getenv("API_PORT", "62051"))
     protocol = os.getenv("SERVICE_PROTOCOL", "grpc").lower()

@@ -1,26 +1,17 @@
-# Doctor Dev Panel v7
+# Doctor Dev Panel v8
 
-This version refines the core UI flow.
+This version fixes the core creation flow and adds a real Logs page.
 
-## Core flow
+## What changed
 
-1. Create a core with only:
-   - Core name
-   - Target node
-2. The core appears in the Cores page as a card.
-3. Open the core to edit:
-   - Inbounds
-   - Routing
-   - Balancers
-   - Dependencies
-   - Config preview
-
-## Port roles
-
-- `API_PORT`: control-plane port. The panel uses this port for `/health`, `/status`, `/config`, and future apply/deploy requests.
-- `SERVICE_PORT`: data-plane port. This is reserved for high-performance routing/listener traffic.
-
-If `SSL_CERT_FILE` and `SSL_KEY_FILE` are set on the node, the node API runs over HTTPS on `API_PORT`. Paste the matching public certificate/CA PEM into the panel node certificate field so status checks and future config calls can verify the node.
+- Core creation now gives visible errors instead of failing silently.
+- The UI refreshes node data before opening the Create Core modal.
+- API validation errors are formatted properly instead of showing `[object Object]`.
+- Panel writes structured logs to `DOCTOR_DEV_PANEL_LOG_FILE` or `DOCTOR_DEV_LOG_DIR/panel.log`.
+- Node writes structured logs to `DOCTOR_DEV_NODE_LOG_FILE` or `DOCTOR_DEV_NODE_LOG_DIR/node.log`.
+- Panel has `/api/logs/sources` and `/api/logs`.
+- Node has authenticated `/logs`.
+- The Logs page can show panel logs or any saved node's logs through the node API Port.
 
 ## Update panel
 
@@ -29,22 +20,26 @@ curl -fsSL https://github.com/alirezarohollahi/doctor_dev/raw/refs/heads/master/
   && sudo bash /tmp/doctor_dev.sh update-panel
 ```
 
-## Install/update node
-
-```bash
-curl -fsSL https://github.com/alirezarohollahi/doctor_dev/raw/refs/heads/master/scripts/doctor_dev.sh -o /tmp/doctor_dev.sh \
-  && sudo bash /tmp/doctor_dev.sh install-node
-```
+## Update node
 
 ```bash
 curl -fsSL https://github.com/alirezarohollahi/doctor_dev/raw/refs/heads/master/scripts/doctor_dev.sh -o /tmp/doctor_dev.sh \
   && sudo bash /tmp/doctor_dev.sh update-node
 ```
 
-Default node CLI:
+## CLI logs
 
 ```bash
-doctor-node help
-doctor-node health
-doctor-node config show
+doctor-dev logs
+# or
+doctor-node logs
 ```
+
+## Web logs
+
+Open the panel, then go to **Logs**. Choose:
+
+- `Panel logs`
+- `Node: <node name>`
+
+Node logs are fetched from the node control-plane API using the saved `API Port`, `API Key`, address, and TLS certificate configuration.

@@ -12,6 +12,8 @@ const state = {
   editorDraft: null,
   lastFormCheck: null,
   currentCoreTab: 'inbounds',
+  logSources: [],
+  currentLogSource: 'panel',
 };
 
 const loginView = $('#loginView');
@@ -33,10 +35,24 @@ const coreCreateMessage = $('#coreCreateMessage');
 const coreEditorMessage = $('#coreEditorMessage');
 
 function setMessage(element, text, type = '') { if (!element) return; element.textContent = text || ''; element.className = `message ${type}`.trim(); }
+function formatApiError(data, fallback = 'Request failed.') {
+  const detail = data?.detail ?? data?.message ?? data?.error;
+  if (!detail) return fallback;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    return detail.map((item) => {
+      if (typeof item === 'string') return item;
+      const loc = Array.isArray(item.loc) ? item.loc.join('.') : '';
+      return `${loc ? loc + ': ' : ''}${item.msg || JSON.stringify(item)}`;
+    }).join(' | ');
+  }
+  if (typeof detail === 'object') return JSON.stringify(detail);
+  return String(detail);
+}
 async function api(path, options = {}) {
   const response = await fetch(path, { credentials: 'same-origin', headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }, ...options });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.detail || data.message || 'Request failed.');
+  if (!response.ok) throw new Error(formatApiError(data));
   return data;
 }
 function escapeHtml(value) { return String(value ?? '').replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char])); }
@@ -72,9 +88,10 @@ function switchPage(page) {
   $$('.nav-item[data-page]').forEach((item) => item.classList.toggle('active', item.dataset.page === page));
   $$('.page').forEach((item) => item.classList.remove('active'));
   $(`#${page}Page`).classList.add('active');
-  pageTitle.textContent = page === 'nodes' ? 'Nodes' : page === 'cores' ? 'Cores' : 'Dashboard';
-  $('#openNodeModal').classList.toggle('hidden', page === 'cores' || page === 'coreEditor');
+  pageTitle.textContent = page === 'nodes' ? 'Nodes' : page === 'cores' ? 'Cores' : page === 'logs' ? 'Logs' : 'Dashboard';
+  $('#openNodeModal').classList.toggle('hidden', page === 'cores' || page === 'coreEditor' || page === 'logs');
   $('#openCoreModal').classList.toggle('hidden', page !== 'cores');
+  if (page === 'logs') { loadLogSources().then(loadLogs).catch((error) => setMessage($('#logsMessage'), error.message || 'Cannot load logs.', 'error')); }
 }
 function openCoreEditorPage(core) {
   state.page = 'coreEditor';
@@ -97,7 +114,7 @@ function openCoreEditorPage(core) {
 async function refreshAll() { await Promise.all([loadNodes(), loadCores()]); await loadSummary(); }
 async function loadSummary() { try { const data = await api('/api/panel/summary'); $('#totalNodes').textContent = data.nodes_total ?? 0; $('#enabledNodes').textContent = data.nodes_enabled ?? 0; $('#totalCores').textContent = data.cores_total ?? state.cores.length; } catch (_) {} }
 async function loadNodes() { try { const data = await api('/api/nodes'); state.nodes = data.nodes || []; renderNodes(); } catch (error) { console.error(error); } }
-async function loadCores() { try { const data = await api('/api/cores'); state.cores = data.cores || []; state.inboundCatalog = data.inbound_catalog || []; renderCores(); } catch (error) { console.error(error); } }
+async function loadCores() { try { const data = await api('/api/cores'); state.cores = data.cores || []; state.inboundCatalog = data.inbound_catalog || []; renderCores(); } catch (error) { console.error('loadCores failed', error); } }
 
 function statusFor(node) { if (!node.enabled) return 'disabled'; const status = String(node.status || 'pending').toLowerCase(); return ['disabled', 'pending', 'running', 'error'].includes(status) && status !== 'disabled' ? status : 'pending'; }
 function statusLabel(status) { return { disabled: 'Disabled', pending: 'Pending Check', running: 'Running', error: 'Error', ready: 'Ready', applied: 'Applied', draft: 'Draft' }[status] || 'Pending Check'; }
@@ -152,9 +169,39 @@ function renderCores() {
 }
 function fillNodeSelect(select, value = '') { select.innerHTML = state.nodes.map(node => `<option value="${escapeHtml(node.id)}">${escapeHtml(node.name)} — ${escapeHtml(node.address)}:${escapeHtml(node.api_port || 62051)}</option>`).join('') || '<option value="">No nodes available</option>'; select.value = value || (state.nodes[0] || {}).id || ''; }
 function resetCoreCreateForm() { coreCreateForm.reset(); fillNodeSelect($('#createCoreNode')); $('#createCoreEnabled').checked = true; setMessage(coreCreateMessage, ''); }
-function openCoreCreateModal() { resetCoreCreateForm(); coreCreateModal.classList.remove('hidden'); setTimeout(() => $('#createCoreName').focus(), 50); }
+async function openCoreCreateModal() {
+  setMessage(coreCreateMessage, '');
+  if (!state.nodes.length) {
+    try { await loadNodes(); } catch (error) { console.error('Cannot refresh nodes before creating core', error); }
+  }
+  resetCoreCreateForm();
+  coreCreateModal.classList.remove('hidden');
+  if (!state.nodes.length) setMessage(coreCreateMessage, 'Create at least one node before creating a core.', 'warning');
+  setTimeout(() => $('#createCoreName').focus(), 50);
+}
 function closeCoreCreateModal() { coreCreateModal.classList.add('hidden'); }
-coreCreateForm.addEventListener('submit', async (event) => { event.preventDefault(); setMessage(coreCreateMessage, 'Creating core...'); try { const payload = { name: $('#createCoreName').value.trim(), node_id: $('#createCoreNode').value, enabled: $('#createCoreEnabled').checked, inbounds: [], balancers: [], dependencies: [] }; if (!payload.name) throw new Error('Core name is required.'); if (!payload.node_id) throw new Error('Select a node first.'); const data = await api('/api/cores', { method: 'POST', body: JSON.stringify(payload) }); setMessage(coreCreateMessage, 'Core created. Opening editor...', 'success'); await refreshAll(); setTimeout(() => { closeCoreCreateModal(); openCoreEditorPage(data.core); }, 250); } catch (error) { setMessage(coreCreateMessage, error.message || 'Cannot create core.', 'error'); } });
+coreCreateForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const submit = coreCreateForm.querySelector('button[type="submit"]');
+  setMessage(coreCreateMessage, 'Creating core...');
+  if (submit) submit.disabled = true;
+  try {
+    const payload = { name: $('#createCoreName').value.trim(), node_id: $('#createCoreNode').value, enabled: $('#createCoreEnabled').checked, inbounds: [], balancers: [], dependencies: [] };
+    if (!payload.name) throw new Error('Core name is required.');
+    if (!payload.node_id) throw new Error('Select a node first. If there are no nodes, create a node first.');
+    const data = await api('/api/cores', { method: 'POST', body: JSON.stringify(payload) });
+    if (!data.core?.id) throw new Error('Server did not return the created core id.');
+    setMessage(coreCreateMessage, 'Core created. Opening editor...', 'success');
+    await refreshAll();
+    closeCoreCreateModal();
+    openCoreEditorPage(data.core);
+  } catch (error) {
+    console.error('Create core failed', error);
+    setMessage(coreCreateMessage, error.message || 'Cannot create core.', 'error');
+  } finally {
+    if (submit) submit.disabled = false;
+  }
+});
 async function deleteCore(id) { if (!id || !confirm('Delete this core?')) return; try { await api(`/api/cores/${encodeURIComponent(id)}`, { method: 'DELETE' }); await refreshAll(); if (state.editingCore && state.editingCore.id === id) switchPage('cores'); } catch (error) { alert(error.message || 'Cannot delete core.'); } }
 async function previewCore(id) { try { const data = await api(`/api/cores/${encodeURIComponent(id)}/preview`); const text = JSON.stringify(data.node_config_preview, null, 2); const w = window.open('', '_blank'); if (w) { w.document.write(`<pre style="background:#0b0e14;color:#eef3ff;padding:24px;white-space:pre-wrap;font-family:monospace">${escapeHtml(text)}</pre>`); w.document.close(); } else { alert(text.slice(0, 4000)); } } catch (error) { alert(error.message || 'Cannot preview core.'); } }
 
@@ -343,6 +390,40 @@ async function saveCoreEditor() {
   } catch (error) { setMessage(coreEditorMessage, error.message || 'Cannot save core.', 'error'); }
 }
 
+async function loadLogSources() {
+  const data = await api('/api/logs/sources');
+  state.logSources = data.sources || [];
+  const select = $('#logSourceSelect');
+  if (!select) return;
+  const previous = select.value || state.currentLogSource || 'panel';
+  select.innerHTML = state.logSources.map((source) => `<option value="${escapeHtml(source.id)}">${escapeHtml(source.label)}</option>`).join('') || '<option value="panel">Panel logs</option>';
+  select.value = state.logSources.some(s => s.id === previous) ? previous : 'panel';
+  state.currentLogSource = select.value;
+}
+function renderLogs(data) {
+  const output = $('#logsOutput');
+  if (!output) return;
+  if (!data.ok) {
+    output.textContent = data.error || 'Could not read logs from this source.';
+    setMessage($('#logsMessage'), data.error || 'Could not read logs from this source.', 'error');
+    return;
+  }
+  const lines = data.lines || [];
+  output.textContent = lines.length ? lines.join('\n') : 'No log lines found for this filter.';
+  const path = data.path ? `Source path: ${data.path}` : '';
+  setMessage($('#logsMessage'), `${lines.length} line(s) loaded. ${path}`.trim(), lines.length ? 'success' : 'warning');
+}
+async function loadLogs() {
+  const source = $('#logSourceSelect')?.value || state.currentLogSource || 'panel';
+  const limit = $('#logLimitSelect')?.value || '300';
+  const level = $('#logLevelSelect')?.value || 'all';
+  const q = $('#logSearchInput')?.value || '';
+  state.currentLogSource = source;
+  setMessage($('#logsMessage'), 'Loading logs...');
+  const data = await api(`/api/logs?source=${encodeURIComponent(source)}&limit=${encodeURIComponent(limit)}&level=${encodeURIComponent(level)}&q=${encodeURIComponent(q)}`);
+  renderLogs(data);
+}
+
 $('#openNodeModal').addEventListener('click', () => openNodeModal());
 $('#createNodeButton').addEventListener('click', () => openNodeModal());
 $('#closeNodeModal').addEventListener('click', closeNodeModal);
@@ -369,5 +450,13 @@ $('#editorCoreName').addEventListener('input', syncEditorHeaderToDraft);
 $('#editorCoreNode').addEventListener('change', syncEditorHeaderToDraft);
 $('#editorCoreEnabled').addEventListener('change', syncEditorHeaderToDraft);
 $('#refreshButton').addEventListener('click', refreshAll);
+if ($('#refreshLogsButton')) $('#refreshLogsButton').addEventListener('click', loadLogs);
+if ($('#logSourceSelect')) $('#logSourceSelect').addEventListener('change', loadLogs);
+if ($('#logLimitSelect')) $('#logLimitSelect').addEventListener('change', loadLogs);
+if ($('#logLevelSelect')) $('#logLevelSelect').addEventListener('change', loadLogs);
+if ($('#logSearchInput')) $('#logSearchInput').addEventListener('keydown', (event) => { if (event.key === 'Enter') loadLogs(); });
+
+window.addEventListener('error', (event) => { console.error('UI error', event.error || event.message); });
+window.addEventListener('unhandledrejection', (event) => { console.error('Unhandled promise rejection', event.reason); });
 
 checkSession();

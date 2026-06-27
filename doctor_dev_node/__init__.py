@@ -1,3 +1,3 @@
 """Doctor Dev Node package."""
 
-__version__ = "0.3.0-control-plane-api-port"
+__version__ = "0.4.0-node-logs"

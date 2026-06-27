@@ -49,7 +49,7 @@
         <button class="nav-item active" data-page="dashboard"><span>⌂</span> Dashboard</button>
         <button class="nav-item" data-page="nodes"><span>⌘</span> Nodes</button>
         <button class="nav-item" data-page="cores"><span>⚙</span> Cores</button>
-        <button class="nav-item disabled" type="button"><span>≡</span> Logs <em>soon</em></button>
+        <button class="nav-item" data-page="logs"><span>≡</span> Logs</button>
       </nav>
       <div class="side-footer"><span>Signed in as</span><strong id="adminName">admin</strong><button id="logoutButton" class="ghost-btn" type="button">Logout</button></div>
     </aside>
@@ -84,6 +84,24 @@
           <div class="panel-head"><div><h3>Cores</h3><p>Create a core with only a name and target node. Open it to edit inbounds, routing, balancers and dependencies.</p></div><button class="primary-small" id="createCoreButton" type="button">Create Core</button></div>
           <div id="coresEmpty" class="empty-state">No cores yet. Create a core and assign it to a node.</div>
           <div class="core-grid" id="coresGrid"></div>
+        </div>
+      </section>
+
+
+      <section id="logsPage" class="page">
+        <div class="panel-card logs-card">
+          <div class="panel-head">
+            <div><h3>Logs</h3><p>View panel logs or fetch logs from any saved node through its API Port.</p></div>
+            <button class="primary-small" id="refreshLogsButton" type="button">Refresh Logs</button>
+          </div>
+          <div class="logs-toolbar">
+            <label class="field"><span>Source</span><select id="logSourceSelect"></select></label>
+            <label class="field"><span>Lines</span><select id="logLimitSelect"><option value="100">100 lines</option><option value="300" selected>300 lines</option><option value="1000">1000 lines</option><option value="3000">3000 lines</option></select></label>
+            <label class="field"><span>Level</span><select id="logLevelSelect"><option value="all">All</option><option value="debug">Debug</option><option value="info">Info</option><option value="warning">Warning</option><option value="error">Error</option></select></label>
+            <label class="field wide"><span>Search</span><input id="logSearchInput" type="search" placeholder="Filter logs..." /></label>
+          </div>
+          <p id="logsMessage" class="message"></p>
+          <pre id="logsOutput" class="logs-output">Select a source and refresh logs.</pre>
         </div>
       </section>
 
