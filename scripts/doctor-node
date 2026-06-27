@@ -45,7 +45,7 @@ help_screen(){
   cecho "  ${GREEN}restart${RESET}            - Restart node service"
   cecho "  ${GREEN}status${RESET}             - Show systemd status"
   cecho "  ${GREEN}logs${RESET}               - Follow service logs"
-  cecho "  ${GREEN}health${RESET}             - Call local /health endpoint"
+  cecho "  ${GREEN}health${RESET}             - Call local control-plane /health endpoint"
   cecho "  ${GREEN}service install${RESET}    - Create/enable systemd service for this node"
   cecho "  ${GREEN}service remove${RESET}     - Stop/disable/remove systemd service"
   cecho "  ${GREEN}service enable${RESET}     - Enable node service at boot"
@@ -53,6 +53,7 @@ help_screen(){
   echo
   cecho "${BOLD}Config commands:${RESET}"
   cecho "  ${GREEN}config edit${RESET}        - Edit node environment config"
+  cecho "  ${GREEN}config show${RESET}        - Show stored node routing config"
   cecho "  ${GREEN}update${RESET}             - Download installer and run update-node"
   echo
   cecho "${BOLD}Directories:${RESET}"
@@ -122,14 +123,26 @@ case "$cmd" in
     ;;
   config)
     sub="${2:-}"
-    if [[ "$sub" == "edit" ]]; then sudo mkdir -p "$CONFIG_DIR"; sudo "$(editor_cmd)" "$ENV_FILE"; else cecho "${YELLOW}Usage: ${CLI_NAME} config edit${RESET}"; exit 2; fi
+    if [[ "$sub" == "edit" ]]; then
+      sudo mkdir -p "$CONFIG_DIR"; sudo "$(editor_cmd)" "$ENV_FILE"
+    elif [[ "$sub" == "show" ]]; then
+      port="$(safe_env_get API_PORT)"; port="${port:-62051}"
+      key="$(safe_env_get API_KEY)"
+      cert_file="$(safe_env_get SSL_CERT_FILE)"
+      scheme="http"; curl_opts="-fsS"
+      if [[ -n "$cert_file" ]]; then scheme="https"; curl_opts="-fkS"; fi
+      curl $curl_opts -H "Authorization: Bearer $key" "${scheme}://127.0.0.1:${port}/config" || { cecho "${YELLOW}Cannot read node config from API port ${port}.${RESET}"; exit 1; }
+      echo
+    else
+      cecho "${YELLOW}Usage: ${CLI_NAME} config [edit|show]${RESET}"; exit 2
+    fi
     ;;
   health)
-    port="$(safe_env_get SERVICE_PORT)"; port="${port:-62050}"
+    port="$(safe_env_get API_PORT)"; port="${port:-62051}"
     cert_file="$(safe_env_get SSL_CERT_FILE)"
     scheme="http"; curl_opts="-fsS"
     if [[ -n "$cert_file" ]]; then scheme="https"; curl_opts="-fkS"; fi
-    curl $curl_opts "${scheme}://127.0.0.1:${port}/health" || { cecho "${YELLOW}Local health check failed. Is the node running on port ${port}?${RESET}"; exit 1; }
+    curl $curl_opts "${scheme}://127.0.0.1:${port}/health" || { cecho "${YELLOW}Local health check failed. Is the node API running on API_PORT ${port}?${RESET}"; exit 1; }
     echo
     ;;
   update)

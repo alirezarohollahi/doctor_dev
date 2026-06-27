@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import ssl
+import tempfile
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
@@ -14,10 +15,11 @@ from fastapi.staticfiles import StaticFiles
 
 from . import __version__
 from .admin_store import list_admins
+from .core_store import build_node_config, create_core, get_core, inbound_catalog, list_cores, remove_core, update_core
 from .auth import authenticate, make_session, require_admin
 from .config import APP_TITLE, SECURITY_HEADERS, SESSION_COOKIE, WEB_DIR
 from .node_store import create_node, generate_api_key, get_node, list_nodes, remove_node, set_node_check_result, update_node
-from .schemas import LoginBody, NodeBody
+from .schemas import CoreBody, LoginBody, NodeBody
 
 app = FastAPI(title=APP_TITLE, version=__version__, docs_url=None, redoc_url=None)
 
@@ -38,12 +40,17 @@ def _node_host(address: str) -> tuple[str, str | None]:
     return host, scheme
 
 
-def _read_url(url: str, api_key: str = "", *, timeout: float = 4.0) -> tuple[int, dict]:
+def _read_url(url: str, api_key: str = "", *, certificate: str = "", timeout: float = 4.0) -> tuple[int, dict]:
     headers = {"Accept": "application/json", "User-Agent": "DoctorDevPanel/NodeCheck"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     req = Request(url, headers=headers)
-    context = ssl._create_unverified_context() if url.startswith("https://") else None  # noqa: SLF001
+    context = None
+    if url.startswith("https://"):
+        if certificate.strip():
+            context = ssl.create_default_context(cadata=certificate)
+        else:
+            context = ssl._create_unverified_context()  # noqa: SLF001
     with urlopen(req, timeout=timeout, context=context) as response:  # noqa: S310 - admin configured node URL
         raw = response.read(1024 * 64).decode("utf-8", errors="replace")
         try:
@@ -55,14 +62,16 @@ def _read_url(url: str, api_key: str = "", *, timeout: float = 4.0) -> tuple[int
 
 def _check_node_sync(payload: dict) -> dict:
     host, explicit_scheme = _node_host(str(payload.get("address", "")))
-    port = int(payload.get("node_port") or 62050)
+    # API_PORT is the control-plane/management port. Node Port is the data-plane
+    # listener port and is not used for panel health/status checks.
+    port = int(payload.get("api_port") or 62051)
     api_key = str(payload.get("api_key") or "")
     certificate = str(payload.get("certificate") or "").strip()
 
     if explicit_scheme:
         schemes = [explicit_scheme]
     elif certificate:
-        schemes = ["https", "http"]
+        schemes = ["https"]
     else:
         schemes = ["http", "https"]
 
@@ -76,23 +85,25 @@ def _check_node_sync(payload: dict) -> dict:
                 continue
             url = base + endpoint
             try:
-                status_code, data = _read_url(url, key)
+                status_code, data = _read_url(url, key, certificate=certificate if scheme == "https" else "")
                 if 200 <= status_code < 300:
                     return {
                         "ok": True,
                         "status": "running",
                         "url": url,
                         "http_status": status_code,
+                        "using_api_port": port,
+                        "using_tls_certificate": bool(certificate and scheme == "https"),
                         "response": data,
-                        "message": "Node is reachable.",
+                        "message": "Node API is reachable.",
                     }
                 last_error = f"{url} returned HTTP {status_code}"
             except HTTPError as exc:
                 last_error = f"{url} returned HTTP {exc.code}"
-            except (URLError, TimeoutError, OSError, ssl.SSLError) as exc:
+            except (URLError, TimeoutError, OSError, ssl.SSLError, ValueError) as exc:
                 last_error = f"{url} failed: {exc}"
             attempts.append(last_error)
-    return {"ok": False, "status": "error", "message": last_error or "Node check failed.", "attempts": attempts[-6:]}
+    return {"ok": False, "status": "error", "message": last_error or "Node API check failed.", "attempts": attempts[-6:], "using_api_port": port}
 
 
 async def check_node_payload(payload: dict) -> dict:
@@ -154,10 +165,11 @@ async def panel_summary(user: str = Depends(require_admin)) -> dict:
     return {
         "ok": True,
         "user": user,
-        "phase": "node-status-service-foundation",
+        "phase": "core-routing-foundation",
         "nodes_total": len(nodes),
         "nodes_enabled": len([node for node in nodes if node.get("enabled")]),
-        "message": "Node inventory, status check and service management foundation are ready.",
+        "message": "Node API checks, TLS certificate handling and core routing foundation are ready.",
+        "cores_total": len(list_cores()),
     }
 
 
@@ -211,6 +223,58 @@ async def api_check_saved_node(node_id: str, user: str = Depends(require_admin))
     result = await check_node_payload(node)
     updated = set_node_check_result(node_id, ok=bool(result.get("ok")), error=str(result.get("message", "")), details=result)
     return {**result, "node": updated}
+
+
+@app.get("/api/cores")
+async def api_list_cores(user: str = Depends(require_admin)) -> dict:
+    return {"ok": True, "cores": list_cores(), "inbound_catalog": inbound_catalog()}
+
+
+@app.post("/api/cores")
+async def api_create_core(body: CoreBody, user: str = Depends(require_admin)) -> dict:
+    if not get_node(body.node_id):
+        raise HTTPException(status_code=400, detail="Selected node does not exist.")
+    core = create_core(body.model_dump())
+    return {"ok": True, "core": core}
+
+
+@app.put("/api/cores/{core_id}")
+async def api_update_core(core_id: str, body: CoreBody, user: str = Depends(require_admin)) -> dict:
+    if not get_node(body.node_id):
+        raise HTTPException(status_code=400, detail="Selected node does not exist.")
+    core = update_core(core_id, body.model_dump())
+    if not core:
+        raise HTTPException(status_code=404, detail="Core not found.")
+    return {"ok": True, "core": core}
+
+
+@app.delete("/api/cores/{core_id}")
+async def api_delete_core(core_id: str, user: str = Depends(require_admin)) -> dict:
+    if not remove_core(core_id):
+        raise HTTPException(status_code=404, detail="Core not found.")
+    return {"ok": True}
+
+
+@app.get("/api/cores/{core_id}/preview")
+async def api_core_preview(core_id: str, user: str = Depends(require_admin)) -> dict:
+    core = get_core(core_id)
+    if not core:
+        raise HTTPException(status_code=404, detail="Core not found.")
+    return {"ok": True, "core": core, "node_config_preview": build_node_config(str(core.get("node_id")))}
+
+
+@app.get("/api/nodes/{node_id}/inbounds")
+async def api_node_inbounds(node_id: str, user: str = Depends(require_admin)) -> dict:
+    if not get_node(node_id):
+        raise HTTPException(status_code=404, detail="Node not found.")
+    return {"ok": True, "inbounds": inbound_catalog(node_id)}
+
+
+@app.get("/api/nodes/{node_id}/config-preview")
+async def api_node_config_preview(node_id: str, user: str = Depends(require_admin)) -> dict:
+    if not get_node(node_id):
+        raise HTTPException(status_code=404, detail="Node not found.")
+    return {"ok": True, "config": build_node_config(node_id)}
 
 
 @app.get("/health")

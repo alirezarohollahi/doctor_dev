@@ -16,14 +16,14 @@
       <div class="brand-topline"><span class="status-dot"></span><span>Secure Admin Gateway</span></div>
       <div class="logo-wrap">
         <div class="logo-mark" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M10 12.5c0-2.5 2-4.5 4.5-4.5h19c2.5 0 4.5 2 4.5 4.5v23c0 2.5-2 4.5-4.5 4.5h-19C12 40 10 38 10 35.5v-23Z"/><path d="M17 18h14M17 24h14M17 30h8"/><path d="M32 29.5l3 3 5-6"/></svg></div>
-        <div><p class="eyebrow">Doctor Dev</p><h1>Clean node management foundation, rebuilt from zero.</h1></div>
+        <div><p class="eyebrow">Doctor Dev</p><h1>Control-plane and routing foundation.</h1></div>
       </div>
-      <p class="brand-copy">This version includes a secure login, a clean admin shell, node inventory, node creation modal and installer hooks for panel and node updates.</p>
+      <p class="brand-copy">Manage nodes, API certificates, routing cores, inbounds and balancers from one clean panel.</p>
       <div class="feature-grid">
-        <div class="feature-pill"><span>●</span> FastAPI</div>
-        <div class="feature-pill"><span>●</span> Multi Admin</div>
-        <div class="feature-pill"><span>●</span> Node Ready</div>
-        <div class="feature-pill"><span>●</span> CLI Ready</div>
+        <div class="feature-pill"><span>●</span> Node API</div>
+        <div class="feature-pill"><span>●</span> TLS Certs</div>
+        <div class="feature-pill"><span>●</span> Cores</div>
+        <div class="feature-pill"><span>●</span> Balancers</div>
       </div>
     </section>
 
@@ -51,7 +51,7 @@
       <nav class="side-nav" aria-label="Main navigation">
         <button class="nav-item active" data-page="dashboard"><span>⌂</span> Dashboard</button>
         <button class="nav-item" data-page="nodes"><span>⌘</span> Nodes</button>
-        <button class="nav-item disabled" type="button"><span>⚙</span> Cores <em>soon</em></button>
+        <button class="nav-item" data-page="cores"><span>⚙</span> Cores</button>
         <button class="nav-item disabled" type="button"><span>≡</span> Logs <em>soon</em></button>
       </nav>
       <div class="side-footer"><span>Signed in as</span><strong id="adminName">admin</strong><button id="logoutButton" class="ghost-btn" type="button">Logout</button></div>
@@ -59,26 +59,40 @@
 
     <section class="workspace">
       <header class="topbar">
-        <div><p class="eyebrow">Node Foundation</p><h2 id="pageTitle">Dashboard</h2></div>
-        <div class="top-actions"><button id="refreshButton" class="ghost-btn" type="button">Refresh</button><button id="openNodeModal" class="primary-small" type="button">Create Node</button></div>
+        <div><p class="eyebrow">Routing Foundation</p><h2 id="pageTitle">Dashboard</h2></div>
+        <div class="top-actions"><button id="refreshButton" class="ghost-btn" type="button">Refresh</button><button id="openNodeModal" class="primary-small" type="button">Create Node</button><button id="openCoreModal" class="primary-small hidden" type="button">Create Core</button></div>
       </header>
 
       <section id="dashboardPage" class="page active">
         <div class="stat-grid">
           <article class="stat-card"><span>Total Nodes</span><strong id="totalNodes">0</strong><p>Saved node definitions.</p></article>
-          <article class="stat-card"><span>Enabled Nodes</span><strong id="enabledNodes">0</strong><p>Marked as enabled in panel.</p></article>
-          <article class="stat-card"><span>Runtime</span><strong>Base</strong><p>Status check is attached; runtime logic comes next.</p></article>
+          <article class="stat-card"><span>Enabled Nodes</span><strong id="enabledNodes">0</strong><p>Nodes marked enabled in panel.</p></article>
+          <article class="stat-card"><span>Cores</span><strong id="totalCores">0</strong><p>Routing cores assigned to nodes.</p></article>
         </div>
+        <div class="note-card"><strong>Port roles</strong><p><b>API Port</b> is the control-plane port used by the panel for health/status/config calls. <b>Node Port</b> is reserved for data-plane listeners and routing traffic.</p></div>
       </section>
 
       <section id="nodesPage" class="page">
         <div class="panel-card">
-          <div class="panel-head"><div><h3>Nodes</h3><p>Manage node records. Health check is available now; runtime actions will be added in the next phases.</p></div><button class="primary-small" id="createNodeButton" type="button">Create Node</button></div>
+          <div class="panel-head"><div><h3>Nodes</h3><p>Manage node records. Status checks use API Port and the node TLS certificate when provided.</p></div><button class="primary-small" id="createNodeButton" type="button">Create Node</button></div>
           <div id="nodesEmpty" class="empty-state">No nodes yet. Create your first node.</div>
           <div class="table-wrap hidden" id="nodesTableWrap">
             <table class="nodes-table">
-              <thead><tr><th>Status</th><th>Name</th><th>Address</th><th>Node Port</th><th>API Port</th><th>Protocol</th><th>Enabled</th><th>Actions</th></tr></thead>
+              <thead><tr><th>Status</th><th>Name</th><th>Address</th><th>Node Port</th><th>API Port</th><th>Protocol</th><th>TLS</th><th>Enabled</th><th>Actions</th></tr></thead>
               <tbody id="nodesTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="coresPage" class="page">
+        <div class="panel-card">
+          <div class="panel-head"><div><h3>Cores</h3><p>Create routing cores, attach them to a node, define inbounds and route traffic to static targets or balancers.</p></div><button class="primary-small" id="createCoreButton" type="button">Create Core</button></div>
+          <div id="coresEmpty" class="empty-state">No cores yet. Create a core and assign it to a node.</div>
+          <div class="table-wrap hidden" id="coresTableWrap">
+            <table class="nodes-table">
+              <thead><tr><th>Status</th><th>Name</th><th>Node</th><th>Inbounds</th><th>Balancers</th><th>Enabled</th><th>Actions</th></tr></thead>
+              <tbody id="coresTableBody"></tbody>
             </table>
           </div>
         </div>
@@ -89,7 +103,7 @@
   <div id="nodeModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="nodeModalTitle">
     <div class="modal-card">
       <div class="modal-header">
-        <div><h2 id="nodeModalTitle">Create Node</h2><p id="nodeModalSubtitle">Add a node definition and check its status.</p></div>
+        <div><h2 id="nodeModalTitle">Create Node</h2><p id="nodeModalSubtitle">Add a node definition and check its control-plane API.</p></div>
         <button id="closeNodeModal" class="icon-btn" type="button" aria-label="Close">×</button>
       </div>
 
@@ -97,7 +111,7 @@
         <input type="hidden" id="nodeId" />
         <div class="status-line">
           <span class="status-label">Status</span>
-          <span id="nodeStatusDot" class="status-dot gray"></span>
+          <span id="nodeStatusDot" class="status-dot yellow"></span>
           <strong id="nodeStatusText">Pending Check</strong>
           <label class="enable-control"><span>Enabled</span><span class="switch"><input id="nodeEnabled" type="checkbox" checked /><span></span></span></label>
           <button id="checkNodeStatus" class="ghost-btn" type="button" title="Check this node now">↻ Check Status</button>
@@ -105,16 +119,16 @@
 
         <div class="modal-grid">
           <div class="left-fields">
-            <label class="field"><span>Node Name</span><input id="nodeName" type="text" placeholder="Enter node name" required /></label>
-            <div class="two-col"><label class="field"><span>Node Address</span><input id="nodeAddress" type="text" placeholder="Enter node address" required /><small>Domain or IP of the installed node.</small></label><label class="field"><span>Node Port</span><input id="nodePort" type="number" min="1" max="65535" value="62050" required /><small>Main service port. Matches SERVICE_PORT on the node.</small></label></div>
+            <label class="field"><span>Node Name</span><input id="nodeName" type="text" placeholder="freedom-000-node" required /></label>
+            <div class="two-col"><label class="field"><span>Node Address</span><input id="nodeAddress" type="text" placeholder="node.example.com" required /><small>Domain or IP of the installed node.</small></label><label class="field"><span>Node Port</span><input id="nodePort" type="number" min="1" max="65535" value="62050" required /><small>Data-plane listener port. It is not used for panel health checks.</small></label></div>
             <label class="field"><span>API Key</span><div class="inline-input"><input id="apiKey" type="text" placeholder="Enter the node API key" required /><button id="generateApiKey" type="button" title="Generate API key">↻</button></div><small>Must match API_KEY in the node env file.</small></label>
 
             <details class="advanced" open>
               <summary>⚙ Advanced Settings</summary>
               <div class="advanced-grid">
                 <label class="field"><span>Usage Ratio</span><input id="usageRatio" type="number" min="0" step="0.01" value="1" /></label>
-                <label class="field"><span>API Port</span><input id="apiPort" type="number" min="1" max="65535" value="62051" /><small>Reserved management/API port for next phases.</small></label>
-                <label class="field wide"><span>Connection Type</span><select id="connectionType"><option value="grpc">gRPC</option><option value="rest">REST</option></select></label>
+                <label class="field"><span>API Port</span><input id="apiPort" type="number" min="1" max="65535" value="62051" /><small>Control-plane port used by health/status/config requests.</small></label>
+                <label class="field wide"><span>Connection Type</span><select id="connectionType"><option value="grpc">gRPC</option><option value="rest">REST</option></select><small>Data-plane protocol preference. Node API is currently REST over HTTP/HTTPS.</small></label>
                 <label class="field"><span>Keep Alive</span><input id="keepAliveValue" type="number" min="1" value="60" /></label>
                 <label class="field"><span>Interval Unit</span><select id="keepAliveUnit"><option value="seconds">Seconds</option><option value="minutes">Minutes</option><option value="hours">Hours</option></select></label>
                 <label class="field wide"><span>Data Limit</span><input id="dataLimitGb" type="number" min="0" step="0.01" placeholder="Enter data limit (GB)" /></label>
@@ -124,11 +138,48 @@
               </div>
             </details>
           </div>
-          <label class="field cert-field"><span>TLS Certificate <em>optional</em></span><textarea id="certificate" placeholder="Paste public certificate PEM here, or leave empty for now."></textarea><small>Only the public certificate belongs here. Private keys stay on the node server.</small></label>
+          <label class="field cert-field"><span>Node API TLS Certificate <em>optional</em></span><textarea id="certificate" placeholder="Paste the node public certificate PEM here. The panel will use it to verify HTTPS requests to API Port."></textarea><small>Only the public certificate belongs here. Private keys stay on the node server.</small></label>
         </div>
 
         <p id="nodeMessage" class="message"></p>
         <div class="modal-actions"><button id="deleteNodeButton" class="danger-btn hidden" type="button">Delete</button><span></span><button class="ghost-btn" id="cancelNodeButton" type="button">Cancel</button><button class="primary-small" type="submit">Save Node</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div id="coreModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="coreModalTitle">
+    <div class="modal-card extra-wide">
+      <div class="modal-header">
+        <div><h2 id="coreModalTitle">Create Core</h2><p id="coreModalSubtitle">Choose a node, add inbounds and wire targets or balancers.</p></div>
+        <button id="closeCoreModal" class="icon-btn" type="button" aria-label="Close">×</button>
+      </div>
+
+      <form id="coreForm" class="node-form">
+        <input type="hidden" id="coreId" />
+        <div class="status-line">
+          <span class="status-label">Core</span>
+          <span class="status-dot yellow"></span>
+          <strong id="coreStatusText">Ready</strong>
+          <label class="enable-control"><span>Enabled</span><span class="switch"><input id="coreEnabled" type="checkbox" checked /><span></span></span></label>
+        </div>
+
+        <div class="two-col">
+          <label class="field"><span>Core Name</span><input id="coreName" type="text" placeholder="core-us-main" required /></label>
+          <label class="field"><span>Apply to Node</span><select id="coreNode" required></select><small>The selected node receives this routing core in later apply/deploy steps.</small></label>
+        </div>
+
+        <section class="builder-section">
+          <div class="builder-head"><div><h3>Inbounds</h3><p>Each inbound binds to an IP and one or more ports. It can forward directly or to a balancer alias.</p></div><button id="addInboundButton" class="ghost-btn" type="button">+ Add Inbound</button></div>
+          <div id="inboundList" class="builder-list"></div>
+        </section>
+
+        <section class="builder-section">
+          <div class="builder-head"><div><h3>Balancers</h3><p>Balancers are logical aliases that distribute traffic across static endpoints or existing node inbounds.</p></div><button id="addBalancerButton" class="ghost-btn" type="button">+ Add Balancer</button></div>
+          <div id="balancerList" class="builder-list"></div>
+        </section>
+
+        <p id="coreMessage" class="message"></p>
+        <div class="modal-actions"><button id="deleteCoreButton" class="danger-btn hidden" type="button">Delete</button><span></span><button class="ghost-btn" id="cancelCoreButton" type="button">Cancel</button><button class="primary-small" type="submit">Save Core</button></div>
       </form>
     </div>
   </div>

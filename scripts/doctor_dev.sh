@@ -347,13 +347,14 @@ clean_node_name(){
 install_node_cli(){ info "Installing node CLI: /usr/local/bin/$NODE_CLI_NAME"; install -m 0755 "$NODE_APP_DIR/scripts/doctor-node" "/usr/local/bin/$NODE_CLI_NAME"; ok "Node CLI installed. Try: $NODE_CLI_NAME help"; }
 
 write_node_env(){
-  local api_key="$1" node_host="$2" service_port="$3" service_protocol="$4" cert_file="$5" key_file="$6"
+  local api_key="$1" node_host="$2" service_port="$3" api_port="$4" service_protocol="$5" cert_file="$6" key_file="$7"
   mkdir -p "$NODE_CONFIG_DIR" "$NODE_DATA_DIR" "$NODE_LOG_DIR"
   info "Writing $NODE_ENV_FILE"
   cat > "$NODE_ENV_FILE" <<ENV
 API_KEY=$api_key
 NODE_HOST=$node_host
 SERVICE_PORT=$service_port
+API_PORT=$api_port
 SERVICE_PROTOCOL=$service_protocol
 SSL_CERT_FILE=$cert_file
 SSL_KEY_FILE=$key_file
@@ -397,22 +398,23 @@ SERVICE
 install_node_service(){ write_node_service; systemctl enable "$NODE_SERVICE_NAME"; systemctl restart "$NODE_SERVICE_NAME"; ok "Node service started."; }
 
 install_node(){
-  header "Doctor Dev Node Installer" "Node base install without runtime forwarding logic"
+  header "Doctor Dev Node Installer" "Control-plane API plus routing-config foundation"
   need_root; install_packages
-  local cli_name api_default api_key node_host service_port service_protocol tls_choice cert_file key_file
+  local cli_name api_default api_key node_host service_port api_port service_protocol tls_choice cert_file key_file
   cli_name="$(ask "Node CLI name" "docter-node")"; valid_cli_name "$cli_name" || fail "Invalid CLI name."
   clean_node_name "$cli_name"
   clone_or_update_repo "$NODE_APP_DIR" "clean"; validate_project_tree "$NODE_APP_DIR"; setup_venv "$NODE_APP_DIR"
   api_default="$(generate_uuid)"; api_key="$(ask "API_KEY" "$api_default")"; [[ -n "$api_key" ]] || fail "API_KEY cannot be empty."
-  node_host="$(ask "NODE_HOST" "127.0.0.1")"; service_port="$(ask_port_named "SERVICE_PORT" "62050")"
+  node_host="$(ask "NODE_HOST" "127.0.0.1")"; service_port="$(ask_port_named "SERVICE_PORT / data-plane port" "62050")"
+  api_port="$(ask_port_named "API_PORT / control-plane port" "62051")"
   while true; do service_protocol="$(ask "SERVICE_PROTOCOL" "grpc")"; service_protocol="${service_protocol,,}"; [[ "$service_protocol" == "grpc" || "$service_protocol" == "rest" ]] && break; warn "SERVICE_PROTOCOL must be grpc or rest."; done
   cert_file=""; key_file=""
   cecho "${BOLD}SSL/TLS Configuration${RESET}"; cecho "  1) No SSL/TLS now"; cecho "  2) I already have certificate/key paths"
   tls_choice="$(ask "Choose SSL/TLS mode" "1")"
   if [[ "$tls_choice" == "2" ]]; then cert_file="$(ask_non_empty "SSL_CERT_FILE")"; key_file="$(ask_non_empty "SSL_KEY_FILE")"; [[ -r "$cert_file" ]] || fail "Certificate is not readable: $cert_file"; [[ -r "$key_file" ]] || fail "Private key is not readable: $key_file"; fi
-  write_node_env "$api_key" "$node_host" "$service_port" "$service_protocol" "$cert_file" "$key_file"; install_node_cli
+  write_node_env "$api_key" "$node_host" "$service_port" "$api_port" "$service_protocol" "$cert_file" "$key_file"; install_node_cli
   if ask_yes_no "Install and start node systemd service now?" "y"; then install_node_service; else write_node_service; warn "Node service was not started. Start later with: $NODE_CLI_NAME start"; fi
-  echo; ok "Doctor Dev Node installation finished."; cecho "${BOLD}CLI:${RESET}   ${GREEN}$NODE_CLI_NAME help${RESET}"; cecho "${BOLD}Health:${RESET} ${GREEN}http://127.0.0.1:${service_port}/health${RESET}"
+  echo; ok "Doctor Dev Node installation finished."; cecho "${BOLD}CLI:${RESET}   ${GREEN}$NODE_CLI_NAME help${RESET}"; cecho "${BOLD}Health:${RESET} ${GREEN}http://127.0.0.1:${api_port}/health${RESET}"
 }
 
 update_node(){

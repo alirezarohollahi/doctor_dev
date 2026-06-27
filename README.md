@@ -1,80 +1,41 @@
-# Doctor Dev Panel v5 — Node Status + Service CLI
+# Doctor Dev Panel v6
 
-This version includes:
+This version adds the node control-plane/data-plane split and the first routing core foundation.
 
-- English UI only
-- Secure admin login
-- Nodes page
-- Create/Edit/Delete nodes
-- Real node status check button
-- API key generator
-- Advanced node settings saved for future phases
-- Panel CLI service management
-- Node CLI service management
-- Cleaner update behavior: update-panel/update-node rewrites and enables systemd services instead of warning incorrectly
+## Port roles
 
-## Panel update
+- `API_PORT`: control-plane port. The panel uses this port for `/health`, `/status`, `/config`, and future apply/deploy requests.
+- `SERVICE_PORT`: data-plane port. This is reserved for high-performance routing/listener traffic.
+
+If `SSL_CERT_FILE` and `SSL_KEY_FILE` are set on the node, the node API runs over HTTPS on `API_PORT`. Paste the matching **public certificate PEM** into the panel node certificate field so status checks and future config calls can verify the node.
+
+## Panel
 
 ```bash
 curl -fsSL https://github.com/alirezarohollahi/doctor_dev/raw/refs/heads/master/scripts/doctor_dev.sh -o /tmp/doctor_dev.sh \
   && sudo bash /tmp/doctor_dev.sh update-panel
 ```
 
-## Node update
+## Node
 
 ```bash
 curl -fsSL https://github.com/alirezarohollahi/doctor_dev/raw/refs/heads/master/scripts/doctor_dev.sh -o /tmp/doctor_dev.sh \
-  && sudo bash /tmp/doctor_dev.sh update-node
+  && sudo bash /tmp/doctor_dev.sh install-node
 ```
 
-For a custom node CLI name:
-
-```bash
-curl -fsSL https://github.com/alirezarohollahi/doctor_dev/raw/refs/heads/master/scripts/doctor_dev.sh -o /tmp/doctor_dev.sh \
-  && sudo DOCTOR_DEV_NODE_CLI_NAME=my-node bash /tmp/doctor_dev.sh update-node
-```
-
-## Panel CLI
-
-```bash
-doctor-dev help
-doctor-dev health
-doctor-dev status
-doctor-dev logs
-doctor-dev restart
-doctor-dev config edit
-doctor-dev service install
-doctor-dev service remove
-doctor-dev service enable
-doctor-dev service disable
-doctor-dev admin list
-doctor-dev admin add USERNAME
-doctor-dev admin passwd USERNAME
-doctor-dev admin remove USERNAME
-```
-
-## Node CLI
-
-Default node CLI name is `docter-node` unless changed during install.
+Default node CLI:
 
 ```bash
 docter-node help
 docter-node health
-docter-node status
-docter-node logs
-docter-node restart
-docter-node config edit
-docter-node service install
-docter-node service remove
-docter-node service enable
-docter-node service disable
+docter-node config show
 ```
 
-## Node form notes
+## Cores
 
-- New nodes are enabled by default.
-- Disabled means the node is saved but intentionally not active in the panel.
-- Pending Check means the node is enabled but not checked yet.
-- Running means the panel could reach `/status` or `/health` on the node.
-- Error means the panel could not reach the node.
-- Certificate is optional for now. Leave it empty for non-TLS nodes. Only public certificate PEM goes there; private keys stay on the node server.
+A core belongs to one node. It can contain:
+
+- Inbounds: bind IP, fixed or random ports, direct static target or balancer target, optional inbound certificate.
+- Balancers: alias, strategy, endpoints. Endpoints can be static IP:port or an inbound selected from saved nodes/cores.
+
+This release stores normalized configs and provides config previews. The actual high-performance forwarding runtime is the next step.
