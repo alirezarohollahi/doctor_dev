@@ -251,6 +251,61 @@ If systemd is not available, the installer prints a manual command using the gen
 10. Use **Apply** to push generated config to the selected node.
 11. Use **Runtime**, **Logs**, **Versions** and **Audit** for operation and troubleshooting.
 
+## Updating from the CLI
+
+Panel and Node updates are available directly from the installed CLIs. They pull the latest source from the Git repository under `/opt/doctor_dev`, reinstall the Python package in the virtualenv, create a config backup under `/var/backups/doctor_dev`, and restart the relevant service unless `--no-restart` is used.
+
+Preview a Panel update without changing files:
+
+```bash
+sudo doctor-panel update --dry-run
+```
+
+Update the Panel and restart only the Panel service:
+
+```bash
+sudo doctor-panel update
+```
+
+Update the Panel and restart all installed Node services too:
+
+```bash
+sudo doctor-panel update --include-nodes
+```
+
+Update from a specific branch or repository URL:
+
+```bash
+sudo doctor-panel update --branch master
+sudo doctor-panel update --repo-url https://github.com/alirezarohollahi/doctor_dev --branch master
+```
+
+If the production source tree has local changes, the update stops for safety. To reset `/opt/doctor_dev` to the remote branch, use:
+
+```bash
+sudo doctor-panel update --force
+```
+
+Node update examples:
+
+```bash
+sudo doctor-node --name edge-node-1 update --dry-run
+sudo doctor-node --name edge-node-1 update
+sudo doctor-node update --all
+sudo doctor-node update --all --restart-panel
+```
+
+Useful flags for both CLIs:
+
+```text
+--dry-run       fetch and show pending commits only
+--branch        update from a specific branch
+--repo-url      change origin before updating
+--force         reset local source to origin/<branch>
+--no-backup     skip /etc/doctor_dev backup
+--no-restart    update files without restarting services
+```
+
 ## Uninstall
 
 Using the bootstrap script:
