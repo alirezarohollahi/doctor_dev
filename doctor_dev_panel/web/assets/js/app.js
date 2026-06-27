@@ -1,462 +1,2607 @@
-const $ = (selector) => document.querySelector(selector);
-const $$ = (selector) => Array.from(document.querySelectorAll(selector));
+"use strict";
+
+// ============================================================
+// 1. UTILITIES
+// ============================================================
+
+const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+
+function escapeHtml(v) {
+  return String(v ?? "").replace(
+    /[&<>'"]/g,
+    (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[
+        c
+      ],
+  );
+}
+
+function deepCopy(v) {
+  return JSON.parse(JSON.stringify(v ?? {}));
+}
+function nodeById(id) {
+  return state.nodes.find((n) => n.id === id) || null;
+}
+function coreById(id) {
+  return state.cores.find((c) => c.id === id) || null;
+}
+function nodeName(id) {
+  const n = nodeById(id);
+  return n ? n.name || n.address : "Unknown node";
+}
+
+function timeAgo(iso) {
+  if (!iso) return "Never";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "Unknown";
+  const sec = Math.floor((Date.now() - d.getTime()) / 1000);
+  if (sec < 5) return "just now";
+  if (sec < 60) return sec + " seconds ago";
+  const min = Math.floor(sec / 60);
+  if (min < 60) return min + " minute" + (min === 1 ? "" : "s") + " ago";
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return hr + " hour" + (hr === 1 ? "" : "s") + " ago";
+  const day = Math.floor(hr / 24);
+  if (day < 30) return day + " day" + (day === 1 ? "" : "s") + " ago";
+  const mo = Math.floor(day / 30);
+  if (mo < 12) return mo + " month" + (mo === 1 ? "" : "s") + " ago";
+  const yr = Math.floor(mo / 12);
+  return yr + " year" + (yr === 1 ? "" : "s") + " ago";
+}
+
+function formatApiError(data, fallback) {
+  fallback = fallback || "Request failed.";
+  if (!data || typeof data !== "object") return fallback;
+  if (typeof data.detail === "string") return data.detail;
+  if (Array.isArray(data.detail) && data.detail.length) {
+    var first = data.detail[0];
+    var loc = Array.isArray(first.loc) ? first.loc.slice(1).join(" > ") : "";
+    return loc ? loc + ": " + (first.msg || "invalid") : first.msg || fallback;
+  }
+  return data.message || data.error || fallback;
+}
+
+// ============================================================
+// 2. STATE
+// ============================================================
 
 const state = {
   user: null,
   nodes: [],
   cores: [],
   inboundCatalog: [],
-  page: 'dashboard',
+  stats: null,
+  page: "dashboard",
   editingNode: null,
   editingCore: null,
   editorDraft: null,
   lastFormCheck: null,
-  currentCoreTab: 'inbounds',
+  currentCoreTab: "inbounds",
   logSources: [],
-  currentLogSource: 'panel',
+  currentLogSource: "panel",
+  logAutoRefreshTimer: null,
+  rawLogLines: [],
 };
 
-const loginView = $('#loginView');
-const appView = $('#appView');
-const loginForm = $('#loginForm');
-const loginMessage = $('#loginMessage');
-const submitButton = $('#submitButton');
-const adminName = $('#adminName');
-const logoutButton = $('#logoutButton');
-const togglePassword = $('#togglePassword');
-const passwordInput = $('#password');
-const pageTitle = $('#pageTitle');
-const nodeModal = $('#nodeModal');
-const nodeForm = $('#nodeForm');
-const nodeMessage = $('#nodeMessage');
-const coreCreateModal = $('#coreCreateModal');
-const coreCreateForm = $('#coreCreateForm');
-const coreCreateMessage = $('#coreCreateMessage');
-const coreEditorMessage = $('#coreEditorMessage');
+// ============================================================
+// 3. API HELPER
+// ============================================================
 
-function setMessage(element, text, type = '') { if (!element) return; element.textContent = text || ''; element.className = `message ${type}`.trim(); }
-function formatApiError(data, fallback = 'Request failed.') {
-  const detail = data?.detail ?? data?.message ?? data?.error;
-  if (!detail) return fallback;
-  if (typeof detail === 'string') return detail;
-  if (Array.isArray(detail)) {
-    return detail.map((item) => {
-      if (typeof item === 'string') return item;
-      const loc = Array.isArray(item.loc) ? item.loc.join('.') : '';
-      return `${loc ? loc + ': ' : ''}${item.msg || JSON.stringify(item)}`;
-    }).join(' | ');
-  }
-  if (typeof detail === 'object') return JSON.stringify(detail);
-  return String(detail);
-}
-async function api(path, options = {}) {
-  const response = await fetch(path, { credentials: 'same-origin', headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }, ...options });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(formatApiError(data));
+async function api(path, options) {
+  options = options || {};
+  var res = await fetch(
+    path,
+    Object.assign(
+      {
+        credentials: "same-origin",
+        headers: Object.assign(
+          { "Content-Type": "application/json" },
+          options.headers || {},
+        ),
+      },
+      options,
+    ),
+  );
+  var data = await res.json().catch(function () {
+    return {};
+  });
+  if (!res.ok) throw new Error(formatApiError(data));
   return data;
 }
-function escapeHtml(value) { return String(value ?? '').replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char])); }
-function nodeById(id) { return state.nodes.find(n => n.id === id) || null; }
-function coreById(id) { return state.cores.find(c => c.id === id) || null; }
-function nodeName(id) { return (nodeById(id) || {}).name || 'Unknown node'; }
-function deepCopy(value) { return JSON.parse(JSON.stringify(value || {})); }
-function cleanId(value) { return String(value || '').replace(/[^a-zA-Z0-9_-]/g, '_'); }
 
-function showApp(username) { state.user = username || 'admin'; adminName.textContent = state.user; loginView.classList.add('hidden'); appView.classList.remove('hidden'); refreshAll(); }
-function showLogin() { appView.classList.add('hidden'); loginView.classList.remove('hidden'); }
-async function checkSession() { try { const data = await api('/api/auth/me'); if (data.ok) showApp(data.username); } catch (_) { showLogin(); } }
+// ============================================================
+// 4. TOAST SYSTEM
+// ============================================================
 
-loginForm.addEventListener('submit', async (event) => {
-  event.preventDefault();
-  setMessage(loginMessage, 'Checking credentials...');
-  submitButton.disabled = true;
-  try {
-    const data = await api('/api/auth/login', { method: 'POST', body: JSON.stringify({ username: $('#username').value.trim(), password: passwordInput.value }) });
-    setMessage(loginMessage, 'Login successful. Opening panel...', 'success');
-    setTimeout(() => showApp(data.username), 250);
-  } catch (error) { setMessage(loginMessage, error.message || 'Cannot connect to the server.', 'error'); }
-  finally { submitButton.disabled = false; }
-});
-logoutButton.addEventListener('click', async () => { await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }).catch(() => {}); showLogin(); setMessage(loginMessage, 'You have been logged out.', 'success'); });
-togglePassword.addEventListener('click', () => { const visible = passwordInput.type === 'text'; passwordInput.type = visible ? 'password' : 'text'; togglePassword.textContent = visible ? 'Show' : 'Hide'; });
+function showToast(message, type, duration) {
+  type = type || "info";
+  duration = duration === undefined ? 4500 : duration;
 
-$$('.nav-item[data-page]').forEach((button) => button.addEventListener('click', () => switchPage(button.dataset.page)));
-function switchPage(page) {
-  state.page = page;
-  state.editingCore = null;
-  state.editorDraft = null;
-  $$('.nav-item[data-page]').forEach((item) => item.classList.toggle('active', item.dataset.page === page));
-  $$('.page').forEach((item) => item.classList.remove('active'));
-  $(`#${page}Page`).classList.add('active');
-  pageTitle.textContent = page === 'nodes' ? 'Nodes' : page === 'cores' ? 'Cores' : page === 'logs' ? 'Logs' : 'Dashboard';
-  $('#openNodeModal').classList.toggle('hidden', page === 'cores' || page === 'coreEditor' || page === 'logs');
-  $('#openCoreModal').classList.toggle('hidden', page !== 'cores');
-  if (page === 'logs') { loadLogSources().then(loadLogs).catch((error) => setMessage($('#logsMessage'), error.message || 'Cannot load logs.', 'error')); }
+  var icons = {
+    success:
+      '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
+    error:
+      '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>',
+    warning:
+      '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+    info: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
+  };
+
+  var container = $("#toastContainer");
+  if (!container) return;
+
+  var toast = document.createElement("div");
+  toast.className = "toast toast--" + type;
+  toast.innerHTML =
+    '<span class="toast-icon">' +
+    (icons[type] || icons.info) +
+    "</span>" +
+    '<span class="toast-message">' +
+    escapeHtml(message) +
+    "</span>" +
+    '<button class="toast-close" aria-label="Dismiss">&times;</button>';
+
+  container.appendChild(toast);
+
+  requestAnimationFrame(function () {
+    requestAnimationFrame(function () {
+      toast.classList.add("toast--visible");
+    });
+  });
+
+  function remove() {
+    toast.classList.remove("toast--visible");
+    setTimeout(function () {
+      if (toast.parentNode) toast.parentNode.removeChild(toast);
+    }, 350);
+  }
+
+  toast.querySelector(".toast-close").addEventListener("click", remove);
+  if (duration > 0) setTimeout(remove, duration);
 }
+
+// ============================================================
+// 5. CONFIRM DIALOG
+// ============================================================
+
+function showConfirm(message, title, confirmText, type) {
+  title = title || "Confirm Action";
+  confirmText = confirmText || "Delete";
+  type = type || "danger";
+
+  return new Promise(function (resolve) {
+    var dialog = $("#confirmDialog");
+    var titleEl = $("#confirmTitle");
+    var messageEl = $("#confirmMessage");
+    var okBtn = $("#confirmOk");
+    var cancelBtn = $("#confirmCancel");
+
+    if (!dialog) {
+      resolve(false);
+      return;
+    }
+
+    if (titleEl) titleEl.textContent = title;
+    if (messageEl) messageEl.textContent = message;
+    if (okBtn) {
+      okBtn.textContent = confirmText;
+      okBtn.className = "btn btn-" + type;
+    }
+
+    dialog.classList.remove("hidden");
+
+    var handled = false;
+    function done(result) {
+      if (handled) return;
+      handled = true;
+      dialog.classList.add("hidden");
+      if (okBtn) okBtn.removeEventListener("click", onOk);
+      if (cancelBtn) cancelBtn.removeEventListener("click", onCancel);
+      resolve(result);
+    }
+
+    function onOk() {
+      done(true);
+    }
+    function onCancel() {
+      done(false);
+    }
+
+    if (okBtn) okBtn.addEventListener("click", onOk);
+    if (cancelBtn) cancelBtn.addEventListener("click", onCancel);
+  });
+}
+
+// ============================================================
+// 6. AUTH
+// ============================================================
+
+async function checkSession() {
+  try {
+    var data = await api("/api/auth/me");
+    if (data.ok) showApp(data.username);
+    else showLogin();
+  } catch (_) {
+    showLogin();
+  }
+}
+
+async function handleLoginSubmit(e) {
+  e.preventDefault();
+  var form = e.target;
+  var unameEl = $("#usernameInput");
+  var pwdEl = $("#passwordInput");
+  var username = unameEl ? unameEl.value.trim() : "";
+  var password = pwdEl ? pwdEl.value : "";
+  var submitBtn = form.querySelector('[type="submit"]');
+  var errorEl = $("#loginMessage");
+
+  if (errorEl) errorEl.textContent = "";
+  var origText = submitBtn ? submitBtn.textContent : "";
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Signing in\u2026";
+  }
+
+  try {
+    var data = await api("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ username: username, password: password }),
+    });
+    if (data.ok) {
+      showApp(data.username);
+    } else {
+      var msg = "Login failed. Please try again.";
+      if (errorEl) errorEl.textContent = msg;
+      showToast(msg, "error");
+    }
+  } catch (err) {
+    var msg2 = err.message || "Login failed.";
+    if (errorEl) errorEl.textContent = msg2;
+    showToast(msg2, "error");
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = origText;
+    }
+  }
+}
+
+async function handleLogout() {
+  try {
+    await api("/api/auth/logout", { method: "POST" });
+  } catch (_) {}
+  state.user = null;
+  state.nodes = [];
+  state.cores = [];
+  state.stats = null;
+  showLogin();
+}
+
+function togglePasswordVisibility() {
+  var input = $("#passwordInput");
+  var btn = $("#togglePassword");
+  if (!input) return;
+  input.type = input.type === "password" ? "text" : "password";
+  if (btn)
+    btn.setAttribute(
+      "aria-label",
+      input.type === "password" ? "Show password" : "Hide password",
+    );
+}
+
+// ============================================================
+// 7. NAVIGATION
+// ============================================================
+
+function showApp(username) {
+  state.user = username;
+  var nameEl = $("#adminName");
+  if (nameEl) nameEl.textContent = username;
+  var loginView = $("#loginView");
+  var appView = $("#appView");
+  if (loginView) loginView.classList.add("hidden");
+  if (appView) appView.classList.remove("hidden");
+  refreshAll();
+}
+
+function showLogin() {
+  var appView = $("#appView");
+  var loginView = $("#loginView");
+  if (appView) appView.classList.add("hidden");
+  if (loginView) loginView.classList.remove("hidden");
+}
+
+function switchPage(page) {
+  if (state.page === "logs" && page !== "logs") {
+    if (state.logAutoRefreshTimer) {
+      clearInterval(state.logAutoRefreshTimer);
+      state.logAutoRefreshTimer = null;
+      var cb = $("#logAutoRefresh");
+      if (cb) cb.checked = false;
+    }
+  }
+
+  state.page = page;
+
+  $$(".nav-item[data-page]").forEach(function (btn) {
+    btn.classList.toggle("active", btn.dataset.page === page);
+  });
+
+  $$(".page").forEach(function (s) {
+    s.classList.remove("active");
+  });
+  var editorPage = $("#coreEditorPage");
+  if (editorPage) editorPage.classList.remove("active");
+
+  var target = $("#" + page + "Page");
+  if (target) target.classList.add("active");
+
+  if (page === "logs")
+    loadLogSources().then(function () {
+      loadLogs();
+    });
+  else if (page === "dashboard") loadStats();
+  else if (page === "nodes") renderNodes();
+  else if (page === "cores") renderCores();
+}
+
 function openCoreEditorPage(core) {
-  state.page = 'coreEditor';
+  if (!core) return;
   state.editingCore = core;
   state.editorDraft = deepCopy(core);
-  if (!Array.isArray(state.editorDraft.inbounds)) state.editorDraft.inbounds = [];
-  if (!Array.isArray(state.editorDraft.balancers)) state.editorDraft.balancers = [];
-  if (!Array.isArray(state.editorDraft.dependencies)) state.editorDraft.dependencies = [];
-  $$('.nav-item[data-page]').forEach((item) => item.classList.remove('active'));
-  $$('.page').forEach((item) => item.classList.remove('active'));
-  $('#coreEditorPage').classList.add('active');
-  pageTitle.textContent = `Edit Core: ${core.name || 'core'}`;
-  $('#openNodeModal').classList.add('hidden');
-  $('#openCoreModal').classList.add('hidden');
+
+  if (!Array.isArray(state.editorDraft.inbounds))
+    state.editorDraft.inbounds = [];
+  if (!Array.isArray(state.editorDraft.balancers))
+    state.editorDraft.balancers = [];
+  if (!Array.isArray(state.editorDraft.dependencies))
+    state.editorDraft.dependencies = [];
+
+  $$(".nav-item[data-page]").forEach(function (btn) {
+    btn.classList.remove("active");
+  });
+  $$(".page").forEach(function (s) {
+    s.classList.remove("active");
+  });
+
+  state.page = "coreEditor";
+  var ep = $("#coreEditorPage");
+  if (ep) ep.classList.add("active");
+
+  var bc = $("#editorBreadcrumbName");
+  if (bc) bc.textContent = core.name || "Core Editor";
+
   bindCoreEditorHeader();
-  switchCoreTab('inbounds');
+  switchCoreTab("inbounds");
   renderCoreEditor();
 }
 
-async function refreshAll() { await Promise.all([loadNodes(), loadCores()]); await loadSummary(); }
-async function loadSummary() { try { const data = await api('/api/panel/summary'); $('#totalNodes').textContent = data.nodes_total ?? 0; $('#enabledNodes').textContent = data.nodes_enabled ?? 0; $('#totalCores').textContent = data.cores_total ?? state.cores.length; } catch (_) {} }
-async function loadNodes() { try { const data = await api('/api/nodes'); state.nodes = data.nodes || []; renderNodes(); } catch (error) { console.error(error); } }
-async function loadCores() { try { const data = await api('/api/cores'); state.cores = data.cores || []; state.inboundCatalog = data.inbound_catalog || []; renderCores(); } catch (error) { console.error('loadCores failed', error); } }
+// ============================================================
+// 8. DATA LOADING
+// ============================================================
 
-function statusFor(node) { if (!node.enabled) return 'disabled'; const status = String(node.status || 'pending').toLowerCase(); return ['disabled', 'pending', 'running', 'error'].includes(status) && status !== 'disabled' ? status : 'pending'; }
-function statusLabel(status) { return { disabled: 'Disabled', pending: 'Pending Check', running: 'Running', error: 'Error', ready: 'Ready', applied: 'Applied', draft: 'Draft' }[status] || 'Pending Check'; }
-function statusDotClass(status) { if (status === 'disabled') return 'gray'; if (status === 'error') return 'red'; if (status === 'pending' || status === 'ready' || status === 'draft') return 'yellow'; return ''; }
+async function refreshAll() {
+  await Promise.all([loadNodes(), loadCores()]);
+  if (state.page === "dashboard") await loadStats();
+}
+
+async function loadStats() {
+  try {
+    var data = await api("/api/panel/stats");
+    if (data.ok) {
+      state.stats = data;
+      renderDashboard();
+    }
+  } catch (err) {
+    console.error("loadStats:", err);
+  }
+}
+
+async function loadNodes() {
+  try {
+    var data = await api("/api/nodes");
+    if (data.ok) {
+      state.nodes = data.nodes || [];
+      renderNodes();
+      updateNodesBadge();
+    }
+  } catch (err) {
+    console.error("loadNodes:", err);
+  }
+}
+
+async function loadCores() {
+  try {
+    var data = await api("/api/cores");
+    if (data.ok) {
+      state.cores = data.cores || [];
+      state.inboundCatalog = data.inbound_catalog || [];
+      renderCores();
+      updateCoresBadge();
+    }
+  } catch (err) {
+    console.error("loadCores:", err);
+  }
+}
+
+function updateNodesBadge() {
+  var badge = $("#nodesBadge");
+  if (!badge) return;
+  var count = state.nodes.filter(function (n) {
+    return n.enabled && n.status === "error";
+  }).length;
+  badge.textContent = count;
+  badge.classList.toggle("hidden", count === 0);
+}
+
+function updateCoresBadge() {
+  var badge = $("#coresBadge");
+  if (!badge) return;
+  var count = state.cores.filter(function (c) {
+    return !c.enabled;
+  }).length;
+  badge.textContent = count;
+  badge.classList.toggle("hidden", count === 0);
+}
+
+// ============================================================
+// 9. STATUS HELPERS
+// ============================================================
+
+function statusFor(item) {
+  if (!item) return "pending";
+  if (!item.enabled) return "disabled";
+  var s = item.status;
+  if (
+    s === "running" ||
+    s === "error" ||
+    s === "pending" ||
+    s === "ready" ||
+    s === "applied" ||
+    s === "draft"
+  )
+    return s;
+  return "pending";
+}
+
+function statusLabel(status) {
+  var labels = {
+    running: "Running",
+    error: "Error",
+    pending: "Pending",
+    ready: "Ready",
+    applied: "Applied",
+    draft: "Draft",
+    disabled: "Disabled",
+  };
+  return labels[status] || "Unknown";
+}
+
+function statusDotClass(status) {
+  if (status === "running") return "running";
+  if (status === "error") return "error";
+  if (status === "disabled") return "disabled";
+  return "pending";
+}
+
+// ============================================================
+// 10. DASHBOARD
+// ============================================================
+
+function renderDashboard() {
+  var stats = state.stats;
+  if (!stats) return;
+
+  function set(id, val) {
+    var el = $(id);
+    if (el) el.textContent = val !== null && val !== undefined ? val : "\u2014";
+  }
+
+  var nodes = stats.nodes || {};
+  var cores = stats.cores || {};
+  var inbounds = stats.inbounds || {};
+  var balancers = stats.balancers || {};
+
+  set("#statTotalNodes", nodes.total != null ? nodes.total : 0);
+  set("#statRunningNodes", nodes.running != null ? nodes.running : 0);
+  set("#statErrorNodes", nodes.error != null ? nodes.error : 0);
+  set("#statTotalCores", cores.total != null ? cores.total : 0);
+  set("#statEnabledCores", cores.enabled != null ? cores.enabled : 0);
+  set("#statTotalInbounds", inbounds.total != null ? inbounds.total : 0);
+  set("#statEnabledInbounds", inbounds.enabled != null ? inbounds.enabled : 0);
+  set("#statTotalBalancers", balancers.total != null ? balancers.total : 0);
+
+  var errWrap = $("#statErrorNodes");
+  if (errWrap) errWrap.classList.toggle("hidden", !(nodes.error > 0));
+
+  var nodeList = $("#dashboardNodeList");
+  if (!nodeList) return;
+
+  if (!state.nodes.length) {
+    nodeList.innerHTML =
+      '<div class="dashboard-empty">' +
+      "<p>No nodes configured yet.</p>" +
+      '<button class="btn btn-primary btn-sm" id="dashEmptyAddNode">Add Your First Node</button>' +
+      "</div>";
+    var addBtn = $("#dashEmptyAddNode");
+    if (addBtn)
+      addBtn.addEventListener("click", function () {
+        openNodeModal();
+      });
+    return;
+  }
+
+  nodeList.innerHTML = state.nodes
+    .map(function (node) {
+      var st = statusFor(node);
+      var dot = statusDotClass(st);
+      var addr =
+        escapeHtml(node.address || "") +
+        ":" +
+        escapeHtml(String(node.api_port || ""));
+      var tt = node.last_error
+        ? ' title="' + escapeHtml(node.last_error) + '"'
+        : "";
+      return (
+        '<div class="dashboard-node-item"' +
+        tt +
+        ">" +
+        '<span class="status-dot ' +
+        dot +
+        '"></span>' +
+        '<div class="dashboard-node-info">' +
+        '<span class="dashboard-node-name">' +
+        escapeHtml(node.name || node.address) +
+        "</span>" +
+        '<span class="dashboard-node-addr">' +
+        addr +
+        "</span>" +
+        "</div>" +
+        '<div class="dashboard-node-actions">' +
+        '<button class="btn btn-xs btn-ghost" data-action="check" data-id="' +
+        node.id +
+        '" title="Check node">' +
+        '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>' +
+        "</button>" +
+        '<button class="btn btn-xs btn-ghost" data-action="edit" data-id="' +
+        node.id +
+        '" title="Edit node">' +
+        '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>' +
+        "</button>" +
+        "</div>" +
+        "</div>"
+      );
+    })
+    .join("");
+
+  nodeList.querySelectorAll("[data-action]").forEach(function (btn) {
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var id = parseInt(btn.dataset.id, 10);
+      if (btn.dataset.action === "edit") openNodeModal(nodeById(id));
+      if (btn.dataset.action === "check") checkSavedNode(id, btn);
+    });
+  });
+}
+
+// ============================================================
+// 11. NODES PAGE
+// ============================================================
 
 function renderNodes() {
-  const body = $('#nodesTableBody'); const empty = $('#nodesEmpty'); const wrap = $('#nodesTableWrap');
-  body.innerHTML = ''; empty.classList.toggle('hidden', state.nodes.length > 0); wrap.classList.toggle('hidden', state.nodes.length === 0);
-  for (const node of state.nodes) {
-    const status = statusFor(node); const tr = document.createElement('tr');
-    tr.innerHTML = `<td><span class="badge ${escapeHtml(status)}"><span class="status-dot ${statusDotClass(status)}"></span>${escapeHtml(statusLabel(status))}</span></td><td>${escapeHtml(node.name || '-')}</td><td>${escapeHtml(node.address || '-')}</td><td>${escapeHtml(node.node_port ?? '-')}</td><td>${escapeHtml(node.api_port ?? '-')}</td><td>${escapeHtml((node.connection_type || 'grpc').toUpperCase())}</td><td>${node.certificate ? 'Yes' : 'No'}</td><td>${node.enabled ? 'Yes' : 'No'}</td><td><div class="row-actions"><button class="mini-btn" data-check="${node.id}">Check</button><button class="mini-btn" data-edit="${node.id}">Edit</button><button class="mini-btn" data-delete="${node.id}">Delete</button></div></td>`;
-    if (node.last_error) tr.title = node.last_error; body.appendChild(tr);
+  var tbody = $("#nodesTableBody");
+  var empty = $("#nodesEmpty");
+  var tableWrap = $("#nodesTableWrap");
+  if (!tbody) return;
+
+  if (!state.nodes.length) {
+    if (empty) empty.classList.remove("hidden");
+    if (tableWrap) tableWrap.classList.add("hidden");
+    return;
   }
-  $$('[data-check]').forEach((button) => button.addEventListener('click', () => checkSavedNode(button.dataset.check, button)));
-  $$('[data-edit]').forEach((button) => button.addEventListener('click', () => openNodeModal(state.nodes.find((node) => node.id === button.dataset.edit))));
-  $$('[data-delete]').forEach((button) => button.addEventListener('click', () => deleteNode(button.dataset.delete)));
+  if (empty) empty.classList.add("hidden");
+  if (tableWrap) tableWrap.classList.remove("hidden");
+
+  tbody.innerHTML = state.nodes
+    .map(function (node) {
+      var st = statusFor(node);
+      var titleAttr = node.last_error
+        ? ' title="' + escapeHtml(node.last_error) + '"'
+        : "";
+      var checkedAt = node.last_checked_at
+        ? timeAgo(node.last_checked_at)
+        : "Never";
+      return (
+        "<tr" +
+        titleAttr +
+        ">" +
+        '<td><span class="badge badge-' +
+        escapeHtml(st) +
+        '">' +
+        escapeHtml(statusLabel(st)) +
+        "</span></td>" +
+        "<td>" +
+        escapeHtml(node.name || "\u2014") +
+        "</td>" +
+        "<td>" +
+        escapeHtml(node.address || "\u2014") +
+        "</td>" +
+        "<td>" +
+        escapeHtml(String(node.api_port || "\u2014")) +
+        "</td>" +
+        "<td>" +
+        escapeHtml(node.connection_type || "\u2014") +
+        "</td>" +
+        "<td>" +
+        (node.tls ? "Yes" : "No") +
+        "</td>" +
+        '<td><span class="badge ' +
+        (node.enabled ? "badge-running" : "badge-disabled") +
+        '">' +
+        (node.enabled ? "Enabled" : "Disabled") +
+        "</span></td>" +
+        "<td>" +
+        escapeHtml(checkedAt) +
+        "</td>" +
+        '<td class="actions-cell">' +
+        '<button class="btn btn-xs btn-ghost" data-node-action="check" data-id="' +
+        node.id +
+        '" title="Check">' +
+        '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>' +
+        "</button>" +
+        '<button class="btn btn-xs btn-secondary" data-node-action="edit"   data-id="' +
+        node.id +
+        '">Edit</button>' +
+        '<button class="btn btn-xs btn-danger"    data-node-action="delete" data-id="' +
+        node.id +
+        '">Delete</button>' +
+        "</td>" +
+        "</tr>"
+      );
+    })
+    .join("");
+
+  tbody.querySelectorAll("[data-node-action]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var id = parseInt(btn.dataset.id, 10);
+      var action = btn.dataset.nodeAction;
+      if (action === "check") checkSavedNode(id, btn);
+      if (action === "edit") openNodeModal(nodeById(id));
+      if (action === "delete") deleteNode(id);
+    });
+  });
 }
 
-function setStatusPreview(status, message = '') { $('#nodeStatusText').textContent = statusLabel(status); $('#nodeStatusDot').classList.remove('gray','red','yellow'); const klass = statusDotClass(status); if (klass) $('#nodeStatusDot').classList.add(klass); if (message) setMessage(nodeMessage, message, status === 'running' ? 'success' : status === 'error' ? 'error' : ''); }
-function updateStatusPreview() { if (!$('#nodeEnabled').checked) return setStatusPreview('disabled'); if (state.lastFormCheck) return setStatusPreview(state.lastFormCheck.ok ? 'running' : 'error'); setStatusPreview('pending'); }
-function resetNodeForm() {
-  nodeForm.reset(); state.editingNode = null; state.lastFormCheck = null; $('#nodeId').value = ''; $('#nodePort').value = '62050'; $('#apiPort').value = '62051'; $('#usageRatio').value = '1'; $('#connectionType').value = 'grpc'; $('#keepAliveValue').value = '60'; $('#keepAliveUnit').value = 'seconds'; $('#defaultTimeout').value = '10'; $('#internalTimeout').value = '15'; $('#nodeEnabled').checked = true; updateStatusPreview(); $('#deleteNodeButton').classList.add('hidden'); $('#nodeModalTitle').textContent = 'Create Node'; $('#nodeModalSubtitle').textContent = 'Add a node definition and check its control-plane API.'; setMessage(nodeMessage, '');
-}
-function openNodeModal(node = null) {
+function openNodeModal(node) {
+  node = node || null;
+  state.editingNode = node;
+  state.lastFormCheck = null;
   resetNodeForm();
+
+  var modal = $("#nodeModal");
+  var titleEl = $("#nodeModalTitle");
+  var deleteBtn = $("#deleteNodeButton");
+
   if (node) {
-    state.editingNode = node; $('#nodeId').value = node.id || ''; $('#nodeName').value = node.name || ''; $('#nodeAddress').value = node.address || ''; $('#nodePort').value = node.node_port || 62050; $('#apiPort').value = node.api_port || 62051; $('#apiKey').value = node.api_key || ''; $('#certificate').value = node.certificate || ''; $('#nodeEnabled').checked = Boolean(node.enabled); $('#usageRatio').value = node.usage_ratio ?? 1; $('#connectionType').value = node.connection_type || 'grpc'; $('#keepAliveValue').value = node.keep_alive_value || 60; $('#keepAliveUnit').value = node.keep_alive_unit || 'seconds'; $('#dataLimitGb').value = node.data_limit_gb ?? ''; $('#defaultTimeout').value = node.default_timeout || 10; $('#internalTimeout').value = node.internal_timeout || 15; $('#proxyUrl').value = node.proxy_url || ''; setStatusPreview(statusFor(node)); if (node.last_error) setMessage(nodeMessage, node.last_error, 'error'); $('#deleteNodeButton').classList.remove('hidden'); $('#nodeModalTitle').textContent = 'Edit Node'; $('#nodeModalSubtitle').textContent = node.name || 'Update node definition.';
+    if (titleEl) titleEl.textContent = "Edit Node";
+    if (deleteBtn) deleteBtn.classList.remove("hidden");
+
+    function setVal(sel, val) {
+      var el = $(sel);
+      if (el) el.value = val != null ? val : "";
+    }
+    setVal("#nodeName", node.name);
+    setVal("#nodeAddress", node.address);
+    setVal("#apiPort", node.api_port);
+    setVal("#connectionType", node.connection_type);
+    setVal("#apiKey", node.api_key);
+
+    var tlsEl = null; // TLS is managed via certificate field
+    var enabledEl = $("#nodeEnabled");
+    if (tlsEl) tlsEl.checked = !!node.tls;
+    if (enabledEl) enabledEl.checked = !!node.enabled;
+  } else {
+    if (titleEl) titleEl.textContent = "Add Node";
+    if (deleteBtn) deleteBtn.classList.add("hidden");
   }
-  nodeModal.classList.remove('hidden'); setTimeout(() => $('#nodeName').focus(), 50);
+
+  updateStatusPreview();
+  if (modal) modal.classList.remove("hidden");
 }
-function closeNodeModal() { nodeModal.classList.add('hidden'); }
-function nodePayload() { const dataLimit = $('#dataLimitGb').value.trim(); return { name: $('#nodeName').value.trim(), address: $('#nodeAddress').value.trim(), node_port: Number($('#nodePort').value || 62050), api_port: Number($('#apiPort').value || 62051), api_key: $('#apiKey').value.trim(), certificate: $('#certificate').value, enabled: $('#nodeEnabled').checked, usage_ratio: Number($('#usageRatio').value || 1), connection_type: $('#connectionType').value, keep_alive_value: Number($('#keepAliveValue').value || 60), keep_alive_unit: $('#keepAliveUnit').value, data_limit_gb: dataLimit ? Number(dataLimit) : null, default_timeout: Number($('#defaultTimeout').value || 10), internal_timeout: Number($('#internalTimeout').value || 15), proxy_url: $('#proxyUrl').value.trim() }; }
-nodeForm.addEventListener('submit', async (event) => { event.preventDefault(); setMessage(nodeMessage, 'Saving node...'); try { const payload = nodePayload(); if (!payload.api_key) throw new Error('API Key is required. Generate or enter one.'); if (state.editingNode) await api(`/api/nodes/${encodeURIComponent(state.editingNode.id)}`, { method: 'PUT', body: JSON.stringify(payload) }); else await api('/api/nodes', { method: 'POST', body: JSON.stringify(payload) }); setMessage(nodeMessage, 'Node saved successfully.', 'success'); await refreshAll(); setTimeout(closeNodeModal, 250); } catch (error) { setMessage(nodeMessage, error.message || 'Cannot save node.', 'error'); } });
-async function deleteNode(id) { if (!id || !confirm('Delete this node?')) return; try { await api(`/api/nodes/${encodeURIComponent(id)}`, { method: 'DELETE' }); await refreshAll(); closeNodeModal(); } catch (error) { alert(error.message || 'Cannot delete node.'); } }
-async function checkSavedNode(id, button = null) { if (!id) return; const oldText = button ? button.textContent : ''; if (button) { button.disabled = true; button.textContent = 'Checking...'; } try { const data = await api(`/api/nodes/${encodeURIComponent(id)}/check`, { method: 'POST' }); await refreshAll(); if (!data.ok) alert(data.message || 'Node API is not reachable.'); } catch (error) { alert(error.message || 'Cannot check node.'); } finally { if (button) { button.disabled = false; button.textContent = oldText; } } }
-async function checkFormNode() { setMessage(nodeMessage, 'Checking node API status...'); const button = $('#checkNodeStatus'); button.disabled = true; try { const payload = nodePayload(); if (!payload.name) payload.name = 'temporary-check'; if (!payload.address) throw new Error('Node Address is required for status check.'); if (!payload.api_key) throw new Error('API Key is required for status check.'); let data; if (state.editingNode && state.editingNode.id) { await api(`/api/nodes/${encodeURIComponent(state.editingNode.id)}`, { method: 'PUT', body: JSON.stringify(payload) }); data = await api(`/api/nodes/${encodeURIComponent(state.editingNode.id)}/check`, { method: 'POST' }); await refreshAll(); } else { data = await api('/api/nodes/check', { method: 'POST', body: JSON.stringify(payload) }); } state.lastFormCheck = data; if (data.ok) setStatusPreview('running', `Node API reachable through API Port ${data.using_api_port || payload.api_port}: ${data.url || ''}`.trim()); else setStatusPreview('error', data.message || 'Node API is not reachable.'); } catch (error) { state.lastFormCheck = { ok: false }; setStatusPreview('error', error.message || 'Cannot check node.'); } finally { button.disabled = false; } }
-$('#generateApiKey').addEventListener('click', async () => { try { const data = await api('/api/nodes/api-key', { method: 'POST' }); $('#apiKey').value = data.api_key; } catch (_) { $('#apiKey').value = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`; } });
+
+function closeNodeModal() {
+  var modal = $("#nodeModal");
+  if (modal) modal.classList.add("hidden");
+  state.editingNode = null;
+  state.lastFormCheck = null;
+}
+
+function resetNodeForm() {
+  var form = $("#nodeForm");
+  if (form) form.reset();
+  setStatusPreview("pending", "Not checked");
+}
+
+function nodePayload() {
+  function get(sel) {
+    var el = $(sel);
+    return el ? el.value.trim() : "";
+  }
+  function getChecked(sel) {
+    var el = $(sel);
+    return el ? el.checked : false;
+  }
+  return {
+    name: get("#nodeName"),
+    address: get("#nodeAddress"),
+    api_port: parseInt(get("#apiPort"), 10) || 62051,
+    connection_type: get("#connectionType") || "grpc",
+    api_key: get("#apiKey"),
+    enabled: getChecked("#nodeEnabled"),
+  };
+}
+
+function setStatusPreview(status, message) {
+  message = message || "";
+  var dot = $("#nodeStatusDot");
+  var text = $("#nodeStatusText");
+  if (dot) {
+    dot.className = "status-dot " + statusDotClass(status);
+  }
+  if (text) {
+    text.textContent = message || statusLabel(status);
+  }
+}
+
+function updateStatusPreview() {
+  var enabledEl = $("#nodeEnabled");
+  if (enabledEl && !enabledEl.checked) {
+    setStatusPreview("disabled", "Disabled");
+    return;
+  }
+  if (state.lastFormCheck) {
+    setStatusPreview(
+      state.lastFormCheck.status,
+      state.lastFormCheck.message || statusLabel(state.lastFormCheck.status),
+    );
+  } else {
+    setStatusPreview("pending", "Not checked");
+  }
+}
+
+async function saveNode(e) {
+  e.preventDefault();
+  var payload = nodePayload();
+  var submitBtn = $('#nodeForm [type="submit"]') || $("#nodeForm button");
+  var origText = submitBtn ? submitBtn.textContent : "";
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Saving\u2026";
+  }
+
+  try {
+    if (state.editingNode) {
+      await api("/api/nodes/" + state.editingNode.id, {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      });
+      showToast("Node updated successfully.", "success");
+    } else {
+      await api("/api/nodes", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      showToast("Node created successfully.", "success");
+    }
+    closeNodeModal();
+    await refreshAll();
+  } catch (err) {
+    showToast(err.message || "Failed to save node.", "error");
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = origText;
+    }
+  }
+}
+
+async function deleteNode(id) {
+  var node = nodeById(id);
+  var name = node ? node.name || node.address : "Node #" + id;
+  var confirmed = await showConfirm(
+    'Are you sure you want to delete "' + name + '"? This cannot be undone.',
+    "Delete Node",
+    "Delete",
+    "danger",
+  );
+  if (!confirmed) return;
+
+  try {
+    await api("/api/nodes/" + id, { method: "DELETE" });
+    showToast("Node deleted.", "success");
+    closeNodeModal();
+    await refreshAll();
+  } catch (err) {
+    showToast(err.message || "Failed to delete node.", "error");
+  }
+}
+
+async function checkSavedNode(id, button) {
+  var origHTML = button ? button.innerHTML : "";
+  if (button) button.disabled = true;
+
+  try {
+    var data = await api("/api/nodes/" + id + "/check", { method: "POST" });
+    var status = data.status || "unknown";
+    var msg = data.message || statusLabel(status);
+    showToast(
+      "Node check: " + msg,
+      status === "running" ? "success" : status === "error" ? "error" : "info",
+    );
+    await refreshAll();
+  } catch (err) {
+    showToast(err.message || "Node check failed.", "error");
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.innerHTML = origHTML;
+    }
+  }
+}
+
+async function checkFormNode() {
+  var checkBtn = $("#checkNodeStatus");
+  var origText = checkBtn ? checkBtn.textContent : "";
+  if (checkBtn) {
+    checkBtn.disabled = true;
+    checkBtn.textContent = "Checking\u2026";
+  }
+
+  try {
+    if (state.editingNode) {
+      var payload = nodePayload();
+      await api("/api/nodes/" + state.editingNode.id, {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      });
+      var data = await api("/api/nodes/" + state.editingNode.id + "/check", {
+        method: "POST",
+      });
+      state.lastFormCheck = {
+        status: data.status || "unknown",
+        message: data.message,
+      };
+      updateStatusPreview();
+      showToast(
+        "Node check: " +
+          (data.message || statusLabel(state.lastFormCheck.status)),
+        data.status === "running"
+          ? "success"
+          : data.status === "error"
+            ? "error"
+            : "info",
+      );
+      await refreshAll();
+    } else {
+      var payload2 = nodePayload();
+      var data2 = await api("/api/nodes/check", {
+        method: "POST",
+        body: JSON.stringify(payload2),
+      });
+      state.lastFormCheck = {
+        status: data2.status || "unknown",
+        message: data2.message,
+      };
+      updateStatusPreview();
+      showToast(
+        "Node check: " +
+          (data2.message || statusLabel(state.lastFormCheck.status)),
+        data2.status === "running"
+          ? "success"
+          : data2.status === "error"
+            ? "error"
+            : "info",
+      );
+    }
+  } catch (err) {
+    state.lastFormCheck = { status: "error", message: err.message };
+    updateStatusPreview();
+    showToast(err.message || "Check failed.", "error");
+  } finally {
+    if (checkBtn) {
+      checkBtn.disabled = false;
+      checkBtn.textContent = origText;
+    }
+  }
+}
+
+function fillNodeSelect(select, value) {
+  value = value || "";
+  if (!select) return;
+  select.innerHTML =
+    '<option value="">— Select Node —</option>' +
+    state.nodes
+      .map(function (n) {
+        var v = String(n.id);
+        var sel = v === String(value) ? " selected" : "";
+        var label =
+          escapeHtml(n.name || n.address) +
+          " \u2014 " +
+          escapeHtml(n.address) +
+          ":" +
+          escapeHtml(String(n.api_port || ""));
+        return '<option value="' + v + '"' + sel + ">" + label + "</option>";
+      })
+      .join("");
+}
+
+// ============================================================
+// 12. CORES PAGE
+// ============================================================
 
 function renderCores() {
-  const grid = $('#coresGrid'); const empty = $('#coresEmpty');
-  grid.innerHTML = ''; empty.classList.toggle('hidden', state.cores.length > 0);
-  for (const core of state.cores) {
-    const status = core.enabled ? (core.status || 'ready') : 'disabled'; const card = document.createElement('article'); card.className = 'core-card';
-    const inboundCount = (core.inbounds || []).length; const balancerCount = (core.balancers || []).length; const depCount = (core.dependencies || []).length;
-    card.innerHTML = `<div class="core-card-head"><span class="badge ${escapeHtml(status)}"><span class="status-dot ${statusDotClass(status)}"></span>${escapeHtml(statusLabel(status))}</span><div class="row-actions"><button class="mini-btn" data-open-core="${core.id}">Open</button><button class="mini-btn" data-preview-core="${core.id}">Preview</button><button class="mini-btn danger-mini" data-delete-core="${core.id}">Delete</button></div></div><h3>${escapeHtml(core.name || '-')}</h3><p>Node: <b>${escapeHtml(nodeName(core.node_id))}</b></p><div class="core-meta"><span>${inboundCount} inbounds</span><span>${balancerCount} balancers</span><span>${depCount} deps</span></div>`;
-    card.addEventListener('dblclick', () => openCoreEditorPage(core));
-    grid.appendChild(card);
+  var grid = $("#coresGrid");
+  var empty = $("#coresEmpty");
+  if (!grid) return;
+
+  if (!state.cores.length) {
+    if (empty) empty.classList.remove("hidden");
+    grid.classList.add("hidden");
+    return;
   }
-  $$('[data-open-core]').forEach((button) => button.addEventListener('click', () => openCoreEditorPage(coreById(button.dataset.openCore))));
-  $$('[data-delete-core]').forEach((button) => button.addEventListener('click', () => deleteCore(button.dataset.deleteCore)));
-  $$('[data-preview-core]').forEach((button) => button.addEventListener('click', () => previewCore(button.dataset.previewCore)));
+  if (empty) empty.classList.add("hidden");
+  grid.classList.remove("hidden");
+
+  grid.innerHTML = state.cores
+    .map(function (core) {
+      var st = statusFor(core);
+      var inCnt = Array.isArray(core.inbounds) ? core.inbounds.length : 0;
+      var blCnt = Array.isArray(core.balancers) ? core.balancers.length : 0;
+      var dpCnt = Array.isArray(core.dependencies)
+        ? core.dependencies.length
+        : 0;
+      var upd = core.updated_at ? timeAgo(core.updated_at) : "unknown";
+      var nName = nodeName(core.node_id);
+      return (
+        '<div class="core-card" data-id="' +
+        escapeHtml(String(core.id)) +
+        '">' +
+        '<div class="core-card-header">' +
+        '<span class="badge badge-' +
+        escapeHtml(st) +
+        '">' +
+        escapeHtml(statusLabel(st)) +
+        "</span>" +
+        '<h3 class="core-card-name">' +
+        escapeHtml(core.name || "Unnamed Core") +
+        "</h3>" +
+        "</div>" +
+        '<div class="core-card-meta">' +
+        '<span class="core-meta-item">' +
+        '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>' +
+        escapeHtml(nName) +
+        "</span>" +
+        '<span class="core-meta-item">' +
+        inCnt +
+        " inbound" +
+        (inCnt !== 1 ? "s" : "") +
+        "</span>" +
+        '<span class="core-meta-item">' +
+        blCnt +
+        " balancer" +
+        (blCnt !== 1 ? "s" : "") +
+        "</span>" +
+        '<span class="core-meta-item">' +
+        dpCnt +
+        " dep" +
+        (dpCnt !== 1 ? "s" : "") +
+        "</span>" +
+        "</div>" +
+        '<div class="core-card-footer">' +
+        '<span class="core-updated">Updated ' +
+        escapeHtml(upd) +
+        "</span>" +
+        '<div class="core-card-actions">' +
+        '<button class="btn btn-sm btn-primary" data-core-action="open"   data-id="' +
+        escapeHtml(String(core.id)) +
+        '">Open</button>' +
+        '<button class="btn btn-sm btn-danger"  data-core-action="delete" data-id="' +
+        escapeHtml(String(core.id)) +
+        '">Delete</button>' +
+        "</div>" +
+        "</div>" +
+        "</div>"
+      );
+    })
+    .join("");
+
+  grid.querySelectorAll("[data-core-action]").forEach(function (btn) {
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var id = parseInt(btn.dataset.id, 10);
+      if (btn.dataset.coreAction === "open") openCoreEditorPage(coreById(id));
+      if (btn.dataset.coreAction === "delete") deleteCore(id);
+    });
+  });
+
+  grid.querySelectorAll(".core-card").forEach(function (card) {
+    card.addEventListener("dblclick", function () {
+      var id = parseInt(card.dataset.id, 10);
+      openCoreEditorPage(coreById(id));
+    });
+  });
 }
-function fillNodeSelect(select, value = '') { select.innerHTML = state.nodes.map(node => `<option value="${escapeHtml(node.id)}">${escapeHtml(node.name)} — ${escapeHtml(node.address)}:${escapeHtml(node.api_port || 62051)}</option>`).join('') || '<option value="">No nodes available</option>'; select.value = value || (state.nodes[0] || {}).id || ''; }
-function resetCoreCreateForm() { coreCreateForm.reset(); fillNodeSelect($('#createCoreNode')); $('#createCoreEnabled').checked = true; setMessage(coreCreateMessage, ''); }
+
 async function openCoreCreateModal() {
-  setMessage(coreCreateMessage, '');
   if (!state.nodes.length) {
-    try { await loadNodes(); } catch (error) { console.error('Cannot refresh nodes before creating core', error); }
+    await loadNodes();
   }
-  resetCoreCreateForm();
-  coreCreateModal.classList.remove('hidden');
-  if (!state.nodes.length) setMessage(coreCreateMessage, 'Create at least one node before creating a core.', 'warning');
-  setTimeout(() => $('#createCoreName').focus(), 50);
+
+  if (!state.nodes.length) {
+    showToast("No nodes available. Please add a node first.", "warning");
+    return;
+  }
+
+  var select = $("#createCoreNode");
+  if (select) fillNodeSelect(select, "");
+
+  var modal = $("#coreCreateModal");
+  if (modal) modal.classList.remove("hidden");
 }
-function closeCoreCreateModal() { coreCreateModal.classList.add('hidden'); }
-coreCreateForm.addEventListener('submit', async (event) => {
-  event.preventDefault();
-  const submit = coreCreateForm.querySelector('button[type="submit"]');
-  setMessage(coreCreateMessage, 'Creating core...');
-  if (submit) submit.disabled = true;
-  try {
-    const payload = { name: $('#createCoreName').value.trim(), node_id: $('#createCoreNode').value, enabled: $('#createCoreEnabled').checked, inbounds: [], balancers: [], dependencies: [] };
-    if (!payload.name) throw new Error('Core name is required.');
-    if (!payload.node_id) throw new Error('Select a node first. If there are no nodes, create a node first.');
-    const data = await api('/api/cores', { method: 'POST', body: JSON.stringify(payload) });
-    if (!data.core?.id) throw new Error('Server did not return the created core id.');
-    setMessage(coreCreateMessage, 'Core created. Opening editor...', 'success');
-    await refreshAll();
-    closeCoreCreateModal();
-    openCoreEditorPage(data.core);
-  } catch (error) {
-    console.error('Create core failed', error);
-    setMessage(coreCreateMessage, error.message || 'Cannot create core.', 'error');
-  } finally {
-    if (submit) submit.disabled = false;
+
+function closeCoreCreateModal() {
+  var modal = $("#coreCreateModal");
+  if (modal) modal.classList.add("hidden");
+  var form = $("#coreCreateForm");
+  if (form) form.reset();
+}
+
+async function createCore(e) {
+  e.preventDefault();
+  var nameEl = $("#createCoreName");
+  var nodeEl = $("#createCoreNode");
+  var submitBtn = e.target.querySelector('[type="submit"]');
+
+  var name = nameEl ? nameEl.value.trim() : "";
+  var node_id = nodeEl ? parseInt(nodeEl.value, 10) : 0;
+
+  if (!name) {
+    showToast("Core name is required.", "warning");
+    return;
   }
-});
-async function deleteCore(id) { if (!id || !confirm('Delete this core?')) return; try { await api(`/api/cores/${encodeURIComponent(id)}`, { method: 'DELETE' }); await refreshAll(); if (state.editingCore && state.editingCore.id === id) switchPage('cores'); } catch (error) { alert(error.message || 'Cannot delete core.'); } }
-async function previewCore(id) { try { const data = await api(`/api/cores/${encodeURIComponent(id)}/preview`); const text = JSON.stringify(data.node_config_preview, null, 2); const w = window.open('', '_blank'); if (w) { w.document.write(`<pre style="background:#0b0e14;color:#eef3ff;padding:24px;white-space:pre-wrap;font-family:monospace">${escapeHtml(text)}</pre>`); w.document.close(); } else { alert(text.slice(0, 4000)); } } catch (error) { alert(error.message || 'Cannot preview core.'); } }
+  if (!node_id) {
+    showToast("Please select a node.", "warning");
+    return;
+  }
+
+  var origText = submitBtn ? submitBtn.textContent : "";
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Creating\u2026";
+  }
+
+  try {
+    var data = await api("/api/cores", {
+      method: "POST",
+      body: JSON.stringify({ name: name, node_id: node_id }),
+    });
+    if (data.ok) {
+      closeCoreCreateModal();
+      showToast("Core created.", "success");
+      await refreshAll();
+      openCoreEditorPage(data.core);
+    }
+  } catch (err) {
+    showToast(err.message || "Failed to create core.", "error");
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = origText;
+    }
+  }
+}
+
+async function deleteCore(id) {
+  var core = coreById(id);
+  var name = core ? core.name : "Core #" + id;
+  var confirmed = await showConfirm(
+    'Are you sure you want to delete "' + name + '"? This cannot be undone.',
+    "Delete Core",
+    "Delete",
+    "danger",
+  );
+  if (!confirmed) return;
+
+  try {
+    await api("/api/cores/" + id, { method: "DELETE" });
+    showToast("Core deleted.", "success");
+    if (state.editingCore && state.editingCore.id === id) switchPage("cores");
+    await refreshAll();
+  } catch (err) {
+    showToast(err.message || "Failed to delete core.", "error");
+  }
+}
+
+// ============================================================
+// 13. CORE EDITOR
+// ============================================================
 
 function bindCoreEditorHeader() {
-  if (!state.editorDraft) return;
-  $('#editorCoreName').value = state.editorDraft.name || '';
-  fillNodeSelect($('#editorCoreNode'), state.editorDraft.node_id || '');
-  $('#editorCoreEnabled').checked = Boolean(state.editorDraft.enabled !== false);
-  setMessage(coreEditorMessage, '');
+  var draft = state.editorDraft;
+  if (!draft) return;
+  var nameEl = $("#editorCoreName");
+  var nodeEl = $("#editorCoreNode");
+  var enabledEl = $("#editorCoreEnabled");
+  if (nameEl) nameEl.value = draft.name || "";
+  if (nodeEl) fillNodeSelect(nodeEl, draft.node_id);
+  if (enabledEl) enabledEl.checked = !!draft.enabled;
 }
+
 function syncEditorHeaderToDraft() {
   if (!state.editorDraft) return;
-  state.editorDraft.name = $('#editorCoreName').value.trim();
-  state.editorDraft.node_id = $('#editorCoreNode').value;
-  state.editorDraft.enabled = $('#editorCoreEnabled').checked;
+  var nameEl = $("#editorCoreName");
+  var nodeEl = $("#editorCoreNode");
+  var enabledEl = $("#editorCoreEnabled");
+  if (nameEl) state.editorDraft.name = nameEl.value.trim();
+  if (nodeEl) state.editorDraft.node_id = parseInt(nodeEl.value, 10) || null;
+  if (enabledEl) state.editorDraft.enabled = enabledEl.checked;
 }
+
 function switchCoreTab(tab) {
   state.currentCoreTab = tab;
-  $$('.tab').forEach(btn => btn.classList.toggle('active', btn.dataset.coreTab === tab));
-  $$('.tab-panel').forEach(panel => panel.classList.remove('active'));
-  const target = { inbounds: '#tabInbounds', routing: '#tabRouting', balancers: '#tabBalancers', dependencies: '#tabDependencies', preview: '#tabPreview' }[tab];
-  $(target).classList.add('active');
-  if (tab === 'preview') renderPreviewBox();
+  $$(".tab-btn").forEach(function (btn) {
+    btn.classList.toggle("active", btn.dataset.tab === tab);
+  });
+  $$(".tab-panel").forEach(function (panel) {
+    panel.classList.toggle("active", panel.dataset.tab === tab);
+  });
+  if (tab === "preview") renderPreviewBox();
 }
+
 function renderCoreEditor() {
-  if (!state.editorDraft) return;
   renderInboundEditor();
   renderRoutingEditor();
   renderBalancerEditor();
   renderDependencyEditor();
+  updateTabBadges();
 }
-function defaultInbound() { return { name: `inbound-${(state.editorDraft.inbounds || []).length + 1}`, bind_ip: '0.0.0.0', public_host: '', port_mode: 'fixed', fixed_ports: [], random_count: 1, target_type: 'static', target_host: '127.0.0.1', target_port: 80, target_balancer: '', certificate: '', enabled: true, notes: '' }; }
-function defaultBalancer() { return { alias: `balancer-${(state.editorDraft.balancers || []).length + 1}`, strategy: 'round_robin', endpoints: [], enabled: true, notes: '' }; }
-function defaultEndpoint() { return { type: 'static', host: '127.0.0.1', port: 80, node_id: '', core_id: '', inbound_name: '', weight: 1, certificate: '', enabled: true, notes: '' }; }
-function defaultDependency() { return { type: 'core', ref_id: '', required: true, notes: '' }; }
-function portsToText(ports) { return Array.isArray(ports) ? ports.join(',') : String(ports || ''); }
-function parsePorts(text) { return String(text || '').split(',').map(p => Number(p.trim())).filter(p => Number.isInteger(p) && p >= 1 && p <= 65535); }
-function currentBalancerAliases() { return (state.editorDraft?.balancers || []).map(b => b.alias).filter(Boolean); }
+
+function updateTabBadges() {
+  var draft = state.editorDraft;
+  if (!draft) return;
+  var ib = $("#inboundTabBadge");
+  var bb = $("#balancerTabBadge");
+  if (ib) ib.textContent = (draft.inbounds || []).length;
+  if (bb) bb.textContent = (draft.balancers || []).length;
+}
+
+function defaultInbound() {
+  return {
+    name: "",
+    bind_ip: "0.0.0.0",
+    port_mode: "fixed",
+    fixed_ports: [],
+    random_count: 1,
+    target_type: "static",
+    target_host: "",
+    target_port: "",
+    target_balancer: "",
+    certificate: "",
+    enabled: true,
+    notes: "",
+  };
+}
+
+function defaultBalancer() {
+  return {
+    alias: "",
+    strategy: "round_robin",
+    endpoints: [],
+    enabled: true,
+    notes: "",
+  };
+}
+
+function defaultEndpoint() {
+  return {
+    type: "static",
+    host: "",
+    port: "",
+    node_id: "",
+    core_id: "",
+    inbound_name: "",
+    weight: 1,
+    certificate: "",
+    enabled: true,
+    notes: "",
+  };
+}
+
+function defaultDependency() {
+  return { type: "core", ref_id: "", required: true, notes: "" };
+}
+
+function portsToText(ports) {
+  return Array.isArray(ports) ? ports.join(",") : String(ports || "");
+}
+
+function parsePorts(text) {
+  return String(text)
+    .split(",")
+    .map(function (p) {
+      return parseInt(p.trim(), 10);
+    })
+    .filter(function (p) {
+      return p >= 1 && p <= 65535;
+    });
+}
+
+function currentBalancerAliases() {
+  if (!state.editorDraft || !Array.isArray(state.editorDraft.balancers))
+    return [];
+  return state.editorDraft.balancers
+    .map(function (b) {
+      return b.alias;
+    })
+    .filter(Boolean);
+}
+
+// --- Inbound Editor ---
 
 function renderInboundEditor() {
-  const list = $('#inboundEditorList'); list.innerHTML = '';
-  if (!state.editorDraft.inbounds.length) { list.innerHTML = '<div class="empty-state">No inbounds yet. Add one to define listener ports.</div>'; return; }
-  state.editorDraft.inbounds.forEach((inbound, index) => {
-    const card = document.createElement('article'); card.className = 'builder-card inbound-card';
-    const isRandom = inbound.port_mode === 'random';
-    card.innerHTML = `<div class="builder-card-head"><strong>${escapeHtml(inbound.name || `Inbound ${index + 1}`)}</strong><button class="mini-btn danger-mini" type="button" data-remove-inbound="${index}">Remove</button></div><div class="advanced-grid"><label class="field"><span>Name</span><input data-in-index="${index}" data-field="name" value="${escapeHtml(inbound.name || '')}" placeholder="vless-us-000" /></label><label class="field"><span>Bind IP</span><input data-in-index="${index}" data-field="bind_ip" value="${escapeHtml(inbound.bind_ip || '0.0.0.0')}" placeholder="0.0.0.0" /></label><label class="field"><span>Port Mode</span><select data-in-index="${index}" data-field="port_mode"><option value="fixed">Fixed ports</option><option value="random">Random ports</option></select></label><label class="field ${isRandom ? 'hidden' : ''}" data-port-fixed><span>Ports</span><input data-in-index="${index}" data-field="fixed_ports_text" value="${escapeHtml(portsToText(inbound.fixed_ports))}" placeholder="31648,30943,31042" /><small>Comma separated ports.</small></label><label class="field ${isRandom ? '' : 'hidden'}" data-port-random><span>Random Port Count</span><input data-in-index="${index}" data-field="random_count" type="number" min="1" max="4096" value="${escapeHtml(inbound.random_count || 1)}" /><small>The runtime will allocate this many free ports.</small></label><label class="field wide"><span>Inbound TLS Certificate</span><textarea data-in-index="${index}" data-field="certificate" placeholder="Optional public certificate for this inbound">${escapeHtml(inbound.certificate || '')}</textarea></label><label class="checkline"><input data-in-index="${index}" data-field="enabled" type="checkbox" ${inbound.enabled === false ? '' : 'checked'} /> Enabled</label></div>`;
-    card.querySelector('[data-field="port_mode"]').value = inbound.port_mode || 'fixed';
-    list.appendChild(card);
-  });
-  $$('[data-remove-inbound]').forEach(btn => btn.addEventListener('click', () => { state.editorDraft.inbounds.splice(Number(btn.dataset.removeInbound), 1); renderCoreEditor(); }));
-  $$('#inboundEditorList [data-field]').forEach(bindInboundField);
-}
-function bindInboundField(el) {
-  const index = Number(el.dataset.inIndex); const field = el.dataset.field;
-  el.addEventListener(field === 'enabled' ? 'change' : 'input', () => {
-    const inbound = state.editorDraft.inbounds[index]; if (!inbound) return;
-    if (field === 'enabled') inbound.enabled = el.checked;
-    else if (field === 'fixed_ports_text') inbound.fixed_ports = parsePorts(el.value);
-    else if (field === 'random_count') inbound.random_count = Math.max(1, Number(el.value || 1));
-    else inbound[field] = el.value;
-    if (field === 'port_mode') { renderInboundEditor(); renderRoutingEditor(); }
-    if (field === 'name') { renderRoutingEditor(); updateBalancerEndpointSelectors(); }
-  });
-  el.addEventListener('change', () => { if (field === 'fixed_ports_text') state.editorDraft.inbounds[index].fixed_ports = parsePorts(el.value); });
-}
-function renderRoutingEditor() {
-  const list = $('#routingEditorList'); list.innerHTML = '';
-  if (!state.editorDraft.inbounds.length) { list.innerHTML = '<div class="empty-state">Add an inbound first, then configure routing here.</div>'; return; }
-  state.editorDraft.inbounds.forEach((inbound, index) => {
-    const aliases = currentBalancerAliases(); const isBalancer = inbound.target_type === 'balancer';
-    const card = document.createElement('article'); card.className = 'builder-card route-card';
-    card.innerHTML = `<div class="builder-card-head"><strong>${escapeHtml(inbound.name || `Inbound ${index + 1}`)} Routing</strong><span class="muted-text">${escapeHtml(inbound.port_mode === 'random' ? `${inbound.random_count || 1} random port(s)` : portsToText(inbound.fixed_ports) || 'no ports')}</span></div><div class="advanced-grid"><label class="field"><span>Route Target</span><select data-route-index="${index}" data-route-field="target_type"><option value="static">Direct Static IP:Port</option><option value="balancer">Balancer Alias</option></select></label><label class="field ${isBalancer ? 'hidden' : ''}" data-route-static><span>Target Host</span><input data-route-index="${index}" data-route-field="target_host" value="${escapeHtml(inbound.target_host || '127.0.0.1')}" /></label><label class="field ${isBalancer ? 'hidden' : ''}" data-route-static><span>Target Port</span><input data-route-index="${index}" data-route-field="target_port" type="number" min="1" max="65535" value="${escapeHtml(inbound.target_port || 80)}" /></label><label class="field wide ${isBalancer ? '' : 'hidden'}" data-route-balancer><span>Balancer</span><select data-route-index="${index}" data-route-field="target_balancer">${aliases.map(alias => `<option value="${escapeHtml(alias)}">${escapeHtml(alias)}</option>`).join('') || '<option value="">No balancer yet</option>'}</select><small>Create balancers in the Balancers tab.</small></label><label class="field wide"><span>Routing Notes</span><input data-route-index="${index}" data-route-field="notes" value="${escapeHtml(inbound.notes || '')}" placeholder="Optional note" /></label></div>`;
-    card.querySelector('[data-route-field="target_type"]').value = inbound.target_type || 'static';
-    const balSelect = card.querySelector('[data-route-field="target_balancer"]'); if (balSelect) balSelect.value = inbound.target_balancer || (aliases[0] || '');
-    list.appendChild(card);
-  });
-  $$('#routingEditorList [data-route-field]').forEach((el) => {
-    const index = Number(el.dataset.routeIndex); const field = el.dataset.routeField;
-    el.addEventListener('input', () => applyRouteField(index, field, el));
-    el.addEventListener('change', () => { applyRouteField(index, field, el); if (field === 'target_type') renderRoutingEditor(); });
-  });
-}
-function applyRouteField(index, field, el) {
-  const inbound = state.editorDraft.inbounds[index]; if (!inbound) return;
-  if (field === 'target_port') inbound.target_port = Number(el.value || 80);
-  else inbound[field] = el.value;
-}
+  var container = $("#inboundEditorList");
+  if (!container || !state.editorDraft) return;
+  var inbounds = state.editorDraft.inbounds || [];
 
-function renderBalancerEditor() {
-  const list = $('#balancerEditorList'); list.innerHTML = '';
-  if (!state.editorDraft.balancers.length) { list.innerHTML = '<div class="empty-state">No balancers yet. Create a balancer alias when an inbound should distribute traffic.</div>'; return; }
-  state.editorDraft.balancers.forEach((balancer, index) => {
-    const card = document.createElement('article'); card.className = 'builder-card balancer-card';
-    card.innerHTML = `<div class="builder-card-head"><strong>${escapeHtml(balancer.alias || `Balancer ${index + 1}`)}</strong><button class="mini-btn danger-mini" type="button" data-remove-balancer="${index}">Remove</button></div><div class="advanced-grid"><label class="field"><span>Alias</span><input data-bal-index="${index}" data-bal-field="alias" value="${escapeHtml(balancer.alias || '')}" /></label><label class="field"><span>Strategy</span><select data-bal-index="${index}" data-bal-field="strategy"><option value="round_robin">Round Robin</option><option value="random">Random</option><option value="failover">Failover</option><option value="least_connections">Least Connections</option></select></label><label class="checkline"><input data-bal-index="${index}" data-bal-field="enabled" type="checkbox" ${balancer.enabled === false ? '' : 'checked'} /> Enabled</label><label class="field wide"><span>Notes</span><input data-bal-index="${index}" data-bal-field="notes" value="${escapeHtml(balancer.notes || '')}" /></label><div class="wide endpoint-list" id="endpointList_${index}"></div><button class="ghost-btn wide" type="button" data-add-endpoint="${index}">+ Add Endpoint</button></div>`;
-    card.querySelector('[data-bal-field="strategy"]').value = balancer.strategy || 'round_robin';
-    list.appendChild(card);
-    renderEndpointList(index);
-  });
-  $$('[data-remove-balancer]').forEach(btn => btn.addEventListener('click', () => { state.editorDraft.balancers.splice(Number(btn.dataset.removeBalancer), 1); renderCoreEditor(); }));
-  $$('[data-add-endpoint]').forEach(btn => btn.addEventListener('click', () => { const balancer = state.editorDraft.balancers[Number(btn.dataset.addEndpoint)]; balancer.endpoints = balancer.endpoints || []; balancer.endpoints.push(defaultEndpoint()); renderBalancerEditor(); }));
-  $$('#balancerEditorList [data-bal-field]').forEach((el) => {
-    const index = Number(el.dataset.balIndex); const field = el.dataset.balField;
-    el.addEventListener(field === 'enabled' ? 'change' : 'input', () => {
-      const bal = state.editorDraft.balancers[index]; if (!bal) return;
-      if (field === 'enabled') bal.enabled = el.checked; else bal[field] = el.value;
-      if (field === 'alias') renderRoutingEditor();
-    });
-  });
-}
-function renderEndpointList(balancerIndex) {
-  const balancer = state.editorDraft.balancers[balancerIndex];
-  const list = $(`#endpointList_${balancerIndex}`); if (!list) return;
-  list.innerHTML = '';
-  const endpoints = balancer.endpoints || [];
-  if (!endpoints.length) { list.innerHTML = '<div class="empty-state small-empty">No endpoints. Add static targets or choose an inbound from a saved node/core.</div>'; return; }
-  endpoints.forEach((endpoint, endpointIndex) => {
-    const isNodeInbound = endpoint.type === 'node_inbound';
-    const card = document.createElement('div'); card.className = 'endpoint-card';
-    card.innerHTML = `<div class="endpoint-grid"><label class="field"><span>Type</span><select data-ep-bal="${balancerIndex}" data-ep-index="${endpointIndex}" data-ep-field="type"><option value="static">Static IP:Port</option><option value="node_inbound">Node Inbound</option></select></label><label class="field ${isNodeInbound ? 'hidden' : ''}" data-ep-static><span>Host</span><input data-ep-bal="${balancerIndex}" data-ep-index="${endpointIndex}" data-ep-field="host" value="${escapeHtml(endpoint.host || '127.0.0.1')}" /></label><label class="field ${isNodeInbound ? 'hidden' : ''}" data-ep-static><span>Port</span><input data-ep-bal="${balancerIndex}" data-ep-index="${endpointIndex}" data-ep-field="port" type="number" min="1" max="65535" value="${escapeHtml(endpoint.port || 80)}" /></label><label class="field ${isNodeInbound ? '' : 'hidden'}" data-ep-inbound><span>Node</span><select data-ep-bal="${balancerIndex}" data-ep-index="${endpointIndex}" data-ep-field="node_id"></select></label><label class="field ${isNodeInbound ? '' : 'hidden'}" data-ep-inbound><span>Inbound</span><select data-ep-bal="${balancerIndex}" data-ep-index="${endpointIndex}" data-ep-field="inbound_name"></select></label><label class="field"><span>Weight</span><input data-ep-bal="${balancerIndex}" data-ep-index="${endpointIndex}" data-ep-field="weight" type="number" min="0" step="0.1" value="${escapeHtml(endpoint.weight ?? 1)}" /></label><label class="field wide"><span>Target Certificate</span><textarea data-ep-bal="${balancerIndex}" data-ep-index="${endpointIndex}" data-ep-field="certificate" placeholder="Optional certificate for HTTPS target/inbound">${escapeHtml(endpoint.certificate || '')}</textarea></label><label class="checkline"><input data-ep-bal="${balancerIndex}" data-ep-index="${endpointIndex}" data-ep-field="enabled" type="checkbox" ${endpoint.enabled === false ? '' : 'checked'} /> Enabled</label><button class="mini-btn danger-mini" type="button" data-remove-endpoint="${balancerIndex}:${endpointIndex}">Remove endpoint</button></div>`;
-    card.querySelector('[data-ep-field="type"]').value = endpoint.type || 'static';
-    list.appendChild(card);
-    fillEndpointNodeSelect(card.querySelector('[data-ep-field="node_id"]'), endpoint.node_id || '');
-    fillEndpointInboundSelect(card.querySelector('[data-ep-field="inbound_name"]'), endpoint.node_id || '', endpoint.inbound_name || '');
-  });
-  $$('[data-remove-endpoint]').forEach(btn => btn.addEventListener('click', () => { const [b, e] = btn.dataset.removeEndpoint.split(':').map(Number); state.editorDraft.balancers[b].endpoints.splice(e, 1); renderBalancerEditor(); }));
-  $$('#balancerEditorList [data-ep-field]').forEach((el) => {
-    const balIndex = Number(el.dataset.epBal); const epIndex = Number(el.dataset.epIndex); const field = el.dataset.epField;
-    const handler = () => { const ep = state.editorDraft.balancers[balIndex]?.endpoints?.[epIndex]; if (!ep) return; if (field === 'enabled') ep.enabled = el.checked; else if (field === 'port' || field === 'weight') ep[field] = Number(el.value || (field === 'port' ? 80 : 1)); else ep[field] = el.value; if (field === 'node_id') { ep.inbound_name = ''; renderBalancerEditor(); } if (field === 'type') renderBalancerEditor(); };
-    el.addEventListener(field === 'enabled' ? 'change' : 'input', handler);
-    el.addEventListener('change', handler);
-  });
-}
-function fillEndpointNodeSelect(select, value = '') { if (!select) return; select.innerHTML = state.nodes.map(node => `<option value="${escapeHtml(node.id)}">${escapeHtml(node.name)}</option>`).join('') || '<option value="">No nodes</option>'; select.value = value || (state.nodes[0] || {}).id || ''; }
-function fillEndpointInboundSelect(select, nodeId, value = '') { if (!select) return; const items = state.inboundCatalog.filter(item => !nodeId || item.node_id === nodeId); select.innerHTML = items.map(item => `<option value="${escapeHtml(item.inbound_name)}">${escapeHtml(item.core_name)} / ${escapeHtml(item.inbound_name)}</option>`).join('') || '<option value="">No saved inbounds</option>'; select.value = value || (items[0] || {}).inbound_name || ''; }
-function updateBalancerEndpointSelectors() { renderBalancerEditor(); }
-
-function renderDependencyEditor() {
-  const list = $('#dependencyEditorList'); list.innerHTML = '';
-  const deps = state.editorDraft.dependencies || [];
-  if (!deps.length) { list.innerHTML = '<div class="empty-state">No dependencies. Add them only when an apply/deploy step must wait for another node or core.</div>'; return; }
-  deps.forEach((dep, index) => {
-    const card = document.createElement('article'); card.className = 'builder-card dependency-card';
-    const options = dependencyOptions(dep.type || 'core', dep.ref_id || '');
-    card.innerHTML = `<div class="builder-card-head"><strong>Dependency</strong><button class="mini-btn danger-mini" type="button" data-remove-dep="${index}">Remove</button></div><div class="advanced-grid"><label class="field"><span>Type</span><select data-dep-index="${index}" data-dep-field="type"><option value="core">Core</option><option value="node">Node</option></select></label><label class="field"><span>Reference</span><select data-dep-index="${index}" data-dep-field="ref_id">${options}</select></label><label class="checkline"><input data-dep-index="${index}" data-dep-field="required" type="checkbox" ${dep.required === false ? '' : 'checked'} /> Required</label><label class="field wide"><span>Notes</span><input data-dep-index="${index}" data-dep-field="notes" value="${escapeHtml(dep.notes || '')}" /></label></div>`;
-    card.querySelector('[data-dep-field="type"]').value = dep.type || 'core';
-    list.appendChild(card);
-  });
-  $$('[data-remove-dep]').forEach(btn => btn.addEventListener('click', () => { state.editorDraft.dependencies.splice(Number(btn.dataset.removeDep), 1); renderDependencyEditor(); }));
-  $$('#dependencyEditorList [data-dep-field]').forEach((el) => {
-    const index = Number(el.dataset.depIndex); const field = el.dataset.depField;
-    const handler = () => { const dep = state.editorDraft.dependencies[index]; if (!dep) return; if (field === 'required') dep.required = el.checked; else dep[field] = el.value; if (field === 'type') { dep.ref_id = ''; renderDependencyEditor(); } };
-    el.addEventListener(field === 'required' ? 'change' : 'input', handler);
-    el.addEventListener('change', handler);
-  });
-}
-function dependencyOptions(type, selected) {
-  const items = type === 'node' ? state.nodes.map(n => ({ id: n.id, label: n.name })) : state.cores.filter(c => !state.editorDraft || c.id !== state.editorDraft.id).map(c => ({ id: c.id, label: c.name }));
-  if (!items.length) return '<option value="">No items available</option>';
-  return items.map(item => `<option value="${escapeHtml(item.id)}" ${item.id === selected ? 'selected' : ''}>${escapeHtml(item.label)}</option>`).join('');
-}
-
-function renderPreviewBox() {
-  if (!state.editorDraft) return;
-  const preview = { version: 1, node_id: state.editorDraft.node_id, generated_by: 'panel-preview-draft', cores: [state.editorDraft] };
-  $('#corePreviewBox').textContent = JSON.stringify(preview, null, 2);
-}
-async function refreshPreviewFromServer() {
-  if (!state.editingCore?.id) return renderPreviewBox();
-  try { const data = await api(`/api/cores/${encodeURIComponent(state.editingCore.id)}/preview`); $('#corePreviewBox').textContent = JSON.stringify(data.node_config_preview, null, 2); }
-  catch (error) { $('#corePreviewBox').textContent = error.message || 'Cannot load preview.'; }
-}
-function collectEditorPayload() { syncEditorHeaderToDraft(); return { name: state.editorDraft.name, node_id: state.editorDraft.node_id, enabled: state.editorDraft.enabled, inbounds: state.editorDraft.inbounds || [], balancers: state.editorDraft.balancers || [], dependencies: state.editorDraft.dependencies || [] }; }
-async function saveCoreEditor() {
-  if (!state.editingCore?.id || !state.editorDraft) return;
-  setMessage(coreEditorMessage, 'Saving core...');
-  try {
-    const payload = collectEditorPayload();
-    if (!payload.name) throw new Error('Core name is required.');
-    if (!payload.node_id) throw new Error('Select a node first.');
-    const data = await api(`/api/cores/${encodeURIComponent(state.editingCore.id)}`, { method: 'PUT', body: JSON.stringify(payload) });
-    state.editingCore = data.core; state.editorDraft = deepCopy(data.core);
-    setMessage(coreEditorMessage, 'Core saved successfully.', 'success');
-    await refreshAll();
-    bindCoreEditorHeader();
-    renderCoreEditor();
-  } catch (error) { setMessage(coreEditorMessage, error.message || 'Cannot save core.', 'error'); }
-}
-
-async function loadLogSources() {
-  const data = await api('/api/logs/sources');
-  state.logSources = data.sources || [];
-  const select = $('#logSourceSelect');
-  if (!select) return;
-  const previous = select.value || state.currentLogSource || 'panel';
-  select.innerHTML = state.logSources.map((source) => `<option value="${escapeHtml(source.id)}">${escapeHtml(source.label)}</option>`).join('') || '<option value="panel">Panel logs</option>';
-  select.value = state.logSources.some(s => s.id === previous) ? previous : 'panel';
-  state.currentLogSource = select.value;
-}
-function renderLogs(data) {
-  const output = $('#logsOutput');
-  if (!output) return;
-  if (!data.ok) {
-    output.textContent = data.error || 'Could not read logs from this source.';
-    setMessage($('#logsMessage'), data.error || 'Could not read logs from this source.', 'error');
+  if (!inbounds.length) {
+    container.innerHTML =
+      '<div class="editor-empty">No inbounds yet. Click "Add Inbound" to create one.</div>';
     return;
   }
-  const lines = data.lines || [];
-  output.textContent = lines.length ? lines.join('\n') : 'No log lines found for this filter.';
-  const path = data.path ? `Source path: ${data.path}` : '';
-  setMessage($('#logsMessage'), `${lines.length} line(s) loaded. ${path}`.trim(), lines.length ? 'success' : 'warning');
+
+  container.innerHTML = inbounds
+    .map(function (ib, i) {
+      var isFixed = ib.port_mode !== "random";
+      return (
+        '<div class="editor-card" data-in-index="' +
+        i +
+        '">' +
+        '<div class="editor-card-header">' +
+        '<span class="editor-card-title">Inbound ' +
+        (i + 1) +
+        ": " +
+        escapeHtml(ib.name || "Unnamed") +
+        "</span>" +
+        '<button class="btn btn-xs btn-danger" data-in-index="' +
+        i +
+        '" data-action="remove-inbound">Remove</button>' +
+        "</div>" +
+        '<div class="editor-card-body">' +
+        '<div class="form-row">' +
+        '<div class="form-group"><label>Name</label>' +
+        '<input type="text" class="form-input" data-in-index="' +
+        i +
+        '" data-field="name" value="' +
+        escapeHtml(ib.name || "") +
+        '"></div>' +
+        '<div class="form-group"><label>Bind IP</label>' +
+        '<input type="text" class="form-input" data-in-index="' +
+        i +
+        '" data-field="bind_ip" value="' +
+        escapeHtml(ib.bind_ip || "0.0.0.0") +
+        '"></div>' +
+        "</div>" +
+        '<div class="form-row">' +
+        '<div class="form-group"><label>Port Mode</label>' +
+        '<select class="form-input" data-in-index="' +
+        i +
+        '" data-field="port_mode">' +
+        '<option value="fixed"' +
+        (isFixed ? " selected" : "") +
+        ">Fixed</option>" +
+        '<option value="random"' +
+        (!isFixed ? " selected" : "") +
+        ">Random</option>" +
+        "</select></div>" +
+        '<div class="form-group"' +
+        (!isFixed ? ' style="display:none"' : "") +
+        ' data-in-fixed="' +
+        i +
+        '"><label>Fixed Ports (comma-separated)</label>' +
+        '<input type="text" class="form-input" data-in-index="' +
+        i +
+        '" data-field="fixed_ports_text" value="' +
+        escapeHtml(portsToText(ib.fixed_ports)) +
+        '"></div>' +
+        '<div class="form-group"' +
+        (isFixed ? ' style="display:none"' : "") +
+        ' data-in-random="' +
+        i +
+        '"><label>Random Count</label>' +
+        '<input type="number" class="form-input" min="1" data-in-index="' +
+        i +
+        '" data-field="random_count" value="' +
+        escapeHtml(String(ib.random_count || 1)) +
+        '"></div>' +
+        "</div>" +
+        '<div class="form-row"><div class="form-group"><label>Certificate (optional)</label>' +
+        '<textarea class="form-input" rows="2" data-in-index="' +
+        i +
+        '" data-field="certificate">' +
+        escapeHtml(ib.certificate || "") +
+        "</textarea></div>" +
+        "</div>" +
+        '<div class="form-row"><div class="form-group form-group--inline">' +
+        '<input type="checkbox" id="inbEnabled_' +
+        i +
+        '" data-in-index="' +
+        i +
+        '" data-field="enabled"' +
+        (ib.enabled !== false ? " checked" : "") +
+        ">" +
+        '<label for="inbEnabled_' +
+        i +
+        '">Enabled</label>' +
+        "</div></div>" +
+        "</div>" +
+        "</div>"
+      );
+    })
+    .join("");
+
+  container.querySelectorAll("[data-in-index]").forEach(function (el) {
+    if (el.tagName === "BUTTON" && el.dataset.action === "remove-inbound") {
+      el.addEventListener("click", function () {
+        state.editorDraft.inbounds.splice(parseInt(el.dataset.inIndex, 10), 1);
+        renderCoreEditor();
+      });
+    } else if (el.tagName !== "BUTTON") {
+      bindInboundField(el);
+    }
+  });
 }
+
+function bindInboundField(el) {
+  var idx = parseInt(el.dataset.inIndex, 10);
+  var field = el.dataset.field;
+  if (isNaN(idx) || !field) return;
+
+  function update() {
+    var ib = state.editorDraft.inbounds[idx];
+    if (!ib) return;
+
+    if (el.type === "checkbox") {
+      ib[field] = el.checked;
+    } else if (field === "fixed_ports_text") {
+      ib.fixed_ports = parsePorts(el.value);
+    } else if (field === "random_count") {
+      ib.random_count = Math.max(1, Number(el.value) || 1);
+    } else if (field === "port_mode") {
+      ib.port_mode = el.value;
+      var cont = $("#inboundEditorList");
+      if (cont) {
+        var fixEl = cont.querySelector('[data-in-fixed="' + idx + '"]');
+        var rndEl = cont.querySelector('[data-in-random="' + idx + '"]');
+        var isFix = el.value !== "random";
+        if (fixEl) fixEl.style.display = isFix ? "" : "none";
+        if (rndEl) rndEl.style.display = !isFix ? "" : "none";
+      }
+      renderRoutingEditor();
+    } else {
+      ib[field] = el.value;
+    }
+
+    if (field === "name") {
+      var card = el.closest(".editor-card");
+      if (card) {
+        var titleEl = card.querySelector(".editor-card-title");
+        if (titleEl)
+          titleEl.textContent =
+            "Inbound " + (idx + 1) + ": " + (el.value || "Unnamed");
+      }
+      renderRoutingEditor();
+      renderBalancerEditor();
+    }
+  }
+
+  el.addEventListener("input", update);
+  el.addEventListener("change", update);
+}
+
+// --- Routing Editor ---
+
+function renderRoutingEditor() {
+  var container = $("#routingEditorList");
+  if (!container || !state.editorDraft) return;
+  var inbounds = state.editorDraft.inbounds || [];
+  var aliases = currentBalancerAliases();
+
+  if (!inbounds.length) {
+    container.innerHTML =
+      '<div class="editor-empty">Add inbounds first to configure routing.</div>';
+    return;
+  }
+
+  container.innerHTML = inbounds
+    .map(function (ib, i) {
+      var portSummary =
+        ib.port_mode === "random"
+          ? (ib.random_count || 1) + " random port(s)"
+          : portsToText(ib.fixed_ports) || "No ports";
+      var isStatic = ib.target_type !== "balancer";
+
+      var balOpts = aliases
+        .map(function (a) {
+          return (
+            '<option value="' +
+            escapeHtml(a) +
+            '"' +
+            (ib.target_balancer === a ? " selected" : "") +
+            ">" +
+            escapeHtml(a) +
+            "</option>"
+          );
+        })
+        .join("");
+
+      return (
+        '<div class="editor-card" data-rt-index="' +
+        i +
+        '">' +
+        '<div class="editor-card-header">' +
+        '<span class="editor-card-title">' +
+        escapeHtml(ib.name || "Inbound " + (i + 1)) +
+        " \u2014 " +
+        escapeHtml(portSummary) +
+        "</span>" +
+        "</div>" +
+        '<div class="editor-card-body">' +
+        '<div class="form-row"><div class="form-group"><label>Target Type</label>' +
+        '<select class="form-input" data-rt-index="' +
+        i +
+        '" data-field="target_type">' +
+        '<option value="static"' +
+        (isStatic ? " selected" : "") +
+        ">Static</option>" +
+        '<option value="balancer"' +
+        (!isStatic ? " selected" : "") +
+        ">Balancer</option>" +
+        "</select></div></div>" +
+        '<div class="form-row"' +
+        (!isStatic ? ' style="display:none"' : "") +
+        ' data-rt-static="' +
+        i +
+        '">' +
+        '<div class="form-group"><label>Target Host</label>' +
+        '<input type="text" class="form-input" data-rt-index="' +
+        i +
+        '" data-field="target_host" value="' +
+        escapeHtml(ib.target_host || "") +
+        '"></div>' +
+        '<div class="form-group"><label>Target Port</label>' +
+        '<input type="text" class="form-input" data-rt-index="' +
+        i +
+        '" data-field="target_port" value="' +
+        escapeHtml(String(ib.target_port || "")) +
+        '"></div>' +
+        "</div>" +
+        '<div class="form-row"' +
+        (isStatic ? ' style="display:none"' : "") +
+        ' data-rt-balancer="' +
+        i +
+        '">' +
+        '<div class="form-group"><label>Balancer</label>' +
+        '<select class="form-input" data-rt-index="' +
+        i +
+        '" data-field="target_balancer">' +
+        '<option value="">— Select Balancer —</option>' +
+        balOpts +
+        "</select></div>" +
+        "</div>" +
+        '<div class="form-row"><div class="form-group"><label>Notes</label>' +
+        '<input type="text" class="form-input" data-rt-index="' +
+        i +
+        '" data-field="notes" value="' +
+        escapeHtml(ib.notes || "") +
+        '"></div>' +
+        "</div>" +
+        "</div>" +
+        "</div>"
+      );
+    })
+    .join("");
+
+  container.querySelectorAll("[data-rt-index]").forEach(function (el) {
+    function update() {
+      var idx = parseInt(el.dataset.rtIndex, 10);
+      var field = el.dataset.field;
+      var ib = state.editorDraft.inbounds[idx];
+      if (!ib) return;
+      if (field === "target_type") {
+        ib.target_type = el.value;
+        var isStatic = el.value !== "balancer";
+        var stRow = container.querySelector('[data-rt-static="' + idx + '"]');
+        var blRow = container.querySelector('[data-rt-balancer="' + idx + '"]');
+        if (stRow) stRow.style.display = isStatic ? "" : "none";
+        if (blRow) blRow.style.display = !isStatic ? "" : "none";
+      } else {
+        ib[field] = el.value;
+      }
+    }
+    el.addEventListener("input", update);
+    el.addEventListener("change", update);
+  });
+}
+
+// --- Balancer Editor ---
+
+function renderBalancerEditor() {
+  var container = $("#balancerEditorList");
+  if (!container || !state.editorDraft) return;
+  var balancers = state.editorDraft.balancers || [];
+
+  if (!balancers.length) {
+    container.innerHTML =
+      '<div class="editor-empty">No balancers yet. Click "Add Balancer" to create one.</div>';
+    return;
+  }
+
+  container.innerHTML = balancers
+    .map(function (bal, i) {
+      return (
+        '<div class="editor-card" data-bal-index="' +
+        i +
+        '">' +
+        '<div class="editor-card-header">' +
+        '<span class="editor-card-title">Balancer ' +
+        (i + 1) +
+        ": " +
+        escapeHtml(bal.alias || "Unnamed") +
+        "</span>" +
+        '<button class="btn btn-xs btn-danger" data-bal-index="' +
+        i +
+        '" data-action="remove-balancer">Remove</button>' +
+        "</div>" +
+        '<div class="editor-card-body">' +
+        '<div class="form-row">' +
+        '<div class="form-group"><label>Alias</label>' +
+        '<input type="text" class="form-input" data-bal-index="' +
+        i +
+        '" data-field="alias" value="' +
+        escapeHtml(bal.alias || "") +
+        '"></div>' +
+        '<div class="form-group"><label>Strategy</label>' +
+        '<select class="form-input" data-bal-index="' +
+        i +
+        '" data-field="strategy">' +
+        '<option value="round_robin"' +
+        (bal.strategy === "round_robin" ? " selected" : "") +
+        ">Round Robin</option>" +
+        '<option value="random"' +
+        (bal.strategy === "random" ? " selected" : "") +
+        ">Random</option>" +
+        '<option value="least_conn"' +
+        (bal.strategy === "least_conn" ? " selected" : "") +
+        ">Least Connections</option>" +
+        '<option value="ip_hash"' +
+        (bal.strategy === "ip_hash" ? " selected" : "") +
+        ">IP Hash</option>" +
+        "</select></div>" +
+        '<div class="form-group form-group--inline">' +
+        '<input type="checkbox" id="balEnabled_' +
+        i +
+        '" data-bal-index="' +
+        i +
+        '" data-field="enabled"' +
+        (bal.enabled !== false ? " checked" : "") +
+        ">" +
+        '<label for="balEnabled_' +
+        i +
+        '">Enabled</label></div>' +
+        "</div>" +
+        '<div class="form-row"><div class="form-group"><label>Notes</label>' +
+        '<input type="text" class="form-input" data-bal-index="' +
+        i +
+        '" data-field="notes" value="' +
+        escapeHtml(bal.notes || "") +
+        '"></div>' +
+        "</div>" +
+        '<div class="endpoints-section">' +
+        '<div class="endpoints-header">' +
+        "<span>Endpoints</span>" +
+        '<button class="btn btn-xs btn-secondary" data-bal-index="' +
+        i +
+        '" data-action="add-endpoint">+ Add Endpoint</button>' +
+        "</div>" +
+        '<div class="endpoints-list" id="endpointList_' +
+        i +
+        '"></div>' +
+        "</div>" +
+        "</div>" +
+        "</div>"
+      );
+    })
+    .join("");
+
+  container.querySelectorAll("[data-bal-index]").forEach(function (el) {
+    var action = el.dataset.action;
+    if (action === "remove-balancer") {
+      el.addEventListener("click", function () {
+        state.editorDraft.balancers.splice(
+          parseInt(el.dataset.balIndex, 10),
+          1,
+        );
+        renderCoreEditor();
+      });
+    } else if (action === "add-endpoint") {
+      el.addEventListener("click", function () {
+        var idx = parseInt(el.dataset.balIndex, 10);
+        state.editorDraft.balancers[idx].endpoints.push(defaultEndpoint());
+        renderEndpointList(idx);
+      });
+    } else if (el.tagName !== "BUTTON") {
+      (function () {
+        var balIdx = parseInt(el.dataset.balIndex, 10);
+        var field = el.dataset.field;
+        function update() {
+          var bal = state.editorDraft.balancers[balIdx];
+          if (!bal) return;
+          if (el.type === "checkbox") bal[field] = el.checked;
+          else bal[field] = el.value;
+          if (field === "alias") {
+            var card = el.closest(".editor-card");
+            if (card) {
+              var titleEl = card.querySelector(".editor-card-title");
+              if (titleEl)
+                titleEl.textContent =
+                  "Balancer " + (balIdx + 1) + ": " + (el.value || "Unnamed");
+            }
+            renderRoutingEditor();
+          }
+        }
+        el.addEventListener("input", update);
+        el.addEventListener("change", update);
+      })();
+    }
+  });
+
+  balancers.forEach(function (_, i) {
+    renderEndpointList(i);
+  });
+}
+
+function renderEndpointList(balancerIndex) {
+  var container = $("#endpointList_" + balancerIndex);
+  if (!container) return;
+  var bal = state.editorDraft.balancers[balancerIndex];
+  if (!bal) return;
+  var endpoints = bal.endpoints || [];
+
+  if (!endpoints.length) {
+    container.innerHTML =
+      '<div class="editor-empty editor-empty--sm">No endpoints. Add one above.</div>';
+    return;
+  }
+
+  container.innerHTML = endpoints
+    .map(function (ep, j) {
+      var isStatic = ep.type !== "node_inbound";
+      return (
+        '<div class="endpoint-card" data-ep-bal="' +
+        balancerIndex +
+        '" data-ep-index="' +
+        j +
+        '">' +
+        '<div class="endpoint-card-header">' +
+        "<span>Endpoint " +
+        (j + 1) +
+        "</span>" +
+        '<button class="btn btn-xs btn-danger" data-ep-bal="' +
+        balancerIndex +
+        '" data-ep-index="' +
+        j +
+        '" data-action="remove-ep">Remove</button>' +
+        "</div>" +
+        '<div class="form-row">' +
+        '<div class="form-group"><label>Type</label>' +
+        '<select class="form-input ep-field" data-ep-bal="' +
+        balancerIndex +
+        '" data-ep-index="' +
+        j +
+        '" data-field="type">' +
+        '<option value="static"' +
+        (isStatic ? " selected" : "") +
+        ">Static</option>" +
+        '<option value="node_inbound"' +
+        (!isStatic ? " selected" : "") +
+        ">Node Inbound</option>" +
+        "</select></div>" +
+        '<div class="form-group"' +
+        (!isStatic ? ' style="display:none"' : "") +
+        ' data-ep-static-g="' +
+        balancerIndex +
+        "-" +
+        j +
+        '"><label>Host</label>' +
+        '<input type="text" class="form-input ep-field" data-ep-bal="' +
+        balancerIndex +
+        '" data-ep-index="' +
+        j +
+        '" data-field="host" value="' +
+        escapeHtml(ep.host || "") +
+        '"></div>' +
+        '<div class="form-group"' +
+        (!isStatic ? ' style="display:none"' : "") +
+        ' data-ep-sport-g="' +
+        balancerIndex +
+        "-" +
+        j +
+        '"><label>Port</label>' +
+        '<input type="text" class="form-input ep-field" data-ep-bal="' +
+        balancerIndex +
+        '" data-ep-index="' +
+        j +
+        '" data-field="port" value="' +
+        escapeHtml(String(ep.port || "")) +
+        '"></div>' +
+        "</div>" +
+        '<div class="form-row"' +
+        (isStatic ? ' style="display:none"' : "") +
+        ' data-ep-ni-g="' +
+        balancerIndex +
+        "-" +
+        j +
+        '">' +
+        '<div class="form-group"><label>Node</label>' +
+        '<select class="form-input ep-field ep-node-sel" data-ep-bal="' +
+        balancerIndex +
+        '" data-ep-index="' +
+        j +
+        '" data-field="node_id"></select></div>' +
+        '<div class="form-group"><label>Inbound</label>' +
+        '<select class="form-input ep-field ep-inb-sel" data-ep-bal="' +
+        balancerIndex +
+        '" data-ep-index="' +
+        j +
+        '" data-field="inbound_name"></select></div>' +
+        "</div>" +
+        '<div class="form-row">' +
+        '<div class="form-group"><label>Weight</label>' +
+        '<input type="number" class="form-input ep-field" data-ep-bal="' +
+        balancerIndex +
+        '" data-ep-index="' +
+        j +
+        '" data-field="weight" min="1" value="' +
+        escapeHtml(String(ep.weight || 1)) +
+        '"></div>' +
+        '<div class="form-group"><label>Certificate</label>' +
+        '<input type="text" class="form-input ep-field" data-ep-bal="' +
+        balancerIndex +
+        '" data-ep-index="' +
+        j +
+        '" data-field="certificate" value="' +
+        escapeHtml(ep.certificate || "") +
+        '"></div>' +
+        '<div class="form-group form-group--inline">' +
+        '<input type="checkbox" id="epEnabled_' +
+        balancerIndex +
+        "_" +
+        j +
+        '" class="ep-field" data-ep-bal="' +
+        balancerIndex +
+        '" data-ep-index="' +
+        j +
+        '" data-field="enabled"' +
+        (ep.enabled !== false ? " checked" : "") +
+        ">" +
+        '<label for="epEnabled_' +
+        balancerIndex +
+        "_" +
+        j +
+        '">Enabled</label></div>' +
+        "</div>" +
+        "</div>"
+      );
+    })
+    .join("");
+
+  container.querySelectorAll(".ep-node-sel").forEach(function (sel) {
+    var j = parseInt(sel.dataset.epIndex, 10);
+    var ep = bal.endpoints[j];
+    fillEndpointNodeSelect(sel, ep ? ep.node_id : "");
+  });
+  container.querySelectorAll(".ep-inb-sel").forEach(function (sel) {
+    var j = parseInt(sel.dataset.epIndex, 10);
+    var ep = bal.endpoints[j];
+    fillEndpointInboundSelect(
+      sel,
+      ep ? ep.node_id : "",
+      ep ? ep.inbound_name : "",
+    );
+  });
+
+  container
+    .querySelectorAll('[data-action="remove-ep"]')
+    .forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var bi = parseInt(btn.dataset.epBal, 10);
+        var j = parseInt(btn.dataset.epIndex, 10);
+        state.editorDraft.balancers[bi].endpoints.splice(j, 1);
+        renderEndpointList(bi);
+      });
+    });
+
+  container.querySelectorAll(".ep-field").forEach(function (el) {
+    (function () {
+      var bi = parseInt(el.dataset.epBal, 10);
+      var j = parseInt(el.dataset.epIndex, 10);
+      var field = el.dataset.field;
+      function bindEp() {
+        var ep = state.editorDraft.balancers[bi].endpoints[j];
+        if (!ep) return;
+        if (el.type === "checkbox") {
+          ep[field] = el.checked;
+        } else if (field === "weight") {
+          ep.weight = Math.max(1, Number(el.value) || 1);
+        } else if (field === "node_id") {
+          ep.node_id = el.value;
+          var niG = container.querySelector(
+            '[data-ep-ni-g="' + bi + "-" + j + '"]',
+          );
+          if (niG) {
+            var inbSel = niG.querySelector(".ep-inb-sel");
+            if (inbSel) fillEndpointInboundSelect(inbSel, el.value, "");
+          }
+        } else if (field === "type") {
+          ep.type = el.value;
+          var isSt = el.value !== "node_inbound";
+          var stG = container.querySelector(
+            '[data-ep-static-g="' + bi + "-" + j + '"]',
+          );
+          var spG = container.querySelector(
+            '[data-ep-sport-g="' + bi + "-" + j + '"]',
+          );
+          var niG2 = container.querySelector(
+            '[data-ep-ni-g="' + bi + "-" + j + '"]',
+          );
+          if (stG) stG.style.display = isSt ? "" : "none";
+          if (spG) spG.style.display = isSt ? "" : "none";
+          if (niG2) niG2.style.display = !isSt ? "" : "none";
+        } else {
+          ep[field] = el.value;
+        }
+      }
+      el.addEventListener("input", bindEp);
+      el.addEventListener("change", bindEp);
+    })();
+  });
+}
+
+function fillEndpointNodeSelect(select, value) {
+  value = value || "";
+  if (!select) return;
+  select.innerHTML =
+    '<option value="">— Select Node —</option>' +
+    state.nodes
+      .map(function (n) {
+        return (
+          '<option value="' +
+          escapeHtml(String(n.id)) +
+          '"' +
+          (String(n.id) === String(value) ? " selected" : "") +
+          ">" +
+          escapeHtml(n.name || n.address) +
+          "</option>"
+        );
+      })
+      .join("");
+}
+
+function fillEndpointInboundSelect(select, nodeId, value) {
+  value = value || "";
+  nodeId = nodeId || "";
+  if (!select) return;
+  var filtered = (state.inboundCatalog || []).filter(function (ib) {
+    return String(ib.node_id) === String(nodeId);
+  });
+  select.innerHTML =
+    '<option value="">— Select Inbound —</option>' +
+    filtered
+      .map(function (ib) {
+        return (
+          '<option value="' +
+          escapeHtml(ib.name || "") +
+          '"' +
+          ((ib.name || "") === value ? " selected" : "") +
+          ">" +
+          escapeHtml(ib.name || "") +
+          "</option>"
+        );
+      })
+      .join("");
+}
+
+// --- Dependency Editor ---
+
+function renderDependencyEditor() {
+  var container = $("#dependencyEditorList");
+  if (!container || !state.editorDraft) return;
+  var deps = state.editorDraft.dependencies || [];
+
+  if (!deps.length) {
+    container.innerHTML =
+      '<div class="editor-empty">No dependencies configured.</div>';
+    return;
+  }
+
+  container.innerHTML = deps
+    .map(function (dep, i) {
+      return (
+        '<div class="editor-card" data-dep-index="' +
+        i +
+        '">' +
+        '<div class="editor-card-header">' +
+        '<span class="editor-card-title">Dependency ' +
+        (i + 1) +
+        "</span>" +
+        '<button class="btn btn-xs btn-danger" data-dep-index="' +
+        i +
+        '" data-action="remove-dep">Remove</button>' +
+        "</div>" +
+        '<div class="editor-card-body">' +
+        '<div class="form-row">' +
+        '<div class="form-group"><label>Type</label>' +
+        '<select class="form-input" data-dep-index="' +
+        i +
+        '" data-field="type">' +
+        '<option value="core"' +
+        (dep.type === "core" ? " selected" : "") +
+        ">Core</option>" +
+        '<option value="node"' +
+        (dep.type === "node" ? " selected" : "") +
+        ">Node</option>" +
+        "</select></div>" +
+        '<div class="form-group"><label>Reference</label>' +
+        '<select class="form-input dep-ref-sel" data-dep-index="' +
+        i +
+        '" data-field="ref_id">' +
+        dependencyOptions(dep.type, dep.ref_id) +
+        "</select></div>" +
+        '<div class="form-group form-group--inline">' +
+        '<input type="checkbox" id="depReq_' +
+        i +
+        '" data-dep-index="' +
+        i +
+        '" data-field="required"' +
+        (dep.required !== false ? " checked" : "") +
+        ">" +
+        '<label for="depReq_' +
+        i +
+        '">Required</label></div>' +
+        "</div>" +
+        '<div class="form-row"><div class="form-group"><label>Notes</label>' +
+        '<input type="text" class="form-input" data-dep-index="' +
+        i +
+        '" data-field="notes" value="' +
+        escapeHtml(dep.notes || "") +
+        '"></div>' +
+        "</div>" +
+        "</div>" +
+        "</div>"
+      );
+    })
+    .join("");
+
+  container.querySelectorAll("[data-dep-index]").forEach(function (el) {
+    if (el.dataset.action === "remove-dep") {
+      el.addEventListener("click", function () {
+        state.editorDraft.dependencies.splice(
+          parseInt(el.dataset.depIndex, 10),
+          1,
+        );
+        renderDependencyEditor();
+      });
+    } else {
+      (function () {
+        var depIdx = parseInt(el.dataset.depIndex, 10);
+        var field = el.dataset.field;
+        function update() {
+          var dep = state.editorDraft.dependencies[depIdx];
+          if (!dep) return;
+          if (el.type === "checkbox") dep[field] = el.checked;
+          else dep[field] = el.value;
+          if (field === "type") {
+            dep.ref_id = "";
+            var card = el.closest("[data-dep-index]");
+            if (card) {
+              var refSel = card.querySelector(".dep-ref-sel");
+              if (refSel) refSel.innerHTML = dependencyOptions(el.value, "");
+            }
+          }
+        }
+        el.addEventListener("input", update);
+        el.addEventListener("change", update);
+      })();
+    }
+  });
+}
+
+function dependencyOptions(type, selected) {
+  selected = selected || "";
+  if (type === "node") {
+    return state.nodes
+      .map(function (n) {
+        return (
+          '<option value="' +
+          escapeHtml(String(n.id)) +
+          '"' +
+          (String(n.id) === String(selected) ? " selected" : "") +
+          ">" +
+          escapeHtml(n.name || n.address) +
+          "</option>"
+        );
+      })
+      .join("");
+  }
+  var currentId = state.editingCore ? state.editingCore.id : null;
+  return state.cores
+    .filter(function (c) {
+      return c.id !== currentId;
+    })
+    .map(function (c) {
+      return (
+        '<option value="' +
+        escapeHtml(String(c.id)) +
+        '"' +
+        (String(c.id) === String(selected) ? " selected" : "") +
+        ">" +
+        escapeHtml(c.name || "Core #" + c.id) +
+        "</option>"
+      );
+    })
+    .join("");
+}
+
+// --- Preview ---
+
+function renderPreviewBox() {
+  var box = $("#corePreviewBox");
+  if (!box || !state.editorDraft) return;
+  syncEditorHeaderToDraft();
+  box.textContent = JSON.stringify(state.editorDraft, null, 2);
+}
+
+async function refreshPreviewFromServer() {
+  var box = $("#corePreviewBox");
+  var btn = $("#refreshPreviewButton");
+  if (!state.editingCore) {
+    renderPreviewBox();
+    return;
+  }
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Loading\u2026";
+  }
+  try {
+    var data = await api("/api/cores/" + state.editingCore.id + "/preview");
+    if (data.ok && box)
+      box.textContent = JSON.stringify(data.node_config_preview, null, 2);
+  } catch (err) {
+    showToast(err.message || "Failed to load preview.", "error");
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "Refresh from Server";
+    }
+  }
+}
+
+function collectEditorPayload() {
+  syncEditorHeaderToDraft();
+  var d = state.editorDraft;
+  return {
+    name: d.name,
+    node_id: d.node_id,
+    enabled: d.enabled,
+    inbounds: d.inbounds || [],
+    balancers: d.balancers || [],
+    dependencies: d.dependencies || [],
+  };
+}
+
+async function saveCoreEditor() {
+  if (!state.editingCore) return;
+  var payload = collectEditorPayload();
+  var saveBtns = $$("#saveCoreBtn, #saveCoreEditorBottom");
+  saveBtns.forEach(function (b) {
+    b.disabled = true;
+    b.textContent = "Saving\u2026";
+  });
+
+  try {
+    var data = await api("/api/cores/" + state.editingCore.id, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+    if (data.ok) {
+      state.editingCore = data.core;
+      state.editorDraft = deepCopy(data.core);
+      if (!Array.isArray(state.editorDraft.inbounds))
+        state.editorDraft.inbounds = [];
+      if (!Array.isArray(state.editorDraft.balancers))
+        state.editorDraft.balancers = [];
+      if (!Array.isArray(state.editorDraft.dependencies))
+        state.editorDraft.dependencies = [];
+      showToast("Core saved successfully.", "success");
+      await refreshAll();
+      bindCoreEditorHeader();
+      updateTabBadges();
+    }
+  } catch (err) {
+    showToast(err.message || "Failed to save core.", "error");
+  } finally {
+    saveBtns.forEach(function (b) {
+      b.disabled = false;
+      b.textContent = "Save Core";
+    });
+  }
+}
+
+// ============================================================
+// 14. LOGS PAGE
+// ============================================================
+
+async function loadLogSources() {
+  try {
+    var data = await api("/api/logs/sources");
+    if (data.ok) {
+      state.logSources = data.sources || [];
+      var select = $("#logSourceSelect");
+      if (!select) return;
+      var prev = select.value || state.currentLogSource;
+      select.innerHTML = state.logSources
+        .map(function (src) {
+          return (
+            '<option value="' +
+            escapeHtml(src.id) +
+            '"' +
+            (src.id === prev ? " selected" : "") +
+            ">" +
+            escapeHtml(src.label || src.id) +
+            "</option>"
+          );
+        })
+        .join("");
+      if (!select.value && state.logSources.length)
+        select.value = state.logSources[0].id;
+      state.currentLogSource = select.value;
+    }
+  } catch (err) {
+    console.error("loadLogSources:", err);
+  }
+}
+
+function renderLogs(data) {
+  var output = $("#logsOutput");
+  var lineCount = $("#logsLineCount");
+  if (!output) return;
+
+  output.innerHTML = "";
+
+  if (!data || data.error) {
+    var errDiv = document.createElement("div");
+    errDiv.className = "logs-error";
+    errDiv.textContent = data
+      ? data.error || "Failed to load logs."
+      : "Failed to load logs.";
+    output.appendChild(errDiv);
+    if (lineCount) lineCount.textContent = "0 lines";
+    return;
+  }
+
+  var lines = data.lines || [];
+  if (lineCount)
+    lineCount.textContent =
+      lines.length + " line" + (lines.length !== 1 ? "s" : "");
+
+  if (!lines.length) {
+    var ph = document.createElement("div");
+    ph.className = "logs-placeholder";
+    ph.textContent = "No log lines found.";
+    output.appendChild(ph);
+    return;
+  }
+
+  var frag = document.createDocumentFragment();
+  lines.forEach(function (line) {
+    frag.appendChild(colorizeLogLine(line));
+  });
+  output.appendChild(frag);
+  output.scrollTop = output.scrollHeight;
+}
+
+function colorizeLogLine(line) {
+  var span = document.createElement("span");
+  span.className = "log-line";
+
+  var upper = line.toUpperCase();
+  if (upper.indexOf("| ERROR |") !== -1 || upper.indexOf("| ERROR") !== -1) {
+    span.classList.add("log-level-error");
+  } else if (
+    upper.indexOf("| WARNING |") !== -1 ||
+    upper.indexOf("| WARN |") !== -1 ||
+    upper.indexOf("WARNING") !== -1 ||
+    upper.indexOf("WARN") !== -1
+  ) {
+    span.classList.add("log-level-warn");
+  } else if (upper.indexOf("| INFO |") !== -1) {
+    span.classList.add("log-level-info");
+  } else if (upper.indexOf("| DEBUG |") !== -1) {
+    span.classList.add("log-level-debug");
+  } else if (/\b(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\s+/.test(line)) {
+    span.classList.add("log-level-access");
+  }
+
+  var tsMatch = line.match(
+    /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?)/,
+  );
+  if (tsMatch) {
+    var tsSpan = document.createElement("span");
+    tsSpan.className = "log-ts";
+    tsSpan.textContent = tsMatch[1];
+    span.appendChild(tsSpan);
+    span.appendChild(document.createTextNode(line.slice(tsMatch[1].length)));
+  } else {
+    span.textContent = line;
+  }
+
+  return span;
+}
+
 async function loadLogs() {
-  const source = $('#logSourceSelect')?.value || state.currentLogSource || 'panel';
-  const limit = $('#logLimitSelect')?.value || '300';
-  const level = $('#logLevelSelect')?.value || 'all';
-  const q = $('#logSearchInput')?.value || '';
-  state.currentLogSource = source;
-  setMessage($('#logsMessage'), 'Loading logs...');
-  const data = await api(`/api/logs?source=${encodeURIComponent(source)}&limit=${encodeURIComponent(limit)}&level=${encodeURIComponent(level)}&q=${encodeURIComponent(q)}`);
-  renderLogs(data);
+  var sourceEl = $("#logSourceSelect");
+  var limitEl = $("#logLimitSelect");
+  var levelEl = $("#logLevelSelect");
+  var searchEl = $("#logSearchInput");
+  var lastUpdEl = $("#logsLastUpdated");
+  var refreshBtn = $("#refreshLogsBtn");
+
+  var source = sourceEl ? sourceEl.value : state.currentLogSource;
+  var limit = limitEl ? limitEl.value : "100";
+  var level = levelEl ? levelEl.value : "";
+  var q = searchEl ? searchEl.value.trim() : "";
+
+  if (source) state.currentLogSource = source;
+  if (refreshBtn) refreshBtn.disabled = true;
+
+  try {
+    var params =
+      "source=" +
+      encodeURIComponent(source) +
+      "&limit=" +
+      encodeURIComponent(limit);
+    if (level) params += "&level=" + encodeURIComponent(level);
+    if (q) params += "&q=" + encodeURIComponent(q);
+
+    var data = await api("/api/logs?" + params);
+    state.rawLogLines = data.lines || [];
+    renderLogs(data);
+    if (lastUpdEl)
+      lastUpdEl.textContent = "Updated: " + new Date().toLocaleTimeString();
+  } catch (err) {
+    renderLogs(null);
+    showToast(err.message || "Failed to load logs.", "error");
+  } finally {
+    if (refreshBtn) refreshBtn.disabled = false;
+  }
 }
 
-$('#openNodeModal').addEventListener('click', () => openNodeModal());
-$('#createNodeButton').addEventListener('click', () => openNodeModal());
-$('#closeNodeModal').addEventListener('click', closeNodeModal);
-$('#cancelNodeButton').addEventListener('click', closeNodeModal);
-$('#deleteNodeButton').addEventListener('click', () => state.editingNode && deleteNode(state.editingNode.id));
-$('#nodeEnabled').addEventListener('change', () => { state.lastFormCheck = null; updateStatusPreview(); });
-$('#checkNodeStatus').addEventListener('click', checkFormNode);
-nodeModal.addEventListener('click', (event) => { if (event.target === nodeModal) closeNodeModal(); });
+// ============================================================
+// 15. EVENT LISTENERS
+// ============================================================
 
-$('#openCoreModal').addEventListener('click', openCoreCreateModal);
-$('#createCoreButton').addEventListener('click', openCoreCreateModal);
-$('#closeCoreCreateModal').addEventListener('click', closeCoreCreateModal);
-$('#cancelCoreCreateButton').addEventListener('click', closeCoreCreateModal);
-coreCreateModal.addEventListener('click', (event) => { if (event.target === coreCreateModal) closeCoreCreateModal(); });
-$('#backToCores').addEventListener('click', () => switchPage('cores'));
-$('#saveCoreEditor').addEventListener('click', saveCoreEditor);
-$('#saveCoreEditorBottom').addEventListener('click', saveCoreEditor);
-$('#addInboundButton').addEventListener('click', () => { state.editorDraft.inbounds.push(defaultInbound()); renderCoreEditor(); switchCoreTab('inbounds'); });
-$('#addBalancerButton').addEventListener('click', () => { state.editorDraft.balancers.push(defaultBalancer()); renderCoreEditor(); switchCoreTab('balancers'); });
-$('#addDependencyButton').addEventListener('click', () => { state.editorDraft.dependencies.push(defaultDependency()); renderDependencyEditor(); switchCoreTab('dependencies'); });
-$('#refreshPreviewButton').addEventListener('click', refreshPreviewFromServer);
-$$('.tab').forEach(btn => btn.addEventListener('click', () => switchCoreTab(btn.dataset.coreTab)));
-$('#editorCoreName').addEventListener('input', syncEditorHeaderToDraft);
-$('#editorCoreNode').addEventListener('change', syncEditorHeaderToDraft);
-$('#editorCoreEnabled').addEventListener('change', syncEditorHeaderToDraft);
-$('#refreshButton').addEventListener('click', refreshAll);
-if ($('#refreshLogsButton')) $('#refreshLogsButton').addEventListener('click', loadLogs);
-if ($('#logSourceSelect')) $('#logSourceSelect').addEventListener('change', loadLogs);
-if ($('#logLimitSelect')) $('#logLimitSelect').addEventListener('change', loadLogs);
-if ($('#logLevelSelect')) $('#logLevelSelect').addEventListener('change', loadLogs);
-if ($('#logSearchInput')) $('#logSearchInput').addEventListener('keydown', (event) => { if (event.key === 'Enter') loadLogs(); });
+document.addEventListener("DOMContentLoaded", function () {
+  // --- Auth ---
+  var loginForm = $("#loginForm");
+  if (loginForm) loginForm.addEventListener("submit", handleLoginSubmit);
 
-window.addEventListener('error', (event) => { console.error('UI error', event.error || event.message); });
-window.addEventListener('unhandledrejection', (event) => { console.error('Unhandled promise rejection', event.reason); });
+  var logoutBtn = $("#logoutButton");
+  if (logoutBtn) logoutBtn.addEventListener("click", handleLogout);
+
+  var togglePwdBtn = $("#togglePassword");
+  if (togglePwdBtn)
+    togglePwdBtn.addEventListener("click", togglePasswordVisibility);
+
+  // --- Navigation ---
+  $$(".nav-item[data-page]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      switchPage(btn.dataset.page);
+    });
+  });
+
+  // --- Dashboard quick actions ---
+  var qaAddNode = $("#qaAddNode");
+  if (qaAddNode)
+    qaAddNode.addEventListener("click", function () {
+      openNodeModal();
+    });
+
+  var qaAddCore = $("#qaAddCore");
+  if (qaAddCore)
+    qaAddCore.addEventListener("click", function () {
+      openCoreCreateModal();
+    });
+
+  var qaViewLogs = $("#qaViewLogs");
+  if (qaViewLogs)
+    qaViewLogs.addEventListener("click", function () {
+      switchPage("logs");
+    });
+
+  var qaManageNodes = $("#qaManageNodes");
+  if (qaManageNodes)
+    qaManageNodes.addEventListener("click", function () {
+      switchPage("nodes");
+    });
+
+  // --- Refresh ---
+  var refreshBtn = $("#refreshButton");
+  if (refreshBtn) refreshBtn.addEventListener("click", refreshAll);
+
+  // --- Nodes ---
+  var createNodeBtn = $("#createNodeBtn");
+  if (createNodeBtn)
+    createNodeBtn.addEventListener("click", function () {
+      openNodeModal();
+    });
+
+  var nodesEmptyCreate = $("#nodesEmptyCreateBtn");
+  if (nodesEmptyCreate)
+    nodesEmptyCreate.addEventListener("click", function () {
+      openNodeModal();
+    });
+
+  var nodeModal = $("#nodeModal");
+  if (nodeModal) {
+    nodeModal.addEventListener("click", function (e) {
+      if (e.target === nodeModal) closeNodeModal();
+    });
+  }
+
+  var closeNodeModalBtn = $("#closeNodeModal");
+  if (closeNodeModalBtn)
+    closeNodeModalBtn.addEventListener("click", closeNodeModal);
+
+  var cancelNodeBtn = $("#cancelNodeButton");
+  if (cancelNodeBtn) cancelNodeBtn.addEventListener("click", closeNodeModal);
+
+  var deleteNodeBtn = $("#deleteNodeButton");
+  if (deleteNodeBtn)
+    deleteNodeBtn.addEventListener("click", function () {
+      if (state.editingNode) deleteNode(state.editingNode.id);
+    });
+
+  var nodeEnabled = $("#nodeEnabled");
+  if (nodeEnabled) nodeEnabled.addEventListener("change", updateStatusPreview);
+
+  var checkNodeStatus = $("#checkNodeStatus");
+  if (checkNodeStatus) checkNodeStatus.addEventListener("click", checkFormNode);
+
+  var generateApiKeyBtn = $("#generateApiKey");
+  if (generateApiKeyBtn) {
+    generateApiKeyBtn.addEventListener("click", async function () {
+      generateApiKeyBtn.disabled = true;
+      try {
+        var data = await api("/api/nodes/api-key", { method: "POST" });
+        var apiKeyEl = $("#apiKey");
+        if (apiKeyEl && data.api_key) apiKeyEl.value = data.api_key;
+        showToast("New API key generated.", "success");
+      } catch (err) {
+        showToast(err.message || "Failed to generate API key.", "error");
+      } finally {
+        generateApiKeyBtn.disabled = false;
+      }
+    });
+  }
+
+  var nodeForm = $("#nodeForm");
+  if (nodeForm) nodeForm.addEventListener("submit", saveNode);
+
+  // --- Cores ---
+  var createCoreBtn = $("#createCoreBtn");
+  if (createCoreBtn)
+    createCoreBtn.addEventListener("click", function () {
+      openCoreCreateModal();
+    });
+
+  var coresEmptyCreate = $("#coresEmptyCreateBtn");
+  if (coresEmptyCreate)
+    coresEmptyCreate.addEventListener("click", function () {
+      openCoreCreateModal();
+    });
+
+  var coreCreateModal = $("#coreCreateModal");
+  if (coreCreateModal) {
+    coreCreateModal.addEventListener("click", function (e) {
+      if (e.target === coreCreateModal) closeCoreCreateModal();
+    });
+  }
+
+  var closeCoreCreateModalBtn = $("#closeCoreCreateModal");
+  if (closeCoreCreateModalBtn)
+    closeCoreCreateModalBtn.addEventListener("click", closeCoreCreateModal);
+
+  var cancelCoreCreateBtn = $("#cancelCoreCreateButton");
+  if (cancelCoreCreateBtn)
+    cancelCoreCreateBtn.addEventListener("click", closeCoreCreateModal);
+
+  var coreCreateForm = $("#coreCreateForm");
+  if (coreCreateForm) coreCreateForm.addEventListener("submit", createCore);
+
+  // --- Core Editor navigation ---
+  $$("#backToCoresBtn, #backToCoresBtn2, #backToCoresLink").forEach(
+    function (el) {
+      el.addEventListener("click", function () {
+        switchPage("cores");
+      });
+    },
+  );
+
+  $$("#saveCoreBtn, #saveCoreEditorBottom").forEach(function (el) {
+    el.addEventListener("click", saveCoreEditor);
+  });
+
+  // --- Core Editor tabs ---
+  $$(".tab-btn").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      switchCoreTab(btn.dataset.tab);
+    });
+  });
+
+  // --- Core Editor add buttons ---
+  var addInboundBtn = $("#addInboundButton");
+  if (addInboundBtn) {
+    addInboundBtn.addEventListener("click", function () {
+      if (state.editorDraft) {
+        state.editorDraft.inbounds.push(defaultInbound());
+        renderCoreEditor();
+        switchCoreTab("inbounds");
+      }
+    });
+  }
+
+  var addBalancerBtn = $("#addBalancerButton");
+  if (addBalancerBtn) {
+    addBalancerBtn.addEventListener("click", function () {
+      if (state.editorDraft) {
+        state.editorDraft.balancers.push(defaultBalancer());
+        renderCoreEditor();
+        switchCoreTab("balancers");
+      }
+    });
+  }
+
+  var addDependencyBtn = $("#addDependencyButton");
+  if (addDependencyBtn) {
+    addDependencyBtn.addEventListener("click", function () {
+      if (state.editorDraft) {
+        state.editorDraft.dependencies.push(defaultDependency());
+        renderDependencyEditor();
+      }
+    });
+  }
+
+  // --- Core Editor header sync ---
+  var editorCoreName = $("#editorCoreName");
+  if (editorCoreName)
+    editorCoreName.addEventListener("input", syncEditorHeaderToDraft);
+
+  var editorCoreNode = $("#editorCoreNode");
+  if (editorCoreNode)
+    editorCoreNode.addEventListener("change", syncEditorHeaderToDraft);
+
+  var editorCoreEnabled = $("#editorCoreEnabled");
+  if (editorCoreEnabled)
+    editorCoreEnabled.addEventListener("change", syncEditorHeaderToDraft);
+
+  // --- Preview ---
+  var refreshPreviewBtn = $("#refreshPreviewButton");
+  if (refreshPreviewBtn)
+    refreshPreviewBtn.addEventListener("click", refreshPreviewFromServer);
+
+  // --- Logs ---
+  var refreshLogsBtn = $("#refreshLogsBtn");
+  if (refreshLogsBtn) refreshLogsBtn.addEventListener("click", loadLogs);
+
+  var logSourceSelect = $("#logSourceSelect");
+  if (logSourceSelect) logSourceSelect.addEventListener("change", loadLogs);
+
+  var logLimitSelect = $("#logLimitSelect");
+  if (logLimitSelect) logLimitSelect.addEventListener("change", loadLogs);
+
+  var logLevelSelect = $("#logLevelSelect");
+  if (logLevelSelect) logLevelSelect.addEventListener("change", loadLogs);
+
+  var logSearchInput = $("#logSearchInput");
+  if (logSearchInput) {
+    logSearchInput.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") loadLogs();
+    });
+  }
+
+  var logAutoRefresh = $("#logAutoRefresh");
+  if (logAutoRefresh) {
+    logAutoRefresh.addEventListener("change", function () {
+      if (logAutoRefresh.checked) {
+        if (!state.logAutoRefreshTimer) {
+          state.logAutoRefreshTimer = setInterval(loadLogs, 10000);
+        }
+      } else {
+        if (state.logAutoRefreshTimer) {
+          clearInterval(state.logAutoRefreshTimer);
+          state.logAutoRefreshTimer = null;
+        }
+      }
+    });
+  }
+
+  var copyLogsBtn = $("#copyLogsBtn");
+  if (copyLogsBtn) {
+    copyLogsBtn.addEventListener("click", async function () {
+      try {
+        await navigator.clipboard.writeText(state.rawLogLines.join("\n"));
+        showToast("Logs copied to clipboard.", "success");
+      } catch (_) {
+        showToast("Failed to copy logs.", "error");
+      }
+    });
+  }
+
+  var clearLogsBtn = $("#clearLogsBtn");
+  if (clearLogsBtn) {
+    clearLogsBtn.addEventListener("click", function () {
+      var output = $("#logsOutput");
+      if (output) output.innerHTML = "";
+      state.rawLogLines = [];
+      var lc = $("#logsLineCount");
+      if (lc) lc.textContent = "0 lines";
+    });
+  }
+
+  // --- Sidebar (mobile) ---
+  var openSidebarBtn = $("#openSidebarBtn");
+  var sidebar = $("#sidebar");
+  var sidebarOverlay = $("#sidebarOverlay");
+  var closeSidebarBtn = $("#closeSidebarBtn");
+
+  if (openSidebarBtn && sidebar && sidebarOverlay) {
+    openSidebarBtn.addEventListener("click", function () {
+      sidebar.classList.add("open");
+      sidebarOverlay.classList.remove("hidden");
+    });
+  }
+
+  function closeSidebar() {
+    if (sidebar) sidebar.classList.remove("open");
+    if (sidebarOverlay) sidebarOverlay.classList.add("hidden");
+  }
+
+  if (closeSidebarBtn) closeSidebarBtn.addEventListener("click", closeSidebar);
+  if (sidebarOverlay) sidebarOverlay.addEventListener("click", closeSidebar);
+
+  // --- Global error handlers ---
+  window.addEventListener("error", function (e) {
+    console.error("Global error:", e.error || e.message);
+  });
+  window.addEventListener("unhandledrejection", function (e) {
+    console.error("Unhandled rejection:", e.reason);
+  });
+});
+
+// ============================================================
+// 16. INIT
+// ============================================================
 
 checkSession();

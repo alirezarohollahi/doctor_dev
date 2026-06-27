@@ -1,194 +1,2847 @@
 <!doctype html>
 <html lang="en" dir="ltr">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Doctor Dev Panel</title>
-  <link rel="stylesheet" href="/assets/css/app.css" />
-</head>
-<body>
-  <div class="aurora aurora-one"></div>
-  <div class="aurora aurora-two"></div>
-  <div class="aurora aurora-three"></div>
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta
+            name="description"
+            content="Doctor Dev — VPN Infrastructure Management Panel"
+        />
+        <meta name="theme-color" content="#0a0f1e" />
+        <title>Doctor Dev — Admin Panel</title>
+        <link rel="stylesheet" href="/assets/css/app.css" />
+    </head>
+    <body>
+        <!-- ═══════════════════════════════════════════════════════════
+       AURORA BACKGROUND EFFECTS
+  ═══════════════════════════════════════════════════════════ -->
+        <div class="aurora aurora-one"></div>
+        <div class="aurora aurora-two"></div>
+        <div class="aurora aurora-three"></div>
 
-  <main id="loginView" class="login-shell">
-    <section class="brand-card" aria-label="Doctor Dev overview">
-      <div class="brand-topline"><span class="status-dot"></span><span>Secure Admin Gateway</span></div>
-      <div class="logo-wrap">
-        <div class="logo-mark" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M10 12.5c0-2.5 2-4.5 4.5-4.5h19c2.5 0 4.5 2 4.5 4.5v23c0 2.5-2 4.5-4.5 4.5h-19C12 40 10 38 10 35.5v-23Z"/><path d="M17 18h14M17 24h14M17 30h8"/><path d="M32 29.5l3 3 5-6"/></svg></div>
-        <div><p class="eyebrow">Doctor Dev</p><h1>Control-plane and routing foundation.</h1></div>
-      </div>
-      <p class="brand-copy">Manage nodes, API certificates, routing cores, inbounds and balancers from one clean panel.</p>
-      <div class="feature-grid">
-        <div class="feature-pill"><span>●</span> Node API</div>
-        <div class="feature-pill"><span>●</span> TLS Certs</div>
-        <div class="feature-pill"><span>●</span> Cores</div>
-        <div class="feature-pill"><span>●</span> Balancers</div>
-      </div>
-    </section>
+        <!-- ═══════════════════════════════════════════════════════════
+       TOAST NOTIFICATIONS
+  ═══════════════════════════════════════════════════════════ -->
+        <div
+            id="toastContainer"
+            class="toast-container"
+            role="region"
+            aria-label="Notifications"
+            aria-live="polite"
+        ></div>
 
-    <section class="login-card" aria-label="Admin login">
-      <div class="login-header">
-        <div><p class="eyebrow">Admin Login</p><h2>Sign in</h2></div>
-        <div class="lock-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 10V8a5 5 0 0 1 10 0v2"/><path d="M6 10h12v10H6z"/><path d="M12 14v3"/></svg></div>
-      </div>
-      <form id="loginForm" class="form" autocomplete="on">
-        <label class="field"><span>Username</span><input id="username" name="username" type="text" autocomplete="username" placeholder="admin" required /></label>
-        <label class="field"><span>Password</span><div class="password-wrap"><input id="password" name="password" type="password" autocomplete="current-password" placeholder="••••••••••••" required /><button id="togglePassword" type="button">Show</button></div></label>
-        <div class="form-row"><label class="remember"><input type="checkbox" checked disabled /><span>Secure 12-hour session</span></label><span class="hint">Press Enter to continue</span></div>
-        <button id="submitButton" class="primary-btn" type="submit"><span>Open Panel</span><svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></button>
-        <p id="loginMessage" class="message" role="status" aria-live="polite"></p>
-      </form>
-    </section>
-  </main>
-
-  <main id="appView" class="app-shell hidden" aria-label="Doctor Dev application">
-    <aside class="sidebar">
-      <div class="side-brand"><div class="side-logo">D</div><div><strong>Doctor Dev</strong><span>Admin Panel</span></div></div>
-      <nav class="side-nav" aria-label="Main navigation">
-        <button class="nav-item active" data-page="dashboard"><span>⌂</span> Dashboard</button>
-        <button class="nav-item" data-page="nodes"><span>⌘</span> Nodes</button>
-        <button class="nav-item" data-page="cores"><span>⚙</span> Cores</button>
-        <button class="nav-item" data-page="logs"><span>≡</span> Logs</button>
-      </nav>
-      <div class="side-footer"><span>Signed in as</span><strong id="adminName">admin</strong><button id="logoutButton" class="ghost-btn" type="button">Logout</button></div>
-    </aside>
-
-    <section class="workspace">
-      <header class="topbar">
-        <div><p class="eyebrow">Routing Foundation</p><h2 id="pageTitle">Dashboard</h2></div>
-        <div class="top-actions"><button id="refreshButton" class="ghost-btn" type="button">Refresh</button><button id="openNodeModal" class="primary-small" type="button">Create Node</button><button id="openCoreModal" class="primary-small hidden" type="button">Create Core</button></div>
-      </header>
-
-      <section id="dashboardPage" class="page active">
-        <div class="stat-grid">
-          <article class="stat-card"><span>Total Nodes</span><strong id="totalNodes">0</strong><p>Saved node definitions.</p></article>
-          <article class="stat-card"><span>Enabled Nodes</span><strong id="enabledNodes">0</strong><p>Nodes marked enabled in panel.</p></article>
-          <article class="stat-card"><span>Cores</span><strong id="totalCores">0</strong><p>Routing cores assigned to nodes.</p></article>
+        <!-- ═══════════════════════════════════════════════════════════
+       CONFIRM DIALOG
+  ═══════════════════════════════════════════════════════════ -->
+        <div
+            id="confirmDialog"
+            class="dialog-overlay hidden"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="confirmTitle"
+        >
+            <div class="dialog-card">
+                <div class="dialog-icon">
+                    <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                    >
+                        <path
+                            d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"
+                        />
+                        <line x1="12" y1="9" x2="12" y2="13" />
+                        <line x1="12" y1="17" x2="12.01" y2="17" />
+                    </svg>
+                </div>
+                <h3 id="confirmTitle">Confirm Action</h3>
+                <p id="confirmMessage">
+                    Are you sure you want to proceed? This action cannot be
+                    undone.
+                </p>
+                <div class="dialog-actions">
+                    <button id="confirmCancel" class="btn btn-ghost">
+                        Cancel
+                    </button>
+                    <button id="confirmOk" class="btn btn-danger">
+                        Confirm
+                    </button>
+                </div>
+            </div>
         </div>
-        <div class="note-card"><strong>Port roles</strong><p><b>API Port</b> is the control-plane port used by the panel for health/status/config calls. <b>Node Port</b> is reserved for data-plane listeners and routing traffic.</p></div>
-      </section>
 
-      <section id="nodesPage" class="page">
-        <div class="panel-card">
-          <div class="panel-head"><div><h3>Nodes</h3><p>Manage node records. Status checks use API Port and the node TLS certificate when provided.</p></div><button class="primary-small" id="createNodeButton" type="button">Create Node</button></div>
-          <div id="nodesEmpty" class="empty-state">No nodes yet. Create your first node.</div>
-          <div class="table-wrap hidden" id="nodesTableWrap">
-            <table class="nodes-table"><thead><tr><th>Status</th><th>Name</th><th>Address</th><th>Node Port</th><th>API Port</th><th>Protocol</th><th>TLS</th><th>Enabled</th><th>Actions</th></tr></thead><tbody id="nodesTableBody"></tbody></table>
-          </div>
+        <!-- ═══════════════════════════════════════════════════════════
+       LOGIN VIEW
+  ═══════════════════════════════════════════════════════════ -->
+        <main id="loginView" class="login-shell">
+            <!-- Brand side (left) -->
+            <div class="login-brand">
+                <div class="login-brand-inner">
+                    <div class="brand-logo">
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 64 64"
+                            aria-label="Doctor Dev logo"
+                        >
+                            <rect
+                                width="64"
+                                height="64"
+                                rx="16"
+                                fill="currentColor"
+                                opacity="0.15"
+                            />
+                            <path
+                                d="M27 10h10v17h17v10H37v17H27V37H10V27h17V10z"
+                                fill="currentColor"
+                            />
+                        </svg>
+                    </div>
+
+                    <div class="brand-text">
+                        <div class="brand-eyebrow">
+                            <span class="status-pulse"><span></span></span>
+                            System Online
+                        </div>
+                        <h1>Doctor Dev</h1>
+                        <p>
+                            Enterprise-grade VPN infrastructure management
+                            platform for professionals.
+                        </p>
+                    </div>
+
+                    <div class="brand-features">
+                        <div class="brand-feature-item">
+                            <span class="brand-feature-icon">
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    aria-hidden="true"
+                                >
+                                    <path
+                                        d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"
+                                    />
+                                </svg>
+                            </span>
+                            <div>
+                                <strong>Secure by Design</strong>
+                                <span
+                                    >End-to-end encrypted node management</span
+                                >
+                            </div>
+                        </div>
+
+                        <div class="brand-feature-item">
+                            <span class="brand-feature-icon">
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    aria-hidden="true"
+                                >
+                                    <polygon
+                                        points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"
+                                    />
+                                </svg>
+                            </span>
+                            <div>
+                                <strong>High Performance</strong>
+                                <span>Real-time monitoring and control</span>
+                            </div>
+                        </div>
+
+                        <div class="brand-feature-item">
+                            <span class="brand-feature-icon">
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    aria-hidden="true"
+                                >
+                                    <circle cx="12" cy="12" r="10" />
+                                    <line x1="2" y1="12" x2="22" y2="12" />
+                                    <path
+                                        d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"
+                                    />
+                                </svg>
+                            </span>
+                            <div>
+                                <strong>Multi-Node Ready</strong>
+                                <span
+                                    >Manage distributed infrastructure at
+                                    scale</span
+                                >
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- /.login-brand -->
+
+            <!-- Form side (right) -->
+            <div class="login-form-side">
+                <div class="login-card">
+                    <div class="login-card-header">
+                        <div class="login-card-logo">
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 36 36"
+                                aria-hidden="true"
+                            >
+                                <rect
+                                    width="36"
+                                    height="36"
+                                    rx="9"
+                                    fill="currentColor"
+                                    opacity="0.15"
+                                />
+                                <path
+                                    d="M15 8h6v7h7v6h-7v7h-6v-7H8v-6h7V8z"
+                                    fill="currentColor"
+                                />
+                            </svg>
+                        </div>
+                        <div class="login-card-eyebrow">
+                            Administrator Access
+                        </div>
+                        <h2>Welcome Back</h2>
+                        <p>Sign in to your Doctor Dev control panel.</p>
+                    </div>
+
+                    <form id="loginForm" novalidate autocomplete="on">
+                        <div class="form-field">
+                            <label for="usernameInput">Username</label>
+                            <div class="input-wrap">
+                                <span class="input-icon" aria-hidden="true">
+                                    <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                    >
+                                        <path
+                                            d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"
+                                        />
+                                        <circle cx="12" cy="7" r="4" />
+                                    </svg>
+                                </span>
+                                <input
+                                    id="usernameInput"
+                                    type="text"
+                                    name="username"
+                                    placeholder="Enter your username"
+                                    autocomplete="username"
+                                    autocapitalize="none"
+                                    spellcheck="false"
+                                    required
+                                />
+                            </div>
+                        </div>
+
+                        <div class="form-field">
+                            <label for="passwordInput">Password</label>
+                            <div class="input-wrap input-suffix">
+                                <span class="input-icon" aria-hidden="true">
+                                    <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                    >
+                                        <rect
+                                            x="3"
+                                            y="11"
+                                            width="18"
+                                            height="11"
+                                            rx="2"
+                                            ry="2"
+                                        />
+                                        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                                    </svg>
+                                </span>
+                                <input
+                                    id="passwordInput"
+                                    type="password"
+                                    name="password"
+                                    placeholder="Enter your password"
+                                    autocomplete="current-password"
+                                    required
+                                />
+                                <button
+                                    id="togglePassword"
+                                    type="button"
+                                    class="input-suffix-btn"
+                                    aria-label="Toggle password visibility"
+                                >
+                                    <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        aria-hidden="true"
+                                    >
+                                        <path
+                                            d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"
+                                        />
+                                        <circle cx="12" cy="12" r="3" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        <button
+                            id="loginSubmitBtn"
+                            type="submit"
+                            class="btn btn-primary btn-full btn-lg"
+                        >
+                            <span id="loginBtnText">Sign In</span>
+                            <svg
+                                class="btn-spinner hidden"
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2.5"
+                                aria-hidden="true"
+                            >
+                                <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                            </svg>
+                        </button>
+
+                        <p
+                            id="loginMessage"
+                            class="form-message"
+                            role="alert"
+                            aria-live="assertive"
+                        ></p>
+                    </form>
+
+                    <div class="login-footer">
+                        <span>Doctor Dev Admin Panel</span>
+                        <span class="login-footer-sep" aria-hidden="true"
+                            >&middot;</span
+                        >
+                        <span>Secure Access</span>
+                    </div>
+                </div>
+            </div>
+            <!-- /.login-form-side -->
+        </main>
+        <!-- /#loginView -->
+
+        <!-- ═══════════════════════════════════════════════════════════
+       APP SHELL
+  ═══════════════════════════════════════════════════════════ -->
+        <div id="appView" class="app-shell hidden">
+            <!-- ─────────────────────────────────────────────────────────
+         SIDEBAR
+    ───────────────────────────────────────────────────────── -->
+            <aside id="sidebar" class="sidebar" aria-label="Main sidebar">
+                <div class="sidebar-header">
+                    <div class="sidebar-logo" aria-hidden="true">
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 36 36"
+                        >
+                            <rect
+                                width="36"
+                                height="36"
+                                rx="9"
+                                fill="currentColor"
+                                opacity="0.2"
+                            />
+                            <path
+                                d="M15 8h6v7h7v6h-7v7h-6v-7H8v-6h7V8z"
+                                fill="currentColor"
+                            />
+                        </svg>
+                    </div>
+                    <div class="sidebar-brand-text">
+                        <strong>Doctor Dev</strong>
+                        <span>Admin Panel</span>
+                    </div>
+                    <button
+                        id="closeSidebarBtn"
+                        class="sidebar-close-btn"
+                        aria-label="Close sidebar"
+                    >
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            aria-hidden="true"
+                        >
+                            <line x1="18" y1="6" x2="6" y2="18" />
+                            <line x1="6" y1="6" x2="18" y2="18" />
+                        </svg>
+                    </button>
+                </div>
+
+                <nav
+                    class="sidebar-nav"
+                    role="navigation"
+                    aria-label="Main navigation"
+                >
+                    <button
+                        data-page="dashboard"
+                        class="nav-item active"
+                        aria-current="page"
+                    >
+                        <span class="nav-icon" aria-hidden="true">
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <rect x="3" y="3" width="7" height="7" rx="1" />
+                                <rect
+                                    x="14"
+                                    y="3"
+                                    width="7"
+                                    height="7"
+                                    rx="1"
+                                />
+                                <rect
+                                    x="3"
+                                    y="14"
+                                    width="7"
+                                    height="7"
+                                    rx="1"
+                                />
+                                <rect
+                                    x="14"
+                                    y="14"
+                                    width="7"
+                                    height="7"
+                                    rx="1"
+                                />
+                            </svg>
+                        </span>
+                        <span class="nav-label">Dashboard</span>
+                    </button>
+
+                    <button data-page="nodes" class="nav-item">
+                        <span class="nav-icon" aria-hidden="true">
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <rect
+                                    x="2"
+                                    y="2"
+                                    width="20"
+                                    height="8"
+                                    rx="2"
+                                    ry="2"
+                                />
+                                <rect
+                                    x="2"
+                                    y="14"
+                                    width="20"
+                                    height="8"
+                                    rx="2"
+                                    ry="2"
+                                />
+                                <line x1="6" y1="6" x2="6.01" y2="6" />
+                                <line x1="6" y1="18" x2="6.01" y2="18" />
+                            </svg>
+                        </span>
+                        <span class="nav-label">Nodes</span>
+                        <span
+                            id="nodesBadge"
+                            class="nav-badge"
+                            aria-label="Node count"
+                        ></span>
+                    </button>
+
+                    <button data-page="cores" class="nav-item">
+                        <span class="nav-icon" aria-hidden="true">
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <rect
+                                    x="7"
+                                    y="7"
+                                    width="10"
+                                    height="10"
+                                    rx="1"
+                                />
+                                <path
+                                    d="M9 7V4M12 7V4M15 7V4M9 20v-3M12 20v-3M15 20v-3M7 9H4M7 12H4M7 15H4M20 9h-3M20 12h-3M20 15h-3"
+                                />
+                            </svg>
+                        </span>
+                        <span class="nav-label">Cores</span>
+                        <span
+                            id="coresBadge"
+                            class="nav-badge"
+                            aria-label="Core count"
+                        ></span>
+                    </button>
+
+                    <button data-page="logs" class="nav-item">
+                        <span class="nav-icon" aria-hidden="true">
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <polyline points="4 17 10 11 4 5" />
+                                <line x1="12" y1="19" x2="20" y2="19" />
+                            </svg>
+                        </span>
+                        <span class="nav-label">Logs</span>
+                    </button>
+                </nav>
+
+                <div class="sidebar-footer">
+                    <div class="sidebar-user">
+                        <div class="user-avatar" aria-hidden="true">
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <path
+                                    d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"
+                                />
+                                <circle cx="12" cy="7" r="4" />
+                            </svg>
+                        </div>
+                        <div class="user-info">
+                            <span id="adminName" class="user-name">Admin</span>
+                            <span class="user-role">Administrator</span>
+                        </div>
+                    </div>
+                    <button
+                        id="logoutButton"
+                        class="btn btn-ghost btn-sm"
+                        aria-label="Sign out"
+                    >
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            aria-hidden="true"
+                        >
+                            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                            <polyline points="16 17 21 12 16 7" />
+                            <line x1="21" y1="12" x2="9" y2="12" />
+                        </svg>
+                        Logout
+                    </button>
+                </div>
+            </aside>
+            <!-- /#sidebar -->
+
+            <!-- Sidebar overlay (mobile backdrop) -->
+            <div
+                id="sidebarOverlay"
+                class="sidebar-overlay hidden"
+                aria-hidden="true"
+            ></div>
+
+            <!-- ─────────────────────────────────────────────────────────
+         WORKSPACE
+    ───────────────────────────────────────────────────────── -->
+            <div class="workspace">
+                <!-- Mobile top bar -->
+                <header class="mobile-header">
+                    <button
+                        id="openSidebarBtn"
+                        class="mobile-menu-btn"
+                        aria-label="Open sidebar"
+                        aria-expanded="false"
+                    >
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            aria-hidden="true"
+                        >
+                            <line x1="3" y1="6" x2="21" y2="6" />
+                            <line x1="3" y1="12" x2="21" y2="12" />
+                            <line x1="3" y1="18" x2="21" y2="18" />
+                        </svg>
+                    </button>
+                    <span class="mobile-brand">Doctor Dev</span>
+                    <div class="mobile-header-spacer" aria-hidden="true"></div>
+                </header>
+
+                <!-- ───────────────────────────────────────────────────────
+           PAGE: DASHBOARD
+      ─────────────────────────────────────────────────────── -->
+                <section
+                    id="dashboardPage"
+                    class="page active"
+                    aria-label="Dashboard"
+                >
+                    <div class="page-header">
+                        <div class="page-title-group">
+                            <div class="breadcrumb" aria-label="Breadcrumb">
+                                <span class="breadcrumb-item">
+                                    <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        width="13"
+                                        height="13"
+                                        aria-hidden="true"
+                                    >
+                                        <path
+                                            d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"
+                                        />
+                                        <polyline
+                                            points="9 22 9 12 15 12 15 22"
+                                        />
+                                    </svg>
+                                    Home
+                                </span>
+                            </div>
+                            <h2>Dashboard</h2>
+                            <p class="page-subtitle">
+                                Overview of your infrastructure health and live
+                                status.
+                            </p>
+                        </div>
+                        <div class="page-actions">
+                            <button
+                                id="refreshButton"
+                                class="btn btn-ghost btn-sm"
+                                aria-label="Refresh dashboard data"
+                            >
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    aria-hidden="true"
+                                >
+                                    <polyline points="23 4 23 10 17 10" />
+                                    <path
+                                        d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"
+                                    />
+                                </svg>
+                                Refresh
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Stats grid -->
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div
+                                class="stat-card-icon stat-card-icon--nodes"
+                                aria-hidden="true"
+                            >
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <rect
+                                        x="2"
+                                        y="2"
+                                        width="20"
+                                        height="8"
+                                        rx="2"
+                                    />
+                                    <rect
+                                        x="2"
+                                        y="14"
+                                        width="20"
+                                        height="8"
+                                        rx="2"
+                                    />
+                                    <line x1="6" y1="6" x2="6.01" y2="6" />
+                                    <line x1="6" y1="18" x2="6.01" y2="18" />
+                                </svg>
+                            </div>
+                            <div class="stat-card-body">
+                                <span class="stat-card-label">Total Nodes</span>
+                                <span id="statTotalNodes" class="stat-value"
+                                    >—</span
+                                >
+                                <div class="stat-card-sub">
+                                    <span
+                                        class="stat-sub-item stat-sub-item--ok"
+                                    >
+                                        <span id="statRunningNodes">—</span>
+                                        running
+                                    </span>
+                                    <span
+                                        class="stat-sub-sep"
+                                        aria-hidden="true"
+                                        >&middot;</span
+                                    >
+                                    <span
+                                        class="stat-sub-item stat-sub-item--err"
+                                    >
+                                        <span id="statErrorNodes">—</span> error
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="stat-card">
+                            <div
+                                class="stat-card-icon stat-card-icon--cores"
+                                aria-hidden="true"
+                            >
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <rect
+                                        x="7"
+                                        y="7"
+                                        width="10"
+                                        height="10"
+                                        rx="1"
+                                    />
+                                    <path
+                                        d="M9 7V4M12 7V4M15 7V4M9 20v-3M12 20v-3M15 20v-3M7 9H4M7 12H4M7 15H4M20 9h-3M20 12h-3M20 15h-3"
+                                    />
+                                </svg>
+                            </div>
+                            <div class="stat-card-body">
+                                <span class="stat-card-label">Total Cores</span>
+                                <span id="statTotalCores" class="stat-value"
+                                    >—</span
+                                >
+                                <div class="stat-card-sub">
+                                    <span
+                                        class="stat-sub-item stat-sub-item--ok"
+                                    >
+                                        <span id="statEnabledCores">—</span>
+                                        enabled
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="stat-card">
+                            <div
+                                class="stat-card-icon stat-card-icon--inbounds"
+                                aria-hidden="true"
+                            >
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <polyline
+                                        points="22 12 16 12 14 15 10 15 8 12 2 12"
+                                    />
+                                    <path
+                                        d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"
+                                    />
+                                </svg>
+                            </div>
+                            <div class="stat-card-body">
+                                <span class="stat-card-label"
+                                    >Total Inbounds</span
+                                >
+                                <span id="statTotalInbounds" class="stat-value"
+                                    >—</span
+                                >
+                                <div class="stat-card-sub">
+                                    <span
+                                        class="stat-sub-item stat-sub-item--ok"
+                                    >
+                                        <span id="statEnabledInbounds">—</span>
+                                        enabled
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="stat-card">
+                            <div
+                                class="stat-card-icon stat-card-icon--balancers"
+                                aria-hidden="true"
+                            >
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <line x1="18" y1="20" x2="18" y2="10" />
+                                    <line x1="12" y1="20" x2="12" y2="4" />
+                                    <line x1="6" y1="20" x2="6" y2="14" />
+                                </svg>
+                            </div>
+                            <div class="stat-card-body">
+                                <span class="stat-card-label">Balancers</span>
+                                <span id="statTotalBalancers" class="stat-value"
+                                    >—</span
+                                >
+                                <div class="stat-card-sub">
+                                    <span class="stat-sub-item"
+                                        >Total configured</span
+                                    >
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- /.stats-grid -->
+
+                    <!-- Quick actions -->
+                    <div class="section-header">
+                        <h3>Quick Actions</h3>
+                    </div>
+                    <div class="quick-actions-grid">
+                        <button
+                            id="qaAddNode"
+                            class="quick-action-card"
+                            type="button"
+                        >
+                            <span class="quick-action-icon" aria-hidden="true">
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <rect
+                                        x="2"
+                                        y="2"
+                                        width="20"
+                                        height="8"
+                                        rx="2"
+                                    />
+                                    <rect
+                                        x="2"
+                                        y="14"
+                                        width="20"
+                                        height="8"
+                                        rx="2"
+                                    />
+                                    <line x1="6" y1="6" x2="6.01" y2="6" />
+                                    <line x1="6" y1="18" x2="6.01" y2="18" />
+                                </svg>
+                            </span>
+                            <span class="quick-action-label">Add Node</span>
+                            <span class="quick-action-desc"
+                                >Register a new server node</span
+                            >
+                        </button>
+
+                        <button
+                            id="qaAddCore"
+                            class="quick-action-card"
+                            type="button"
+                        >
+                            <span class="quick-action-icon" aria-hidden="true">
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <rect
+                                        x="7"
+                                        y="7"
+                                        width="10"
+                                        height="10"
+                                        rx="1"
+                                    />
+                                    <path
+                                        d="M9 7V4M12 7V4M15 7V4M9 20v-3M12 20v-3M15 20v-3M7 9H4M7 12H4M7 15H4M20 9h-3M20 12h-3M20 15h-3"
+                                    />
+                                </svg>
+                            </span>
+                            <span class="quick-action-label">Add Core</span>
+                            <span class="quick-action-desc"
+                                >Create a new Xray core config</span
+                            >
+                        </button>
+
+                        <button
+                            id="qaViewLogs"
+                            class="quick-action-card"
+                            type="button"
+                        >
+                            <span class="quick-action-icon" aria-hidden="true">
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <polyline points="4 17 10 11 4 5" />
+                                    <line x1="12" y1="19" x2="20" y2="19" />
+                                </svg>
+                            </span>
+                            <span class="quick-action-label">View Logs</span>
+                            <span class="quick-action-desc"
+                                >Stream real-time system logs</span
+                            >
+                        </button>
+
+                        <button
+                            id="qaManageNodes"
+                            class="quick-action-card"
+                            type="button"
+                        >
+                            <span class="quick-action-icon" aria-hidden="true">
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <circle cx="12" cy="12" r="3" />
+                                    <path
+                                        d="M19.07 4.93l-1.41 1.41M12 2v2M4.93 4.93l1.41 1.41M2 12h2M4.93 19.07l1.41-1.41M12 22v-2M19.07 19.07l-1.41-1.41M22 12h-2"
+                                    />
+                                </svg>
+                            </span>
+                            <span class="quick-action-label">Manage Nodes</span>
+                            <span class="quick-action-desc"
+                                >View and configure all nodes</span
+                            >
+                        </button>
+                    </div>
+                    <!-- /.quick-actions-grid -->
+
+                    <!-- Node status list -->
+                    <div class="section-header">
+                        <h3>Node Status</h3>
+                    </div>
+                    <div id="dashboardNodeList" class="dashboard-node-list">
+                        <div class="empty-state empty-state--sm">
+                            <div class="empty-state-icon" aria-hidden="true">
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="1.5"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <rect
+                                        x="2"
+                                        y="2"
+                                        width="20"
+                                        height="8"
+                                        rx="2"
+                                    />
+                                    <rect
+                                        x="2"
+                                        y="14"
+                                        width="20"
+                                        height="8"
+                                        rx="2"
+                                    />
+                                    <line x1="6" y1="6" x2="6.01" y2="6" />
+                                    <line x1="6" y1="18" x2="6.01" y2="18" />
+                                </svg>
+                            </div>
+                            <p>No nodes configured yet.</p>
+                        </div>
+                    </div>
+                </section>
+                <!-- /#dashboardPage -->
+
+                <!-- ───────────────────────────────────────────────────────
+           PAGE: NODES
+      ─────────────────────────────────────────────────────── -->
+                <section id="nodesPage" class="page" aria-label="Nodes">
+                    <div class="page-header">
+                        <div class="page-title-group">
+                            <div class="breadcrumb" aria-label="Breadcrumb">
+                                <span class="breadcrumb-item"
+                                    >Infrastructure</span
+                                >
+                                <span class="breadcrumb-sep" aria-hidden="true">
+                                    <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        width="12"
+                                        height="12"
+                                    >
+                                        <polyline points="9 18 15 12 9 6" />
+                                    </svg>
+                                </span>
+                                <span
+                                    class="breadcrumb-item breadcrumb-current"
+                                    aria-current="page"
+                                    >Nodes</span
+                                >
+                            </div>
+                            <h2>Server Nodes</h2>
+                            <p class="page-subtitle">
+                                Manage and monitor your distributed server
+                                nodes.
+                            </p>
+                        </div>
+                        <div class="page-actions">
+                            <button
+                                id="refreshNodesBtn"
+                                class="btn btn-ghost btn-sm"
+                                aria-label="Refresh nodes list"
+                            >
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    aria-hidden="true"
+                                >
+                                    <polyline points="23 4 23 10 17 10" />
+                                    <path
+                                        d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"
+                                    />
+                                </svg>
+                                Refresh
+                            </button>
+                            <button
+                                id="createNodeBtn"
+                                class="btn btn-primary btn-sm"
+                            >
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    aria-hidden="true"
+                                >
+                                    <line x1="12" y1="5" x2="12" y2="19" />
+                                    <line x1="5" y1="12" x2="19" y2="12" />
+                                </svg>
+                                Add Node
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <!-- Empty state -->
+                        <div id="nodesEmpty" class="empty-state">
+                            <div class="empty-state-icon" aria-hidden="true">
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="1.5"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <rect
+                                        x="2"
+                                        y="2"
+                                        width="20"
+                                        height="8"
+                                        rx="2"
+                                    />
+                                    <rect
+                                        x="2"
+                                        y="14"
+                                        width="20"
+                                        height="8"
+                                        rx="2"
+                                    />
+                                    <line x1="6" y1="6" x2="6.01" y2="6" />
+                                    <line x1="6" y1="18" x2="6.01" y2="18" />
+                                </svg>
+                            </div>
+                            <h3>No nodes yet</h3>
+                            <p>
+                                Add your first server node to start managing
+                                your infrastructure.
+                            </p>
+                            <button
+                                id="nodesEmptyCreateBtn"
+                                class="btn btn-primary"
+                                type="button"
+                            >
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    aria-hidden="true"
+                                >
+                                    <line x1="12" y1="5" x2="12" y2="19" />
+                                    <line x1="5" y1="12" x2="19" y2="12" />
+                                </svg>
+                                Add First Node
+                            </button>
+                        </div>
+
+                        <!-- Nodes table -->
+                        <div id="nodesTableWrap" class="table-container hidden">
+                            <table id="nodesTable" class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th scope="col" class="th-num">#</th>
+                                        <th scope="col">Name</th>
+                                        <th scope="col">Address</th>
+                                        <th scope="col">Port</th>
+                                        <th scope="col">API Port</th>
+                                        <th scope="col">Status</th>
+                                        <th scope="col">Enabled</th>
+                                        <th scope="col">Usage</th>
+                                        <th scope="col" class="th-actions">
+                                            Actions
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody id="nodesTableBody">
+                                    <!-- Populated by app.js -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <!-- /.card -->
+                </section>
+                <!-- /#nodesPage -->
+
+                <!-- ───────────────────────────────────────────────────────
+           PAGE: CORES
+      ─────────────────────────────────────────────────────── -->
+                <section id="coresPage" class="page" aria-label="Cores">
+                    <div class="page-header">
+                        <div class="page-title-group">
+                            <div class="breadcrumb" aria-label="Breadcrumb">
+                                <span class="breadcrumb-item"
+                                    >Configuration</span
+                                >
+                                <span class="breadcrumb-sep" aria-hidden="true">
+                                    <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        width="12"
+                                        height="12"
+                                    >
+                                        <polyline points="9 18 15 12 9 6" />
+                                    </svg>
+                                </span>
+                                <span
+                                    class="breadcrumb-item breadcrumb-current"
+                                    aria-current="page"
+                                    >Cores</span
+                                >
+                            </div>
+                            <h2>Xray Cores</h2>
+                            <p class="page-subtitle">
+                                Create and manage Xray core configurations for
+                                your nodes.
+                            </p>
+                        </div>
+                        <div class="page-actions">
+                            <button
+                                id="refreshCoresBtn"
+                                class="btn btn-ghost btn-sm"
+                                aria-label="Refresh cores list"
+                            >
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    aria-hidden="true"
+                                >
+                                    <polyline points="23 4 23 10 17 10" />
+                                    <path
+                                        d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"
+                                    />
+                                </svg>
+                                Refresh
+                            </button>
+                            <button
+                                id="createCoreBtn"
+                                class="btn btn-primary btn-sm"
+                            >
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    aria-hidden="true"
+                                >
+                                    <line x1="12" y1="5" x2="12" y2="19" />
+                                    <line x1="5" y1="12" x2="19" y2="12" />
+                                </svg>
+                                Add Core
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Empty state (also acts as card when visible) -->
+                    <div id="coresEmpty" class="empty-state card">
+                        <div class="empty-state-icon" aria-hidden="true">
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="1.5"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <rect
+                                    x="7"
+                                    y="7"
+                                    width="10"
+                                    height="10"
+                                    rx="1"
+                                />
+                                <path
+                                    d="M9 7V4M12 7V4M15 7V4M9 20v-3M12 20v-3M15 20v-3M7 9H4M7 12H4M7 15H4M20 9h-3M20 12h-3M20 15h-3"
+                                />
+                            </svg>
+                        </div>
+                        <h3>No cores yet</h3>
+                        <p>
+                            Create your first Xray core configuration to power
+                            your nodes.
+                        </p>
+                        <button
+                            id="coresEmptyCreateBtn"
+                            class="btn btn-primary"
+                            type="button"
+                        >
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                aria-hidden="true"
+                            >
+                                <line x1="12" y1="5" x2="12" y2="19" />
+                                <line x1="5" y1="12" x2="19" y2="12" />
+                            </svg>
+                            Create First Core
+                        </button>
+                    </div>
+
+                    <!-- Cores grid (populated by app.js) -->
+                    <div
+                        id="coresGrid"
+                        class="cores-grid"
+                        aria-label="Core configurations list"
+                    ></div>
+                </section>
+                <!-- /#coresPage -->
+
+                <!-- ───────────────────────────────────────────────────────
+           PAGE: LOGS
+      ─────────────────────────────────────────────────────── -->
+                <section id="logsPage" class="page" aria-label="System Logs">
+                    <div class="page-header">
+                        <div class="page-title-group">
+                            <div class="breadcrumb" aria-label="Breadcrumb">
+                                <span class="breadcrumb-item">System</span>
+                                <span class="breadcrumb-sep" aria-hidden="true">
+                                    <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        width="12"
+                                        height="12"
+                                    >
+                                        <polyline points="9 18 15 12 9 6" />
+                                    </svg>
+                                </span>
+                                <span
+                                    class="breadcrumb-item breadcrumb-current"
+                                    aria-current="page"
+                                    >Logs</span
+                                >
+                            </div>
+                            <h2>System Logs</h2>
+                            <p class="page-subtitle">
+                                Stream and inspect real-time logs from nodes and
+                                cores.
+                            </p>
+                        </div>
+                        <div class="page-actions">
+                            <button
+                                id="refreshLogsBtn"
+                                class="btn btn-ghost btn-sm"
+                                aria-label="Reload logs"
+                            >
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    aria-hidden="true"
+                                >
+                                    <polyline points="23 4 23 10 17 10" />
+                                    <path
+                                        d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"
+                                    />
+                                </svg>
+                                Refresh
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="card logs-card">
+                        <!-- Toolbar -->
+                        <div class="logs-toolbar">
+                            <div class="logs-toolbar-main">
+                                <div class="form-field-inline">
+                                    <label for="logSourceSelect">Source</label>
+                                    <select id="logSourceSelect" class="select">
+                                        <option value="">All Sources</option>
+                                        <!-- Populated by app.js -->
+                                    </select>
+                                </div>
+
+                                <div class="form-field-inline">
+                                    <label for="logLevelSelect">Level</label>
+                                    <select id="logLevelSelect" class="select">
+                                        <option value="">All Levels</option>
+                                        <option value="debug">Debug</option>
+                                        <option value="info">Info</option>
+                                        <option value="warning">Warning</option>
+                                        <option value="error">Error</option>
+                                    </select>
+                                </div>
+
+                                <div class="form-field-inline">
+                                    <label for="logLimitSelect">Limit</label>
+                                    <select id="logLimitSelect" class="select">
+                                        <option value="50">50 lines</option>
+                                        <option value="100" selected>
+                                            100 lines
+                                        </option>
+                                        <option value="250">250 lines</option>
+                                        <option value="500">500 lines</option>
+                                    </select>
+                                </div>
+
+                                <div
+                                    class="form-field-inline form-field-inline--grow"
+                                >
+                                    <label for="logSearchInput">Filter</label>
+                                    <div class="input-wrap">
+                                        <span
+                                            class="input-icon"
+                                            aria-hidden="true"
+                                        >
+                                            <svg
+                                                xmlns="http://www.w3.org/2000/svg"
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                stroke-width="2"
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                            >
+                                                <circle cx="11" cy="11" r="8" />
+                                                <line
+                                                    x1="21"
+                                                    y1="21"
+                                                    x2="16.65"
+                                                    y2="16.65"
+                                                />
+                                            </svg>
+                                        </span>
+                                        <input
+                                            id="logSearchInput"
+                                            type="search"
+                                            placeholder="Search logs&hellip;"
+                                            class="input"
+                                            aria-label="Filter log output"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- /.logs-toolbar-main -->
+
+                            <div class="logs-toolbar-actions">
+                                <label
+                                    class="toggle-label toggle-label--inline"
+                                    for="logAutoRefresh"
+                                >
+                                    <input
+                                        id="logAutoRefresh"
+                                        type="checkbox"
+                                        class="toggle-input"
+                                    />
+                                    <span
+                                        class="toggle-track"
+                                        aria-hidden="true"
+                                    >
+                                        <span class="toggle-thumb"></span>
+                                    </span>
+                                    <span class="toggle-text">Auto</span>
+                                </label>
+
+                                <button
+                                    id="copyLogsBtn"
+                                    class="btn btn-ghost btn-sm"
+                                    type="button"
+                                    aria-label="Copy logs to clipboard"
+                                >
+                                    <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        aria-hidden="true"
+                                    >
+                                        <rect
+                                            x="9"
+                                            y="9"
+                                            width="13"
+                                            height="13"
+                                            rx="2"
+                                            ry="2"
+                                        />
+                                        <path
+                                            d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
+                                        />
+                                    </svg>
+                                    Copy
+                                </button>
+
+                                <button
+                                    id="clearLogsBtn"
+                                    class="btn btn-ghost btn-sm"
+                                    type="button"
+                                    aria-label="Clear log output"
+                                >
+                                    <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        aria-hidden="true"
+                                    >
+                                        <polyline points="3 6 5 6 21 6" />
+                                        <path
+                                            d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"
+                                        />
+                                    </svg>
+                                    Clear
+                                </button>
+                            </div>
+                            <!-- /.logs-toolbar-actions -->
+                        </div>
+                        <!-- /.logs-toolbar -->
+
+                        <!-- Status bar -->
+                        <div class="logs-status-bar" role="status">
+                            <span id="logsLineCount" class="logs-line-count"
+                                >0 lines</span
+                            >
+                            <span
+                                id="logsLastUpdated"
+                                class="logs-last-updated"
+                            ></span>
+                            <span
+                                id="logsMessage"
+                                class="logs-status-msg logs-message"
+                                aria-live="polite"
+                            ></span>
+                        </div>
+
+                        <!-- Terminal output -->
+                        <div
+                            id="logsOutput"
+                            class="logs-output"
+                            role="log"
+                            aria-live="polite"
+                            aria-label="Log output terminal"
+                            tabindex="0"
+                        >
+                            <div class="logs-placeholder">
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="1.5"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    aria-hidden="true"
+                                >
+                                    <polyline points="4 17 10 11 4 5" />
+                                    <line x1="12" y1="19" x2="20" y2="19" />
+                                </svg>
+                                <span
+                                    >Select a source and click Refresh to load
+                                    logs.</span
+                                >
+                            </div>
+                        </div>
+                    </div>
+                    <!-- /.card.logs-card -->
+                </section>
+                <!-- /#logsPage -->
+
+                <!-- ───────────────────────────────────────────────────────
+           PAGE: CORE EDITOR
+      ─────────────────────────────────────────────────────── -->
+                <section
+                    id="coreEditorPage"
+                    class="page"
+                    aria-label="Core Editor"
+                >
+                    <div class="page-header">
+                        <div class="page-title-group">
+                            <div class="breadcrumb" aria-label="Breadcrumb">
+                                <span class="breadcrumb-item"
+                                    >Configuration</span
+                                >
+                                <span class="breadcrumb-sep" aria-hidden="true">
+                                    <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        width="12"
+                                        height="12"
+                                    >
+                                        <polyline points="9 18 15 12 9 6" />
+                                    </svg>
+                                </span>
+                                <a
+                                    id="backToCoresLink"
+                                    href="#"
+                                    class="breadcrumb-item breadcrumb-link"
+                                    >Cores</a
+                                >
+                                <span class="breadcrumb-sep" aria-hidden="true">
+                                    <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        width="12"
+                                        height="12"
+                                    >
+                                        <polyline points="9 18 15 12 9 6" />
+                                    </svg>
+                                </span>
+                                <span
+                                    id="editorBreadcrumbName"
+                                    class="breadcrumb-item breadcrumb-current"
+                                    >New Core</span
+                                >
+                            </div>
+                            <h2 id="editorPageTitle">Core Editor</h2>
+                            <p class="page-subtitle">
+                                Configure inbounds, routing rules, and balancers
+                                for this core.
+                            </p>
+                        </div>
+                        <div class="page-actions">
+                            <button
+                                id="backToCoresBtn"
+                                class="btn btn-ghost btn-sm"
+                                type="button"
+                            >
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    aria-hidden="true"
+                                >
+                                    <line x1="19" y1="12" x2="5" y2="12" />
+                                    <polyline points="12 19 5 12 12 5" />
+                                </svg>
+                                Back to Cores
+                            </button>
+                            <button
+                                id="saveCoreBtn"
+                                class="btn btn-primary btn-sm"
+                                type="button"
+                            >
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    aria-hidden="true"
+                                >
+                                    <path
+                                        d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"
+                                    />
+                                    <polyline points="17 21 17 13 7 13 7 21" />
+                                    <polyline points="7 3 7 8 15 8" />
+                                </svg>
+                                Save Core
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Core identity card -->
+                    <div class="card editor-header-card">
+                        <div class="editor-header-fields">
+                            <div class="form-field">
+                                <label for="editorCoreName">Core Name</label>
+                                <input
+                                    id="editorCoreName"
+                                    type="text"
+                                    name="name"
+                                    placeholder="e.g. Main Core"
+                                    class="input"
+                                    required
+                                />
+                            </div>
+
+                            <div class="form-field">
+                                <label for="editorCoreNode"
+                                    >Assigned Node</label
+                                >
+                                <select
+                                    id="editorCoreNode"
+                                    name="node"
+                                    class="select"
+                                >
+                                    <option value="">
+                                        Select a node&hellip;
+                                    </option>
+                                    <!-- Populated by app.js -->
+                                </select>
+                            </div>
+
+                            <div class="form-field form-field--toggle">
+                                <span class="toggle-field-label"
+                                    >Core Enabled</span
+                                >
+                                <label
+                                    class="toggle-label"
+                                    for="editorCoreEnabled"
+                                    aria-label="Toggle core enabled"
+                                >
+                                    <input
+                                        id="editorCoreEnabled"
+                                        type="checkbox"
+                                        class="toggle-input"
+                                        name="enabled"
+                                    />
+                                    <span
+                                        class="toggle-track"
+                                        aria-hidden="true"
+                                    >
+                                        <span class="toggle-thumb"></span>
+                                    </span>
+                                </label>
+                            </div>
+                        </div>
+                        <p
+                            id="coreEditorMessage"
+                            class="form-message"
+                            role="alert"
+                            aria-live="assertive"
+                        ></p>
+                    </div>
+
+                    <!-- Tabs card -->
+                    <div class="card tabs-container">
+                        <div
+                            class="tabs-header"
+                            role="tablist"
+                            aria-label="Core configuration sections"
+                        >
+                            <button
+                                class="tab-btn active"
+                                data-core-tab="inbounds"
+                                type="button"
+                                role="tab"
+                                aria-selected="true"
+                                aria-controls="tabInbounds"
+                                id="tab-btn-inbounds"
+                            >
+                                Inbounds
+                                <span
+                                    id="inboundTabBadge"
+                                    class="tab-badge"
+                                    aria-label="inbound count"
+                                ></span>
+                            </button>
+
+                            <button
+                                class="tab-btn"
+                                data-core-tab="routing"
+                                type="button"
+                                role="tab"
+                                aria-selected="false"
+                                aria-controls="tabRouting"
+                                id="tab-btn-routing"
+                            >
+                                Routing
+                            </button>
+
+                            <button
+                                class="tab-btn"
+                                data-core-tab="balancers"
+                                type="button"
+                                role="tab"
+                                aria-selected="false"
+                                aria-controls="tabBalancers"
+                                id="tab-btn-balancers"
+                            >
+                                Balancers
+                                <span
+                                    id="balancerTabBadge"
+                                    class="tab-badge"
+                                    aria-label="balancer count"
+                                ></span>
+                            </button>
+
+                            <button
+                                class="tab-btn"
+                                data-core-tab="dependencies"
+                                type="button"
+                                role="tab"
+                                aria-selected="false"
+                                aria-controls="tabDependencies"
+                                id="tab-btn-dependencies"
+                            >
+                                Dependencies
+                            </button>
+
+                            <button
+                                class="tab-btn"
+                                data-core-tab="preview"
+                                type="button"
+                                role="tab"
+                                aria-selected="false"
+                                aria-controls="tabPreview"
+                                id="tab-btn-preview"
+                            >
+                                Preview
+                            </button>
+                        </div>
+                        <!-- /.tabs-header -->
+
+                        <!-- Tab panel: Inbounds -->
+                        <div
+                            id="tabInbounds"
+                            class="tab-panel active"
+                            role="tabpanel"
+                            aria-labelledby="tab-btn-inbounds"
+                        >
+                            <div class="tab-panel-header">
+                                <p class="tab-panel-desc">
+                                    Define inbound listeners for this core
+                                    configuration.
+                                </p>
+                                <button
+                                    id="addInboundButton"
+                                    class="btn btn-primary btn-sm"
+                                    type="button"
+                                >
+                                    <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        aria-hidden="true"
+                                    >
+                                        <line x1="12" y1="5" x2="12" y2="19" />
+                                        <line x1="5" y1="12" x2="19" y2="12" />
+                                    </svg>
+                                    Add Inbound
+                                </button>
+                            </div>
+                            <div id="inboundEditorList" class="editor-list">
+                                <div class="editor-list-empty">
+                                    <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="1.5"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        aria-hidden="true"
+                                    >
+                                        <polyline
+                                            points="22 12 16 12 14 15 10 15 8 12 2 12"
+                                        />
+                                        <path
+                                            d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"
+                                        />
+                                    </svg>
+                                    <span
+                                        >No inbounds configured. Click
+                                        &ldquo;Add Inbound&rdquo; to get
+                                        started.</span
+                                    >
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Tab panel: Routing -->
+                        <div
+                            id="tabRouting"
+                            class="tab-panel"
+                            role="tabpanel"
+                            aria-labelledby="tab-btn-routing"
+                        >
+                            <div class="tab-panel-header">
+                                <p class="tab-panel-desc">
+                                    Configure traffic routing rules for this
+                                    core.
+                                </p>
+                            </div>
+                            <div id="routingEditorList" class="editor-list">
+                                <div class="editor-list-empty">
+                                    <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="1.5"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        aria-hidden="true"
+                                    >
+                                        <polyline points="16 3 21 3 21 8" />
+                                        <line x1="4" y1="20" x2="21" y2="3" />
+                                        <polyline points="21 16 21 21 16 21" />
+                                        <line x1="15" y1="15" x2="21" y2="21" />
+                                    </svg>
+                                    <span>No routing rules defined yet.</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Tab panel: Balancers -->
+                        <div
+                            id="tabBalancers"
+                            class="tab-panel"
+                            role="tabpanel"
+                            aria-labelledby="tab-btn-balancers"
+                        >
+                            <div class="tab-panel-header">
+                                <p class="tab-panel-desc">
+                                    Set up load balancers to distribute traffic
+                                    across outbounds.
+                                </p>
+                                <button
+                                    id="addBalancerButton"
+                                    class="btn btn-primary btn-sm"
+                                    type="button"
+                                >
+                                    <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        aria-hidden="true"
+                                    >
+                                        <line x1="12" y1="5" x2="12" y2="19" />
+                                        <line x1="5" y1="12" x2="19" y2="12" />
+                                    </svg>
+                                    Add Balancer
+                                </button>
+                            </div>
+                            <div id="balancerEditorList" class="editor-list">
+                                <div class="editor-list-empty">
+                                    <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="1.5"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        aria-hidden="true"
+                                    >
+                                        <line x1="18" y1="20" x2="18" y2="10" />
+                                        <line x1="12" y1="20" x2="12" y2="4" />
+                                        <line x1="6" y1="20" x2="6" y2="14" />
+                                    </svg>
+                                    <span
+                                        >No balancers configured. Click
+                                        &ldquo;Add Balancer&rdquo; to get
+                                        started.</span
+                                    >
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Tab panel: Dependencies -->
+                        <div
+                            id="tabDependencies"
+                            class="tab-panel"
+                            role="tabpanel"
+                            aria-labelledby="tab-btn-dependencies"
+                        >
+                            <div class="tab-panel-header">
+                                <p class="tab-panel-desc">
+                                    Manage inter-core dependencies and startup
+                                    ordering.
+                                </p>
+                                <button
+                                    id="addDependencyButton"
+                                    class="btn btn-primary btn-sm"
+                                    type="button"
+                                >
+                                    <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        aria-hidden="true"
+                                    >
+                                        <line x1="12" y1="5" x2="12" y2="19" />
+                                        <line x1="5" y1="12" x2="19" y2="12" />
+                                    </svg>
+                                    Add Dependency
+                                </button>
+                            </div>
+                            <div id="dependencyEditorList" class="editor-list">
+                                <div class="editor-list-empty">
+                                    <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="1.5"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        aria-hidden="true"
+                                    >
+                                        <path
+                                            d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"
+                                        />
+                                        <path
+                                            d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"
+                                        />
+                                    </svg>
+                                    <span>No dependencies configured.</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Tab panel: Preview -->
+                        <div
+                            id="tabPreview"
+                            class="tab-panel"
+                            role="tabpanel"
+                            aria-labelledby="tab-btn-preview"
+                        >
+                            <div class="tab-panel-header">
+                                <p class="tab-panel-desc">
+                                    Preview the generated Xray JSON
+                                    configuration.
+                                </p>
+                                <button
+                                    id="refreshPreviewButton"
+                                    class="btn btn-ghost btn-sm"
+                                    type="button"
+                                >
+                                    <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        aria-hidden="true"
+                                    >
+                                        <polyline points="23 4 23 10 17 10" />
+                                        <path
+                                            d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"
+                                        />
+                                    </svg>
+                                    Refresh Preview
+                                </button>
+                            </div>
+                            <pre
+                                id="corePreviewBox"
+                                class="code-preview"
+                                aria-label="Generated core configuration JSON"
+                                tabindex="0"
+                            ><code>// Click "Refresh Preview" to generate the configuration output.</code></pre>
+                        </div>
+                    </div>
+                    <!-- /.card.tabs-container -->
+
+                    <!-- Bottom action bar -->
+                    <div class="editor-bottom-bar">
+                        <label class="toggle-label" for="restartNodesAfterSave">
+                            <input
+                                id="restartNodesAfterSave"
+                                type="checkbox"
+                                class="toggle-input"
+                            />
+                            <span class="toggle-track" aria-hidden="true">
+                                <span class="toggle-thumb"></span>
+                            </span>
+                            <span class="toggle-text"
+                                >Restart nodes after save</span
+                            >
+                        </label>
+                        <div class="editor-bottom-actions">
+                            <button
+                                id="backToCoresBtn2"
+                                class="btn btn-ghost btn-sm"
+                                type="button"
+                            >
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    aria-hidden="true"
+                                >
+                                    <line x1="19" y1="12" x2="5" y2="12" />
+                                    <polyline points="12 19 5 12 12 5" />
+                                </svg>
+                                Back
+                            </button>
+                            <button
+                                id="saveCoreEditorBottom"
+                                class="btn btn-primary btn-sm"
+                                type="button"
+                            >
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    aria-hidden="true"
+                                >
+                                    <path
+                                        d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"
+                                    />
+                                    <polyline points="17 21 17 13 7 13 7 21" />
+                                    <polyline points="7 3 7 8 15 8" />
+                                </svg>
+                                Save Core
+                            </button>
+                        </div>
+                    </div>
+                    <!-- /.editor-bottom-bar -->
+                </section>
+                <!-- /#coreEditorPage -->
+            </div>
+            <!-- /.workspace -->
         </div>
-      </section>
+        <!-- /#appView -->
 
-      <section id="coresPage" class="page">
-        <div class="panel-card">
-          <div class="panel-head"><div><h3>Cores</h3><p>Create a core with only a name and target node. Open it to edit inbounds, routing, balancers and dependencies.</p></div><button class="primary-small" id="createCoreButton" type="button">Create Core</button></div>
-          <div id="coresEmpty" class="empty-state">No cores yet. Create a core and assign it to a node.</div>
-          <div class="core-grid" id="coresGrid"></div>
+        <!-- ═══════════════════════════════════════════════════════════
+       NODE MODAL
+  ═══════════════════════════════════════════════════════════ -->
+        <div
+            id="nodeModal"
+            class="modal hidden"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="nodeModalTitle"
+        >
+            <div class="modal-backdrop"></div>
+            <div class="modal-container">
+                <div class="modal-card modal-card--wide">
+                    <!-- Modal header -->
+                    <div class="modal-header">
+                        <div class="modal-header-text">
+                            <h3 id="nodeModalTitle">Add Node</h3>
+                            <p id="nodeModalSubtitle" class="modal-subtitle">
+                                Configure a new server node connection.
+                            </p>
+                        </div>
+                        <button
+                            id="closeNodeModal"
+                            class="modal-close-btn"
+                            type="button"
+                            aria-label="Close dialog"
+                        >
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                aria-hidden="true"
+                            >
+                                <line x1="18" y1="6" x2="6" y2="18" />
+                                <line x1="6" y1="6" x2="18" y2="18" />
+                            </svg>
+                        </button>
+                    </div>
+
+                    <form id="nodeForm" novalidate>
+                        <!-- Hidden ID field -->
+                        <input
+                            id="nodeId"
+                            type="hidden"
+                            name="nodeId"
+                            value=""
+                        />
+
+                        <!-- Status strip -->
+                        <div class="status-strip">
+                            <div class="status-strip-indicator">
+                                <span
+                                    id="nodeStatusDot"
+                                    class="status-dot status-dot--unknown"
+                                    aria-hidden="true"
+                                ></span>
+                                <span id="nodeStatusText" class="status-text"
+                                    >Unknown</span
+                                >
+                            </div>
+                            <div class="status-strip-controls">
+                                <label
+                                    class="toggle-label toggle-label--inline"
+                                    for="nodeEnabled"
+                                >
+                                    <input
+                                        id="nodeEnabled"
+                                        type="checkbox"
+                                        class="toggle-input"
+                                        name="enabled"
+                                    />
+                                    <span
+                                        class="toggle-track"
+                                        aria-hidden="true"
+                                    >
+                                        <span class="toggle-thumb"></span>
+                                    </span>
+                                    <span class="toggle-text">Enabled</span>
+                                </label>
+                                <button
+                                    id="checkNodeStatus"
+                                    class="btn btn-ghost btn-xs"
+                                    type="button"
+                                >
+                                    <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        aria-hidden="true"
+                                    >
+                                        <path
+                                            d="M22 11.08V12a10 10 0 1 1-5.93-9.14"
+                                        />
+                                        <polyline
+                                            points="22 4 12 14.01 9 11.01"
+                                        />
+                                    </svg>
+                                    Check Status
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Two-column form body -->
+                        <div class="node-form-grid">
+                            <!-- Left column: connection settings -->
+                            <div class="node-form-left">
+                                <div class="form-field">
+                                    <label for="nodeName">
+                                        Node Name
+                                        <span
+                                            class="required-star"
+                                            aria-hidden="true"
+                                            >*</span
+                                        >
+                                    </label>
+                                    <input
+                                        id="nodeName"
+                                        type="text"
+                                        name="name"
+                                        placeholder="e.g. US East 01"
+                                        class="input"
+                                        required
+                                        autocomplete="off"
+                                    />
+                                </div>
+
+                                <div class="form-row">
+                                    <div class="form-field form-field--grow">
+                                        <label for="nodeAddress">
+                                            Address
+                                            <span
+                                                class="required-star"
+                                                aria-hidden="true"
+                                                >*</span
+                                            >
+                                        </label>
+                                        <input
+                                            id="nodeAddress"
+                                            type="text"
+                                            name="address"
+                                            placeholder="IP address or hostname"
+                                            class="input"
+                                            required
+                                            autocomplete="off"
+                                            spellcheck="false"
+                                        />
+                                    </div>
+                                    <div class="form-field form-field--short">
+                                        <label for="nodePort">Port</label>
+                                        <input
+                                            id="nodePort"
+                                            type="number"
+                                            name="port"
+                                            placeholder="62050"
+                                            class="input"
+                                            min="1"
+                                            max="65535"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div class="form-row">
+                                    <div class="form-field form-field--short">
+                                        <label for="apiPort">API Port</label>
+                                        <input
+                                            id="apiPort"
+                                            type="number"
+                                            name="apiPort"
+                                            placeholder="62051"
+                                            class="input"
+                                            min="1"
+                                            max="65535"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div class="form-field">
+                                    <label for="apiKey">API Key</label>
+                                    <div class="input-wrap input-suffix">
+                                        <input
+                                            id="apiKey"
+                                            type="text"
+                                            name="apiKey"
+                                            placeholder="Authentication key for gRPC API"
+                                            class="input input--mono"
+                                            autocomplete="off"
+                                            spellcheck="false"
+                                        />
+                                        <button
+                                            id="generateApiKey"
+                                            class="input-suffix-btn"
+                                            type="button"
+                                            aria-label="Generate a new API key"
+                                        >
+                                            <svg
+                                                xmlns="http://www.w3.org/2000/svg"
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                stroke-width="2"
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                                aria-hidden="true"
+                                            >
+                                                <path
+                                                    d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"
+                                                />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- Advanced settings (collapsible) -->
+                                <details class="advanced-details">
+                                    <summary class="advanced-summary">
+                                        <svg
+                                            xmlns="http://www.w3.org/2000/svg"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            stroke-width="2"
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            width="14"
+                                            height="14"
+                                            aria-hidden="true"
+                                        >
+                                            <circle cx="12" cy="12" r="3" />
+                                            <path
+                                                d="M19.07 4.93l-1.41 1.41M12 2v2M4.93 4.93l1.41 1.41M2 12h2M4.93 19.07l1.41-1.41M12 22v-2M19.07 19.07l-1.41-1.41M22 12h-2"
+                                            />
+                                        </svg>
+                                        Advanced Settings
+                                    </summary>
+                                    <div class="advanced-fields">
+                                        <div class="form-row">
+                                            <div
+                                                class="form-field form-field--grow"
+                                            >
+                                                <label for="connectionType"
+                                                    >Connection Type</label
+                                                >
+                                                <select
+                                                    id="connectionType"
+                                                    name="connectionType"
+                                                    class="select"
+                                                >
+                                                    <option value="direct">
+                                                        Direct
+                                                    </option>
+                                                    <option value="proxy">
+                                                        Via Proxy
+                                                    </option>
+                                                </select>
+                                            </div>
+                                            <div
+                                                class="form-field form-field--short"
+                                            >
+                                                <label for="usageRatio"
+                                                    >Usage Ratio</label
+                                                >
+                                                <input
+                                                    id="usageRatio"
+                                                    type="number"
+                                                    name="usageRatio"
+                                                    placeholder="1.0"
+                                                    class="input"
+                                                    min="0"
+                                                    step="0.1"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div class="form-row">
+                                            <div
+                                                class="form-field form-field--grow"
+                                            >
+                                                <label for="keepAliveValue"
+                                                    >Keep-Alive Interval</label
+                                                >
+                                                <input
+                                                    id="keepAliveValue"
+                                                    type="number"
+                                                    name="keepAliveValue"
+                                                    placeholder="30"
+                                                    class="input"
+                                                    min="0"
+                                                />
+                                            </div>
+                                            <div
+                                                class="form-field form-field--short"
+                                            >
+                                                <label for="keepAliveUnit"
+                                                    >Unit</label
+                                                >
+                                                <select
+                                                    id="keepAliveUnit"
+                                                    name="keepAliveUnit"
+                                                    class="select"
+                                                >
+                                                    <option value="s">
+                                                        Seconds
+                                                    </option>
+                                                    <option value="m">
+                                                        Minutes
+                                                    </option>
+                                                    <option value="h">
+                                                        Hours
+                                                    </option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div class="form-row">
+                                            <div
+                                                class="form-field form-field--grow"
+                                            >
+                                                <label for="dataLimitGb"
+                                                    >Data Limit (GB)</label
+                                                >
+                                                <input
+                                                    id="dataLimitGb"
+                                                    type="number"
+                                                    name="dataLimitGb"
+                                                    placeholder="Unlimited"
+                                                    class="input"
+                                                    min="0"
+                                                    step="0.1"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div class="form-row">
+                                            <div
+                                                class="form-field form-field--grow"
+                                            >
+                                                <label for="defaultTimeout"
+                                                    >Default Timeout (s)</label
+                                                >
+                                                <input
+                                                    id="defaultTimeout"
+                                                    type="number"
+                                                    name="defaultTimeout"
+                                                    placeholder="30"
+                                                    class="input"
+                                                    min="0"
+                                                />
+                                            </div>
+                                            <div
+                                                class="form-field form-field--grow"
+                                            >
+                                                <label for="internalTimeout"
+                                                    >Internal Timeout (s)</label
+                                                >
+                                                <input
+                                                    id="internalTimeout"
+                                                    type="number"
+                                                    name="internalTimeout"
+                                                    placeholder="10"
+                                                    class="input"
+                                                    min="0"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div class="form-field">
+                                            <label for="proxyUrl"
+                                                >Proxy URL</label
+                                            >
+                                            <input
+                                                id="proxyUrl"
+                                                type="url"
+                                                name="proxyUrl"
+                                                placeholder="socks5://user:pass@host:port"
+                                                class="input input--mono"
+                                                spellcheck="false"
+                                                autocomplete="off"
+                                            />
+                                            <p class="form-hint">
+                                                Used only when connection type
+                                                is &ldquo;Via Proxy&rdquo;.
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <!-- /.advanced-fields -->
+                                </details>
+                            </div>
+                            <!-- /.node-form-left -->
+
+                            <!-- Right column: TLS certificate -->
+                            <div class="node-form-right">
+                                <div class="form-field form-field--full-height">
+                                    <label for="certificate"
+                                        >TLS Certificate</label
+                                    >
+                                    <textarea
+                                        id="certificate"
+                                        name="certificate"
+                                        placeholder="-----BEGIN CERTIFICATE-----&#10;(paste certificate here)&#10;-----END CERTIFICATE-----"
+                                        class="textarea textarea--mono textarea--tall"
+                                        spellcheck="false"
+                                        autocomplete="off"
+                                    ></textarea>
+                                    <p class="form-hint">
+                                        Paste the node&rsquo;s TLS certificate
+                                        for secure gRPC communication. Leave
+                                        blank to skip verification.
+                                    </p>
+                                </div>
+                            </div>
+                            <!-- /.node-form-right -->
+                        </div>
+                        <!-- /.node-form-grid -->
+
+                        <p
+                            id="nodeMessage"
+                            class="form-message"
+                            role="alert"
+                            aria-live="assertive"
+                        ></p>
+
+                        <!-- Modal footer -->
+                        <div class="modal-footer">
+                            <div class="modal-footer-left">
+                                <button
+                                    id="deleteNodeButton"
+                                    class="btn btn-danger btn-sm hidden"
+                                    type="button"
+                                >
+                                    <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        aria-hidden="true"
+                                    >
+                                        <polyline points="3 6 5 6 21 6" />
+                                        <path
+                                            d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"
+                                        />
+                                    </svg>
+                                    Delete Node
+                                </button>
+                            </div>
+                            <div class="modal-footer-right">
+                                <button
+                                    id="cancelNodeButton"
+                                    class="btn btn-ghost btn-sm"
+                                    type="button"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    class="btn btn-primary btn-sm"
+                                >
+                                    Save Node
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                    <!-- /#nodeForm -->
+                </div>
+                <!-- /.modal-card -->
+            </div>
+            <!-- /.modal-container -->
         </div>
-      </section>
+        <!-- /#nodeModal -->
 
+        <!-- ═══════════════════════════════════════════════════════════
+       CORE CREATE MODAL
+  ═══════════════════════════════════════════════════════════ -->
+        <div
+            id="coreCreateModal"
+            class="modal hidden"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="coreCreateTitle"
+        >
+            <div class="modal-backdrop"></div>
+            <div class="modal-container">
+                <div class="modal-card modal-card--narrow">
+                    <!-- Modal header -->
+                    <div class="modal-header">
+                        <div class="modal-header-text">
+                            <h3 id="coreCreateTitle">Create New Core</h3>
+                            <p class="modal-subtitle">
+                                Set up a new Xray core configuration.
+                            </p>
+                        </div>
+                        <button
+                            id="closeCoreCreateModal"
+                            class="modal-close-btn"
+                            type="button"
+                            aria-label="Close dialog"
+                        >
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                aria-hidden="true"
+                            >
+                                <line x1="18" y1="6" x2="6" y2="18" />
+                                <line x1="6" y1="6" x2="18" y2="18" />
+                            </svg>
+                        </button>
+                    </div>
 
-      <section id="logsPage" class="page">
-        <div class="panel-card logs-card">
-          <div class="panel-head">
-            <div><h3>Logs</h3><p>View panel logs or fetch logs from any saved node through its API Port.</p></div>
-            <button class="primary-small" id="refreshLogsButton" type="button">Refresh Logs</button>
-          </div>
-          <div class="logs-toolbar">
-            <label class="field"><span>Source</span><select id="logSourceSelect"></select></label>
-            <label class="field"><span>Lines</span><select id="logLimitSelect"><option value="100">100 lines</option><option value="300" selected>300 lines</option><option value="1000">1000 lines</option><option value="3000">3000 lines</option></select></label>
-            <label class="field"><span>Level</span><select id="logLevelSelect"><option value="all">All</option><option value="debug">Debug</option><option value="info">Info</option><option value="warning">Warning</option><option value="error">Error</option></select></label>
-            <label class="field wide"><span>Search</span><input id="logSearchInput" type="search" placeholder="Filter logs..." /></label>
-          </div>
-          <p id="logsMessage" class="message"></p>
-          <pre id="logsOutput" class="logs-output">Select a source and refresh logs.</pre>
+                    <form id="coreCreateForm" novalidate>
+                        <div class="modal-body">
+                            <div class="form-field">
+                                <label for="createCoreName">
+                                    Core Name
+                                    <span
+                                        class="required-star"
+                                        aria-hidden="true"
+                                        >*</span
+                                    >
+                                </label>
+                                <input
+                                    id="createCoreName"
+                                    type="text"
+                                    name="name"
+                                    placeholder="e.g. Main Config"
+                                    class="input"
+                                    required
+                                    autofocus
+                                    autocomplete="off"
+                                />
+                            </div>
+
+                            <div class="form-field">
+                                <label for="createCoreNode">
+                                    Assigned Node
+                                    <span
+                                        class="required-star"
+                                        aria-hidden="true"
+                                        >*</span
+                                    >
+                                </label>
+                                <select
+                                    id="createCoreNode"
+                                    name="node"
+                                    class="select"
+                                    required
+                                >
+                                    <option value="">
+                                        Select a node&hellip;
+                                    </option>
+                                    <!-- Populated by app.js -->
+                                </select>
+                                <p class="form-hint">
+                                    The node this core configuration will run
+                                    on.
+                                </p>
+                            </div>
+
+                            <div class="form-field form-field--toggle">
+                                <label
+                                    class="toggle-label toggle-label--block"
+                                    for="createCoreEnabled"
+                                >
+                                    <div class="toggle-label-content">
+                                        <span class="toggle-label-text"
+                                            >Enable Core</span
+                                        >
+                                        <span class="toggle-label-desc"
+                                            >Core will start automatically when
+                                            the node is active.</span
+                                        >
+                                    </div>
+                                    <input
+                                        id="createCoreEnabled"
+                                        type="checkbox"
+                                        class="toggle-input"
+                                        name="enabled"
+                                        checked
+                                    />
+                                    <span
+                                        class="toggle-track"
+                                        aria-hidden="true"
+                                    >
+                                        <span class="toggle-thumb"></span>
+                                    </span>
+                                </label>
+                            </div>
+
+                            <p
+                                id="coreCreateMessage"
+                                class="form-message"
+                                role="alert"
+                                aria-live="assertive"
+                            ></p>
+                        </div>
+                        <!-- /.modal-body -->
+
+                        <!-- Modal footer -->
+                        <div class="modal-footer">
+                            <div class="modal-footer-right">
+                                <button
+                                    id="cancelCoreCreateButton"
+                                    class="btn btn-ghost btn-sm"
+                                    type="button"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    class="btn btn-primary btn-sm"
+                                >
+                                    <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        aria-hidden="true"
+                                    >
+                                        <line x1="12" y1="5" x2="12" y2="19" />
+                                        <line x1="5" y1="12" x2="19" y2="12" />
+                                    </svg>
+                                    Create Core
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                    <!-- /#coreCreateForm -->
+                </div>
+                <!-- /.modal-card -->
+            </div>
+            <!-- /.modal-container -->
         </div>
-      </section>
+        <!-- /#coreCreateModal -->
 
-      <section id="coreEditorPage" class="page">
-        <div class="core-editor-shell">
-          <div class="editor-toolbar">
-            <button id="backToCores" class="ghost-btn" type="button">← Back</button>
-            <label class="field editor-title-field"><span>Core Name</span><input id="editorCoreName" type="text" placeholder="docnode-000" /></label>
-            <label class="field editor-node-field"><span>Node</span><select id="editorCoreNode"></select></label>
-            <label class="enable-control editor-enable"><span>Enabled</span><span class="switch"><input id="editorCoreEnabled" type="checkbox" checked /><span></span></span></label>
-            <button id="saveCoreEditor" class="primary-small" type="button">Save</button>
-          </div>
-
-          <div class="tabs" role="tablist" aria-label="Core editor sections">
-            <button class="tab active" data-core-tab="inbounds" type="button">↓ Inbounds</button>
-            <button class="tab" data-core-tab="routing" type="button">⌘ Routing</button>
-            <button class="tab" data-core-tab="balancers" type="button">⚖ Balancers</button>
-            <button class="tab" data-core-tab="dependencies" type="button">↔ Dependencies</button>
-            <button class="tab" data-core-tab="preview" type="button">{} Preview</button>
-          </div>
-
-          <section class="tab-panel active" id="tabInbounds">
-            <div class="panel-head compact"><div><h3>Inbounds</h3><p>Define listeners only: name, bind IP and port allocation. Routing is configured in the Routing tab.</p></div><button id="addInboundButton" class="primary-small" type="button">+ Add Inbound</button></div>
-            <div id="inboundEditorList" class="builder-list"></div>
-          </section>
-
-          <section class="tab-panel" id="tabRouting">
-            <div class="panel-head compact"><div><h3>Inbound Routing</h3><p>For each inbound, choose a direct static target or route it to a balancer alias.</p></div></div>
-            <div id="routingEditorList" class="builder-list"></div>
-          </section>
-
-          <section class="tab-panel" id="tabBalancers">
-            <div class="panel-head compact"><div><h3>Balancers</h3><p>Balancers are aliases that distribute traffic to static endpoints or to existing node inbounds.</p></div><button id="addBalancerButton" class="primary-small" type="button">+ Add Balancer</button></div>
-            <div id="balancerEditorList" class="builder-list"></div>
-          </section>
-
-          <section class="tab-panel" id="tabDependencies">
-            <div class="panel-head compact"><div><h3>Dependencies</h3><p>Optional ordering and safety dependencies for apply/deploy steps.</p></div><button id="addDependencyButton" class="primary-small" type="button">+ Add Dependency</button></div>
-            <div id="dependencyEditorList" class="builder-list"></div>
-          </section>
-
-          <section class="tab-panel" id="tabPreview">
-            <div class="panel-head compact"><div><h3>Config Preview</h3><p>Preview the normalized node-side config that will be used by the runtime in the next step.</p></div><button id="refreshPreviewButton" class="ghost-btn" type="button">Refresh Preview</button></div>
-            <pre id="corePreviewBox" class="preview-box">Save the core first, then refresh preview.</pre>
-          </section>
-
-          <p id="coreEditorMessage" class="message"></p>
-          <div class="bottom-save"><label class="checkline"><input id="restartNodesAfterSave" type="checkbox" checked /> Restart Nodes after apply later</label><button id="saveCoreEditorBottom" class="primary-small" type="button">Save Core</button></div>
-        </div>
-      </section>
-    </section>
-  </main>
-
-  <div id="nodeModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="nodeModalTitle">
-    <div class="modal-card">
-      <div class="modal-header"><div><h2 id="nodeModalTitle">Create Node</h2><p id="nodeModalSubtitle">Add a node definition and check its control-plane API.</p></div><button id="closeNodeModal" class="icon-btn" type="button" aria-label="Close">×</button></div>
-      <form id="nodeForm" class="node-form">
-        <input type="hidden" id="nodeId" />
-        <div class="status-line"><span class="status-label">Status</span><span id="nodeStatusDot" class="status-dot yellow"></span><strong id="nodeStatusText">Pending Check</strong><label class="enable-control"><span>Enabled</span><span class="switch"><input id="nodeEnabled" type="checkbox" checked /><span></span></span></label><button id="checkNodeStatus" class="ghost-btn" type="button" title="Check this node now">↻ Check Status</button></div>
-        <div class="modal-grid">
-          <div class="left-fields">
-            <label class="field"><span>Node Name</span><input id="nodeName" type="text" placeholder="freedom-000-node" required /></label>
-            <div class="two-col"><label class="field"><span>Node Address</span><input id="nodeAddress" type="text" placeholder="node.example.com" required /><small>Domain or IP of the installed node.</small></label><label class="field"><span>Node Port</span><input id="nodePort" type="number" min="1" max="65535" value="62050" required /><small>Data-plane listener port. It is not used for panel health checks.</small></label></div>
-            <label class="field"><span>API Key</span><div class="inline-input"><input id="apiKey" type="text" placeholder="Enter the node API key" required /><button id="generateApiKey" type="button" title="Generate API key">↻</button></div><small>Must match API_KEY in the node env file.</small></label>
-            <details class="advanced" open><summary>⚙ Advanced Settings</summary><div class="advanced-grid"><label class="field"><span>Usage Ratio</span><input id="usageRatio" type="number" min="0" step="0.01" value="1" /></label><label class="field"><span>API Port</span><input id="apiPort" type="number" min="1" max="65535" value="62051" /><small>Control-plane port used by health/status/config requests.</small></label><label class="field wide"><span>Connection Type</span><select id="connectionType"><option value="grpc">gRPC</option><option value="rest">REST</option></select><small>Data-plane protocol preference. Node API is currently REST over HTTP/HTTPS.</small></label><label class="field"><span>Keep Alive</span><input id="keepAliveValue" type="number" min="1" value="60" /></label><label class="field"><span>Interval Unit</span><select id="keepAliveUnit"><option value="seconds">Seconds</option><option value="minutes">Minutes</option><option value="hours">Hours</option></select></label><label class="field wide"><span>Data Limit</span><input id="dataLimitGb" type="number" min="0" step="0.01" placeholder="Enter data limit (GB)" /></label><label class="field"><span>Default Timeout</span><input id="defaultTimeout" type="number" min="1" value="10" /></label><label class="field"><span>Internal Timeout</span><input id="internalTimeout" type="number" min="1" value="15" /></label><label class="field wide"><span>Proxy URL</span><input id="proxyUrl" type="text" placeholder="socks5://127.0.0.1:1080" /></label></div></details>
-          </div>
-          <label class="field cert-field"><span>Node API TLS Certificate <em>optional</em></span><textarea id="certificate" placeholder="Paste the node public certificate PEM here. The panel will use it to verify HTTPS requests to API Port."></textarea><small>Only the public certificate belongs here. Private keys stay on the node server.</small></label>
-        </div>
-        <p id="nodeMessage" class="message"></p>
-        <div class="modal-actions"><button id="deleteNodeButton" class="danger-btn hidden" type="button">Delete</button><span></span><button class="ghost-btn" id="cancelNodeButton" type="button">Cancel</button><button class="primary-small" type="submit">Save Node</button></div>
-      </form>
-    </div>
-  </div>
-
-  <div id="coreCreateModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="coreCreateTitle">
-    <div class="modal-card small-modal">
-      <div class="modal-header"><div><h2 id="coreCreateTitle">Create Core</h2><p>Only choose a name and the node that will receive this core.</p></div><button id="closeCoreCreateModal" class="icon-btn" type="button" aria-label="Close">×</button></div>
-      <form id="coreCreateForm" class="node-form">
-        <label class="field"><span>Core Name</span><input id="createCoreName" type="text" placeholder="docnode-000" required /></label>
-        <label class="field"><span>Apply to Node</span><select id="createCoreNode" required></select><small>Inbounds, routing, balancers and dependencies are edited after the core is created.</small></label>
-        <label class="checkline"><input id="createCoreEnabled" type="checkbox" checked /> Enabled</label>
-        <p id="coreCreateMessage" class="message"></p>
-        <div class="modal-actions"><span></span><span></span><button class="ghost-btn" id="cancelCoreCreateButton" type="button">Cancel</button><button class="primary-small" type="submit">Create Core</button></div>
-      </form>
-    </div>
-  </div>
-
-  <script src="/assets/js/app.js"></script>
-</body>
+        <script src="/assets/js/app.js"></script>
+    </body>
 </html>
