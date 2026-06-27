@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+CLI_NAME="$(basename "$0")"
+APP_DIR="${DOCTOR_DEV_NODE_APP_DIR:-/opt/${CLI_NAME}}"
+SERVICE_NAME="${DOCTOR_DEV_NODE_SERVICE_NAME:-${CLI_NAME}}"
+CONFIG_DIR="${DOCTOR_DEV_NODE_CONFIG_DIR:-/etc/${CLI_NAME}}"
+ENV_FILE="${DOCTOR_DEV_NODE_ENV_FILE:-$CONFIG_DIR/node.env}"
+INSTALLER_URL="${DOCTOR_DEV_INSTALLER_URL:-https://github.com/alirezarohollahi/doctor_dev/raw/refs/heads/master/scripts/doctor_dev.sh}"
+PYTHON_BIN="$APP_DIR/.venv/bin/python"
+[[ -x "$PYTHON_BIN" ]] || PYTHON_BIN="$(command -v python3 || true)"
+
+BOLD="\033[1m"; RED="\033[31m"; GREEN="\033[32m"; YELLOW="\033[33m"; BLUE="\033[34m"; CYAN="\033[36m"; RESET="\033[0m"
+cecho(){ printf "%b\n" "$1"; }
+editor_cmd(){ if command -v nano >/dev/null 2>&1; then echo nano; elif command -v vim >/dev/null 2>&1; then echo vim; else echo vi; fi; }
+safe_env_get(){
+  local key="$1"
+  [[ -n "$PYTHON_BIN" && -x "$PYTHON_BIN" && -f "$ENV_FILE" ]] || return 0
+  "$PYTHON_BIN" - "$key" "$ENV_FILE" <<'PY'
+import sys
+key, path = sys.argv[1], sys.argv[2]
+try:
+    for raw in open(path, encoding='utf-8'):
+        line = raw.strip()
+        if not line or line.startswith('#') or '=' not in line:
+            continue
+        k, v = line.split('=', 1)
+        if k.strip() == key:
+            print(v.strip().strip('"').strip("'"))
+            break
+except FileNotFoundError:
+    pass
+PY
+}
+help_screen(){
+  cecho "${CYAN}${BOLD}============================================================${RESET}"
+  cecho "${CYAN}${BOLD}                     ${CLI_NAME} Help${RESET}"
+  cecho "${CYAN}${BOLD}============================================================${RESET}"
+  cecho "${BOLD}Usage:${RESET}"
+  cecho "  ${CLI_NAME} [command]"
+  echo
+  cecho "${BOLD}Service commands:${RESET}"
+  cecho "  ${GREEN}start${RESET}           - Start node service"
+  cecho "  ${GREEN}stop${RESET}            - Stop node service"
+  cecho "  ${GREEN}restart${RESET}         - Restart node service"
+  cecho "  ${GREEN}status${RESET}          - Show systemd status"
+  cecho "  ${GREEN}logs${RESET}            - Follow service logs"
+  cecho "  ${GREEN}health${RESET}          - Call local /health endpoint"
+  echo
+  cecho "${BOLD}Config commands:${RESET}"
+  cecho "  ${GREEN}config edit${RESET}     - Edit node environment config"
+  cecho "  ${GREEN}update${RESET}          - Download installer and run update-node"
+  echo
+  cecho "${BOLD}Directories:${RESET}"
+  cecho "  App directory:  ${BLUE}${APP_DIR}${RESET}"
+  cecho "  Config file:    ${BLUE}${ENV_FILE}${RESET}"
+  cecho "  Service name:   ${BLUE}${SERVICE_NAME}${RESET}"
+  cecho "${CYAN}${BOLD}============================================================${RESET}"
+}
+require_systemctl(){ command -v systemctl >/dev/null 2>&1 || { cecho "${RED}systemctl not found.${RESET}"; exit 1; }; }
+cmd="${1:-help}"
+case "$cmd" in
+  start) require_systemctl; sudo systemctl start "$SERVICE_NAME" ;;
+  stop) require_systemctl; sudo systemctl stop "$SERVICE_NAME" ;;
+  restart) require_systemctl; sudo systemctl restart "$SERVICE_NAME" ;;
+  status) require_systemctl; systemctl status "$SERVICE_NAME" --no-pager ;;
+  logs) require_systemctl; journalctl -u "$SERVICE_NAME" -f -n "${2:-120}" ;;
+  config)
+    sub="${2:-}"
+    if [[ "$sub" == "edit" ]]; then sudo mkdir -p "$CONFIG_DIR"; sudo "$(editor_cmd)" "$ENV_FILE"; else cecho "${YELLOW}Usage: ${CLI_NAME} config edit${RESET}"; exit 2; fi
+    ;;
+  health)
+    port="$(safe_env_get SERVICE_PORT)"; port="${port:-62050}"
+    cert_file="$(safe_env_get SSL_CERT_FILE)"
+    scheme="http"; curl_opts="-fsS"
+    if [[ -n "$cert_file" ]]; then scheme="https"; curl_opts="-fkS"; fi
+    curl $curl_opts "${scheme}://127.0.0.1:${port}/health" || { cecho "${YELLOW}Local health check failed. Is the node running on port ${port}?${RESET}"; exit 1; }
+    echo
+    ;;
+  update)
+    tmp="/tmp/doctor_dev_node_update_$$.sh"
+    cecho "${BLUE}Downloading installer...${RESET}"
+    curl -fsSL "$INSTALLER_URL" -o "$tmp"
+    sudo DOCTOR_DEV_NODE_CLI_NAME="$CLI_NAME" bash "$tmp" update-node
+    rm -f "$tmp"
+    ;;
+  help|-h|--help) help_screen ;;
+  *) cecho "${RED}Unknown command: $cmd${RESET}"; echo; help_screen; exit 2 ;;
+esac

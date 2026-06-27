@@ -4,117 +4,130 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Doctor Dev Panel</title>
-  <link rel="stylesheet" href="/assets/css/login.css" />
+  <link rel="stylesheet" href="/assets/css/app.css" />
 </head>
 <body>
   <div class="aurora aurora-one"></div>
   <div class="aurora aurora-two"></div>
   <div class="aurora aurora-three"></div>
 
-  <main class="shell">
+  <main id="loginView" class="login-shell">
     <section class="brand-card" aria-label="Doctor Dev overview">
-      <div class="brand-topline">
-        <span class="status-dot"></span>
-        <span>Secure Admin Gateway</span>
-      </div>
-
+      <div class="brand-topline"><span class="status-dot"></span><span>Secure Admin Gateway</span></div>
       <div class="logo-wrap">
-        <div class="logo-mark" aria-hidden="true">
-          <svg viewBox="0 0 48 48" role="img">
-            <path d="M10 12.5c0-2.5 2-4.5 4.5-4.5h19c2.5 0 4.5 2 4.5 4.5v23c0 2.5-2 4.5-4.5 4.5h-19C12 40 10 38 10 35.5v-23Z"/>
-            <path d="M17 18h14M17 24h14M17 30h8"/>
-            <path d="M32 29.5l3 3 5-6"/>
-          </svg>
-        </div>
-        <div>
-          <p class="eyebrow">Doctor Dev</p>
-          <h1>Clean node management foundation, rebuilt from zero.</h1>
-        </div>
+        <div class="logo-mark" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M10 12.5c0-2.5 2-4.5 4.5-4.5h19c2.5 0 4.5 2 4.5 4.5v23c0 2.5-2 4.5-4.5 4.5h-19C12 40 10 38 10 35.5v-23Z"/><path d="M17 18h14M17 24h14M17 30h8"/><path d="M32 29.5l3 3 5-6"/></svg></div>
+        <div><p class="eyebrow">Doctor Dev</p><h1>Clean node management foundation, rebuilt from zero.</h1></div>
       </div>
-
-      <p class="brand-copy">
-        This first version only includes a secure admin login and a clean dashboard shell. Nodes, Cores, Logs and Config Editor will be added on top of this structure in the next phases.
-      </p>
-
+      <p class="brand-copy">This version includes a secure login, a clean admin shell, node inventory, node creation modal and installer hooks for panel and node updates.</p>
       <div class="feature-grid">
         <div class="feature-pill"><span>●</span> FastAPI</div>
         <div class="feature-pill"><span>●</span> Multi Admin</div>
-        <div class="feature-pill"><span>●</span> Systemd Ready</div>
+        <div class="feature-pill"><span>●</span> Node Ready</div>
         <div class="feature-pill"><span>●</span> CLI Ready</div>
       </div>
     </section>
 
     <section class="login-card" aria-label="Admin login">
       <div class="login-header">
-        <div>
-          <p class="eyebrow">Admin Login</p>
-          <h2>Sign in</h2>
-        </div>
-        <div class="lock-badge" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><path d="M7 10V8a5 5 0 0 1 10 0v2"/><path d="M6 10h12v10H6z"/><path d="M12 14v3"/></svg>
-        </div>
+        <div><p class="eyebrow">Admin Login</p><h2>Sign in</h2></div>
+        <div class="lock-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 10V8a5 5 0 0 1 10 0v2"/><path d="M6 10h12v10H6z"/><path d="M12 14v3"/></svg></div>
       </div>
-
       <form id="loginForm" class="form" autocomplete="on">
-        <label class="field">
-          <span>Username</span>
-          <input id="username" name="username" type="text" inputmode="text" autocomplete="username" placeholder="admin" required />
-        </label>
-
-        <label class="field">
-          <span>Password</span>
-          <div class="password-wrap">
-            <input id="password" name="password" type="password" autocomplete="current-password" placeholder="••••••••••••" required />
-            <button id="togglePassword" type="button" aria-label="Show password">Show</button>
-          </div>
-        </label>
-
-        <div class="form-row">
-          <label class="remember">
-            <input type="checkbox" checked disabled />
-            <span>Secure 12-hour session</span>
-          </label>
-          <span class="hint">Press Enter to continue</span>
-        </div>
-
-        <button id="submitButton" class="primary-btn" type="submit">
-          <span>Open Panel</span>
-          <svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-        </button>
-
-        <p id="message" class="message" role="status" aria-live="polite"></p>
+        <label class="field"><span>Username</span><input id="username" name="username" type="text" autocomplete="username" placeholder="admin" required /></label>
+        <label class="field"><span>Password</span><div class="password-wrap"><input id="password" name="password" type="password" autocomplete="current-password" placeholder="••••••••••••" required /><button id="togglePassword" type="button">Show</button></div></label>
+        <div class="form-row"><label class="remember"><input type="checkbox" checked disabled /><span>Secure 12-hour session</span></label><span class="hint">Press Enter to continue</span></div>
+        <button id="submitButton" class="primary-btn" type="submit"><span>Open Panel</span><svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></button>
+        <p id="loginMessage" class="message" role="status" aria-live="polite"></p>
       </form>
-    </section>
-
-    <section id="dashboard" class="dashboard hidden" aria-label="Dashboard">
-      <div class="dashboard-top">
-        <div>
-          <p class="eyebrow">Dashboard</p>
-          <h2>Welcome, <span id="adminName">admin</span></h2>
-        </div>
-        <button id="logoutButton" class="ghost-btn" type="button">Logout</button>
-      </div>
-
-      <div class="cards">
-        <article class="mini-card">
-          <span class="mini-icon">⌁</span>
-          <h3>Nodes</h3>
-          <p>Node creation and management will be added in the next phase.</p>
-        </article>
-        <article class="mini-card">
-          <span class="mini-icon">⚙</span>
-          <h3>Cores</h3>
-          <p>Core configuration, status checks and runtime actions will be placed here.</p>
-        </article>
-        <article class="mini-card">
-          <span class="mini-icon">≡</span>
-          <h3>Logs</h3>
-          <p>Live logs, filters, pause and download actions will be added here.</p>
-        </article>
-      </div>
     </section>
   </main>
 
-  <script src="/assets/js/login.js"></script>
+  <main id="appView" class="app-shell hidden" aria-label="Doctor Dev application">
+    <aside class="sidebar">
+      <div class="side-brand">
+        <div class="side-logo">D</div>
+        <div><strong>Doctor Dev</strong><span>Admin Panel</span></div>
+      </div>
+      <nav class="side-nav" aria-label="Main navigation">
+        <button class="nav-item active" data-page="dashboard"><span>⌂</span> Dashboard</button>
+        <button class="nav-item" data-page="nodes"><span>⌘</span> Nodes</button>
+        <button class="nav-item disabled" type="button"><span>⚙</span> Cores <em>soon</em></button>
+        <button class="nav-item disabled" type="button"><span>≡</span> Logs <em>soon</em></button>
+      </nav>
+      <div class="side-footer"><span>Signed in as</span><strong id="adminName">admin</strong><button id="logoutButton" class="ghost-btn" type="button">Logout</button></div>
+    </aside>
+
+    <section class="workspace">
+      <header class="topbar">
+        <div><p class="eyebrow">Node Foundation</p><h2 id="pageTitle">Dashboard</h2></div>
+        <div class="top-actions"><button id="refreshButton" class="ghost-btn" type="button">Refresh</button><button id="openNodeModal" class="primary-small" type="button">Create Node</button></div>
+      </header>
+
+      <section id="dashboardPage" class="page active">
+        <div class="stat-grid">
+          <article class="stat-card"><span>Total Nodes</span><strong id="totalNodes">0</strong><p>Saved node definitions.</p></article>
+          <article class="stat-card"><span>Enabled Nodes</span><strong id="enabledNodes">0</strong><p>Marked as enabled in panel.</p></article>
+          <article class="stat-card"><span>Runtime</span><strong>Base</strong><p>No runtime logic is attached yet.</p></article>
+        </div>
+      </section>
+
+      <section id="nodesPage" class="page">
+        <div class="panel-card">
+          <div class="panel-head"><div><h3>Nodes</h3><p>Manage node records. Real health checks and remote actions will be added later.</p></div><button class="primary-small" id="createNodeButton" type="button">Create Node</button></div>
+          <div id="nodesEmpty" class="empty-state">No nodes yet. Create your first node.</div>
+          <div class="table-wrap hidden" id="nodesTableWrap">
+            <table class="nodes-table">
+              <thead><tr><th>Status</th><th>Name</th><th>Address</th><th>Node Port</th><th>API Port</th><th>Protocol</th><th>Core</th><th>Actions</th></tr></thead>
+              <tbody id="nodesTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <div id="nodeModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="nodeModalTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div><h2 id="nodeModalTitle">Create Node</h2><p id="nodeModalSubtitle">Add a node definition to the panel.</p></div>
+        <button id="closeNodeModal" class="icon-btn" type="button" aria-label="Close">×</button>
+      </div>
+
+      <form id="nodeForm" class="node-form">
+        <input type="hidden" id="nodeId" />
+        <div class="status-line"><span id="nodeStatusDot" class="status-dot gray"></span><label class="switch"><input id="nodeEnabled" type="checkbox" /><span></span></label><strong id="nodeStatusText">Disabled</strong><button class="ghost-btn disabled" type="button" title="Runtime check will be added later">↻ Check Status</button></div>
+
+        <div class="modal-grid">
+          <div class="left-fields">
+            <label class="field"><span>Node Name</span><input id="nodeName" type="text" placeholder="Enter node name" required /></label>
+            <div class="two-col"><label class="field"><span>Node Address</span><input id="nodeAddress" type="text" placeholder="Enter node address" required /></label><label class="field"><span>Node Port</span><input id="nodePort" type="number" min="1" max="65535" value="62050" required /></label></div>
+            <label class="field"><span>Core Configuration</span><select id="coreConfiguration"><option value="docnode-000">docnode-000</option><option value="docnode-001">docnode-001</option></select></label>
+            <label class="field"><span>API Key</span><div class="inline-input"><input id="apiKey" type="text" placeholder="Enter the node API key" required /><button id="generateApiKey" type="button" title="Generate API key">↻</button></div></label>
+
+            <details class="advanced" open>
+              <summary>⚙ Advanced Settings</summary>
+              <div class="advanced-grid">
+                <label class="field"><span>Usage Ratio</span><input id="usageRatio" type="number" min="0" step="0.01" value="1" /></label>
+                <label class="field"><span>API Port</span><input id="apiPort" type="number" min="1" max="65535" value="62051" /></label>
+                <label class="field wide"><span>Connection Type</span><select id="connectionType"><option value="grpc">gRPC</option><option value="rest">REST</option></select></label>
+                <label class="field"><span>Keep Alive</span><input id="keepAliveValue" type="number" min="1" value="60" /></label>
+                <label class="field"><span>Interval Unit</span><select id="keepAliveUnit"><option value="seconds">Seconds</option><option value="minutes">Minutes</option><option value="hours">Hours</option></select></label>
+                <label class="field wide"><span>Data Limit</span><input id="dataLimitGb" type="number" min="0" step="0.01" placeholder="Enter data limit (GB)" /></label>
+                <label class="field"><span>Default Timeout</span><input id="defaultTimeout" type="number" min="1" value="10" /></label>
+                <label class="field"><span>Internal Timeout</span><input id="internalTimeout" type="number" min="1" value="15" /></label>
+                <label class="field wide"><span>Proxy URL</span><input id="proxyUrl" type="text" placeholder="socks5://127.0.0.1:1080" /></label>
+              </div>
+            </details>
+          </div>
+          <label class="field cert-field"><span>Certificate</span><textarea id="certificate" placeholder="Enter certificate"></textarea></label>
+        </div>
+
+        <p id="nodeMessage" class="message"></p>
+        <div class="modal-actions"><button id="deleteNodeButton" class="danger-btn hidden" type="button">Delete</button><span></span><button class="ghost-btn" id="cancelNodeButton" type="button">Cancel</button><button class="primary-small" type="submit">Save Node</button></div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/assets/js/app.js"></script>
 </body>
 </html>

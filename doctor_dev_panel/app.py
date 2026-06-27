@@ -10,7 +10,8 @@ from . import __version__
 from .admin_store import list_admins
 from .auth import authenticate, make_session, require_admin
 from .config import APP_TITLE, SECURITY_HEADERS, SESSION_COOKIE, WEB_DIR
-from .schemas import LoginBody
+from .node_store import create_node, generate_api_key, list_nodes, remove_node, update_node
+from .schemas import LoginBody, NodeBody
 
 app = FastAPI(title=APP_TITLE, version=__version__, docs_url=None, redoc_url=None)
 
@@ -69,17 +70,51 @@ async def me(user: str = Depends(require_admin)) -> dict:
 
 @app.get("/api/panel/summary")
 async def panel_summary(user: str = Depends(require_admin)) -> dict:
+    nodes = list_nodes()
     return {
         "ok": True,
         "user": user,
-        "phase": "login-foundation",
-        "message": "Login foundation is ready. Nodes, Cores, Logs and Config Editor will be added in the next phases.",
+        "phase": "node-foundation",
+        "nodes_total": len(nodes),
+        "nodes_enabled": len([node for node in nodes if node.get("enabled")]),
+        "message": "Node foundation is ready. Runtime actions will be added in the next phases.",
     }
 
 
 @app.get("/api/admins")
 async def admins(user: str = Depends(require_admin)) -> dict:
     return {"ok": True, "admins": list_admins()}
+
+
+@app.get("/api/nodes")
+async def api_list_nodes(user: str = Depends(require_admin)) -> dict:
+    return {"ok": True, "nodes": list_nodes()}
+
+
+@app.post("/api/nodes")
+async def api_create_node(body: NodeBody, user: str = Depends(require_admin)) -> dict:
+    node = create_node(body.model_dump())
+    return {"ok": True, "node": node}
+
+
+@app.put("/api/nodes/{node_id}")
+async def api_update_node(node_id: str, body: NodeBody, user: str = Depends(require_admin)) -> dict:
+    node = update_node(node_id, body.model_dump())
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found.")
+    return {"ok": True, "node": node}
+
+
+@app.delete("/api/nodes/{node_id}")
+async def api_delete_node(node_id: str, user: str = Depends(require_admin)) -> dict:
+    if not remove_node(node_id):
+        raise HTTPException(status_code=404, detail="Node not found.")
+    return {"ok": True}
+
+
+@app.post("/api/nodes/api-key")
+async def api_generate_node_key(user: str = Depends(require_admin)) -> dict:
+    return {"ok": True, "api_key": generate_api_key()}
 
 
 @app.get("/health")
