@@ -148,11 +148,13 @@ setup_venv() {
 
 generate_hash() {
   local password="$1"
-  "$APP_DIR/.venv/bin/python" -c 'from doctor_dev_panel.security import create_password_hash; import sys; print(create_password_hash(sys.argv[1]))' "$password"
+  # The project is not installed as a pip package yet; make imports work from APP_DIR.
+  PYTHONPATH="$APP_DIR" "$APP_DIR/.venv/bin/python" -c 'from doctor_dev_panel.security import create_password_hash; import sys; print(create_password_hash(sys.argv[1]))' "$password"
 }
 
 generate_secret() {
-  "$APP_DIR/.venv/bin/python" -c 'from doctor_dev_panel.security import generate_secret; print(generate_secret())'
+  # The project is not installed as a pip package yet; make imports work from APP_DIR.
+  PYTHONPATH="$APP_DIR" "$APP_DIR/.venv/bin/python" -c 'from doctor_dev_panel.security import generate_secret; print(generate_secret())'
 }
 
 write_env() {
@@ -204,6 +206,7 @@ Wants=network-online.target
 Type=simple
 WorkingDirectory=$APP_DIR
 Environment=DOCTOR_DEV_ENV=$ENV_FILE
+Environment=PYTHONPATH=$APP_DIR
 ExecStart=$APP_DIR/.venv/bin/python $APP_DIR/main.py --env $ENV_FILE
 Restart=always
 RestartSec=3
