@@ -9,6 +9,9 @@ from pathlib import Path
 from typing import Any
 
 
+VALID_STATUSES = {"disabled", "pending", "running", "error"}
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
@@ -36,7 +39,7 @@ def generate_api_key() -> str:
 
 
 def empty_store() -> dict[str, Any]:
-    return {"version": 1, "nodes": []}
+    return {"version": 2, "nodes": []}
 
 
 def load_store() -> dict[str, Any]:
@@ -49,7 +52,7 @@ def load_store() -> dict[str, Any]:
         raise RuntimeError(f"Cannot read nodes store: {path}: {exc}") from exc
     if not isinstance(loaded, dict):
         return empty_store()
-    loaded.setdefault("version", 1)
+    loaded.setdefault("version", 2)
     if not isinstance(loaded.get("nodes"), list):
         loaded["nodes"] = []
     return loaded
@@ -84,17 +87,23 @@ def normalize_node(payload: dict[str, Any], existing: dict[str, Any] | None = No
     base.setdefault("id", generate_node_id())
     base.setdefault("created_at", now)
     base["updated_at"] = now
-    base.setdefault("status", "disabled")
+
+    # Core Configuration is intentionally not part of Create Node anymore.
+    # Keep old records compatible but do not require or display it.
+    base.pop("core_configuration", None)
+
     base["enabled"] = bool(base.get("enabled", False))
     if not base["enabled"]:
         base["status"] = "disabled"
     else:
-        base["status"] = base.get("status") or "unknown"
+        status = str(base.get("status") or "pending").lower()
+        base["status"] = status if status in VALID_STATUSES and status != "disabled" else "pending"
     return base
 
 
 def list_nodes() -> list[dict[str, Any]]:
-    return load_store().get("nodes", [])
+    nodes = load_store().get("nodes", [])
+    return [normalize_node(node, existing=node) for node in nodes]
 
 
 def get_node(node_id: str) -> dict[str, Any] | None:
@@ -108,6 +117,7 @@ def create_node(payload: dict[str, Any]) -> dict[str, Any]:
     data = load_store()
     node = normalize_node(payload)
     data.setdefault("nodes", []).append(node)
+    data["version"] = 2
     save_store(data)
     return node
 
@@ -120,6 +130,7 @@ def update_node(node_id: str, payload: dict[str, Any]) -> dict[str, Any] | None:
             payload = dict(payload)
             payload["id"] = node_id
             nodes[index] = normalize_node(payload, existing=node)
+            data["version"] = 2
             save_store(data)
             return nodes[index]
     return None
@@ -132,5 +143,6 @@ def remove_node(node_id: str) -> bool:
     if len(next_nodes) == len(nodes):
         return False
     data["nodes"] = next_nodes
+    data["version"] = 2
     save_store(data)
     return True

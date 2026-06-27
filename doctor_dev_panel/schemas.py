@@ -12,11 +12,12 @@ class NodeBody(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     address: str = Field(min_length=1, max_length=255)
     node_port: int = Field(default=62050, ge=1, le=65535)
-    core_configuration: str = Field(default="docnode-000", max_length=120)
     api_key: str = Field(min_length=1, max_length=255)
     certificate: str = Field(default="", max_length=20000)
     enabled: bool = False
 
+    # Reserved for upcoming runtime/config phases. The panel stores them now,
+    # but no runtime forwarding logic is attached in this foundation step.
     usage_ratio: float = Field(default=1, ge=0)
     api_port: int = Field(default=62051, ge=1, le=65535)
     connection_type: str = Field(default="grpc", pattern="^(grpc|rest)$")

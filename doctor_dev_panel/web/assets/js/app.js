@@ -117,6 +117,11 @@ async function loadNodes() {
   }
 }
 
+function statusFor(node) {
+  if (!node.enabled) return 'disabled';
+  return node.status && node.status !== 'unknown' ? node.status : 'pending';
+}
+
 function renderNodes() {
   const body = $('#nodesTableBody');
   const empty = $('#nodesEmpty');
@@ -125,16 +130,16 @@ function renderNodes() {
   empty.classList.toggle('hidden', state.nodes.length > 0);
   wrap.classList.toggle('hidden', state.nodes.length === 0);
   for (const node of state.nodes) {
-    const status = node.status || (node.enabled ? 'unknown' : 'disabled');
+    const status = statusFor(node);
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><span class="badge ${escapeHtml(status)}"><span class="status-dot ${status === 'disabled' ? 'gray' : ''}"></span>${escapeHtml(capitalize(status))}</span></td>
+      <td><span class="badge ${escapeHtml(status)}"><span class="status-dot ${statusDotClass(status)}"></span>${escapeHtml(statusLabel(status))}</span></td>
       <td>${escapeHtml(node.name || '-')}</td>
       <td>${escapeHtml(node.address || '-')}</td>
       <td>${escapeHtml(node.node_port ?? '-')}</td>
       <td>${escapeHtml(node.api_port ?? '-')}</td>
       <td>${escapeHtml((node.connection_type || 'grpc').toUpperCase())}</td>
-      <td>${escapeHtml(node.core_configuration || '-')}</td>
+      <td>${node.enabled ? 'Yes' : 'No'}</td>
       <td><div class="row-actions"><button class="mini-btn" data-edit="${node.id}">Edit</button><button class="mini-btn" data-delete="${node.id}">Delete</button></div></td>`;
     body.appendChild(tr);
   }
@@ -142,13 +147,28 @@ function renderNodes() {
   $$('[data-delete]').forEach((button) => button.addEventListener('click', () => deleteNode(button.dataset.delete)));
 }
 
-function capitalize(value) {
-  value = String(value || '');
-  return value.charAt(0).toUpperCase() + value.slice(1);
+function statusLabel(status) {
+  const labels = { disabled: 'Disabled', pending: 'Pending Check', running: 'Running', error: 'Error' };
+  return labels[status] || 'Pending Check';
+}
+
+function statusDotClass(status) {
+  if (status === 'disabled') return 'gray';
+  if (status === 'error') return 'red';
+  if (status === 'pending') return 'yellow';
+  return '';
 }
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
+}
+
+function updateStatusPreview() {
+  const status = $('#nodeEnabled').checked ? 'pending' : 'disabled';
+  $('#nodeStatusText').textContent = statusLabel(status);
+  $('#nodeStatusDot').classList.remove('gray', 'red', 'yellow');
+  const klass = statusDotClass(status);
+  if (klass) $('#nodeStatusDot').classList.add(klass);
 }
 
 function resetNodeForm() {
@@ -163,10 +183,8 @@ function resetNodeForm() {
   $('#keepAliveUnit').value = 'seconds';
   $('#defaultTimeout').value = '10';
   $('#internalTimeout').value = '15';
-  $('#coreConfiguration').value = 'docnode-000';
   $('#nodeEnabled').checked = false;
-  $('#nodeStatusText').textContent = 'Disabled';
-  $('#nodeStatusDot').classList.add('gray');
+  updateStatusPreview();
   $('#deleteNodeButton').classList.add('hidden');
   $('#nodeModalTitle').textContent = 'Create Node';
   $('#nodeModalSubtitle').textContent = 'Add a node definition to the panel.';
@@ -181,7 +199,6 @@ function openNodeModal(node = null) {
     $('#nodeName').value = node.name || '';
     $('#nodeAddress').value = node.address || '';
     $('#nodePort').value = node.node_port || 62050;
-    $('#coreConfiguration').value = node.core_configuration || 'docnode-000';
     $('#apiKey').value = node.api_key || '';
     $('#certificate').value = node.certificate || '';
     $('#nodeEnabled').checked = Boolean(node.enabled);
@@ -194,8 +211,7 @@ function openNodeModal(node = null) {
     $('#defaultTimeout').value = node.default_timeout || 10;
     $('#internalTimeout').value = node.internal_timeout || 15;
     $('#proxyUrl').value = node.proxy_url || '';
-    $('#nodeStatusText').textContent = node.enabled ? 'Unknown' : 'Disabled';
-    $('#nodeStatusDot').classList.toggle('gray', !node.enabled);
+    updateStatusPreview();
     $('#deleteNodeButton').classList.remove('hidden');
     $('#nodeModalTitle').textContent = 'Edit Node';
     $('#nodeModalSubtitle').textContent = node.name || 'Update node definition.';
@@ -212,7 +228,6 @@ function nodePayload() {
     name: $('#nodeName').value.trim(),
     address: $('#nodeAddress').value.trim(),
     node_port: Number($('#nodePort').value || 62050),
-    core_configuration: $('#coreConfiguration').value,
     api_key: $('#apiKey').value.trim(),
     certificate: $('#certificate').value,
     enabled: $('#nodeEnabled').checked,
@@ -273,10 +288,7 @@ $('#closeNodeModal').addEventListener('click', closeNodeModal);
 $('#cancelNodeButton').addEventListener('click', closeNodeModal);
 $('#deleteNodeButton').addEventListener('click', () => state.editingNode && deleteNode(state.editingNode.id));
 $('#refreshButton').addEventListener('click', () => { loadSummary(); loadNodes(); });
-$('#nodeEnabled').addEventListener('change', (event) => {
-  $('#nodeStatusText').textContent = event.target.checked ? 'Unknown' : 'Disabled';
-  $('#nodeStatusDot').classList.toggle('gray', !event.target.checked);
-});
+$('#nodeEnabled').addEventListener('change', updateStatusPreview);
 nodeModal.addEventListener('click', (event) => { if (event.target === nodeModal) closeNodeModal(); });
 
 checkSession();

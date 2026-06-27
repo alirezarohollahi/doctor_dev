@@ -77,7 +77,7 @@
           <div id="nodesEmpty" class="empty-state">No nodes yet. Create your first node.</div>
           <div class="table-wrap hidden" id="nodesTableWrap">
             <table class="nodes-table">
-              <thead><tr><th>Status</th><th>Name</th><th>Address</th><th>Node Port</th><th>API Port</th><th>Protocol</th><th>Core</th><th>Actions</th></tr></thead>
+              <thead><tr><th>Status</th><th>Name</th><th>Address</th><th>Node Port</th><th>API Port</th><th>Protocol</th><th>Enabled</th><th>Actions</th></tr></thead>
               <tbody id="nodesTableBody"></tbody>
             </table>
           </div>
@@ -95,20 +95,25 @@
 
       <form id="nodeForm" class="node-form">
         <input type="hidden" id="nodeId" />
-        <div class="status-line"><span id="nodeStatusDot" class="status-dot gray"></span><label class="switch"><input id="nodeEnabled" type="checkbox" /><span></span></label><strong id="nodeStatusText">Disabled</strong><button class="ghost-btn disabled" type="button" title="Runtime check will be added later">↻ Check Status</button></div>
+        <div class="status-line">
+          <span class="status-label">Status</span>
+          <span id="nodeStatusDot" class="status-dot gray"></span>
+          <strong id="nodeStatusText">Disabled</strong>
+          <label class="enable-control"><span>Enabled</span><span class="switch"><input id="nodeEnabled" type="checkbox" /><span></span></span></label>
+          <button class="ghost-btn disabled" type="button" title="Runtime check will be added later">↻ Check Status</button>
+        </div>
 
         <div class="modal-grid">
           <div class="left-fields">
             <label class="field"><span>Node Name</span><input id="nodeName" type="text" placeholder="Enter node name" required /></label>
-            <div class="two-col"><label class="field"><span>Node Address</span><input id="nodeAddress" type="text" placeholder="Enter node address" required /></label><label class="field"><span>Node Port</span><input id="nodePort" type="number" min="1" max="65535" value="62050" required /></label></div>
-            <label class="field"><span>Core Configuration</span><select id="coreConfiguration"><option value="docnode-000">docnode-000</option><option value="docnode-001">docnode-001</option></select></label>
-            <label class="field"><span>API Key</span><div class="inline-input"><input id="apiKey" type="text" placeholder="Enter the node API key" required /><button id="generateApiKey" type="button" title="Generate API key">↻</button></div></label>
+            <div class="two-col"><label class="field"><span>Node Address</span><input id="nodeAddress" type="text" placeholder="Enter node address" required /><small>Domain or IP of the installed node.</small></label><label class="field"><span>Node Port</span><input id="nodePort" type="number" min="1" max="65535" value="62050" required /><small>Main service port. Matches SERVICE_PORT on the node.</small></label></div>
+            <label class="field"><span>API Key</span><div class="inline-input"><input id="apiKey" type="text" placeholder="Enter the node API key" required /><button id="generateApiKey" type="button" title="Generate API key">↻</button></div><small>Must match API_KEY in the node env file.</small></label>
 
             <details class="advanced" open>
               <summary>⚙ Advanced Settings</summary>
               <div class="advanced-grid">
                 <label class="field"><span>Usage Ratio</span><input id="usageRatio" type="number" min="0" step="0.01" value="1" /></label>
-                <label class="field"><span>API Port</span><input id="apiPort" type="number" min="1" max="65535" value="62051" /></label>
+                <label class="field"><span>API Port</span><input id="apiPort" type="number" min="1" max="65535" value="62051" /><small>Reserved management/API port for next phases.</small></label>
                 <label class="field wide"><span>Connection Type</span><select id="connectionType"><option value="grpc">gRPC</option><option value="rest">REST</option></select></label>
                 <label class="field"><span>Keep Alive</span><input id="keepAliveValue" type="number" min="1" value="60" /></label>
                 <label class="field"><span>Interval Unit</span><select id="keepAliveUnit"><option value="seconds">Seconds</option><option value="minutes">Minutes</option><option value="hours">Hours</option></select></label>
@@ -119,7 +124,7 @@
               </div>
             </details>
           </div>
-          <label class="field cert-field"><span>Certificate</span><textarea id="certificate" placeholder="Enter certificate"></textarea></label>
+          <label class="field cert-field"><span>TLS Certificate <em>optional</em></span><textarea id="certificate" placeholder="Paste public certificate PEM here, or leave empty for now."></textarea><small>Only the public certificate belongs here. Private keys stay on the node server.</small></label>
         </div>
 
         <p id="nodeMessage" class="message"></p>
