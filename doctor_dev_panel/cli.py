@@ -198,9 +198,22 @@ def request_json(path: str, method: str = "GET", payload: dict | None = None) ->
         token = base64.b64encode(f"{user}:{password}".encode()).decode()
         req.add_header("Authorization", f"Basic {token}")
     ctx = ssl._create_unverified_context() if url.startswith("https://") else None
-    with urlopen(req, timeout=15, context=ctx) as resp:
-        raw = resp.read().decode("utf-8")
-        return json.loads(raw) if raw else {}
+    try:
+        with urlopen(req, timeout=15, context=ctx) as resp:
+            raw = resp.read().decode("utf-8")
+            return json.loads(raw) if raw else {}
+    except HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace") if exc.fp else ""
+        hint = ""
+        if exc.code == 401:
+            hint = "\nHint: admin credentials are invalid. Check `/etc/doctor_dev/panel/admin_credentials.txt` or run `doctor-panel admin reset-password --restart`."
+        elif exc.code == 404:
+            hint = "\nHint: the panel API route was not found. Update and restart the panel."
+        raise SystemExit(f"Panel API request failed: {exc.code} {exc.reason}\nURL: {url}\nResponse: {body}{hint}") from None
+    except URLError as exc:
+        raise SystemExit(f"Panel API is not reachable.\nURL: {url}\nError: {exc.reason}\nCheck service with: doctor-panel status") from None
+    except TimeoutError:
+        raise SystemExit(f"Panel API request timed out.\nURL: {url}") from None
 
 
 def find_node(identifier: str) -> dict:

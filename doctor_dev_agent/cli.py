@@ -212,8 +212,21 @@ def request_json(name: str | None, path: str) -> dict:
     req = Request(url)
     req.add_header("Authorization", f"Bearer {env.get('DOCTOR_DEV_AGENT_API_KEY', '')}")
     ctx = ssl._create_unverified_context() if url.startswith("https://") else None
-    with urlopen(req, timeout=10, context=ctx) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+    try:
+        with urlopen(req, timeout=10, context=ctx) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace") if exc.fp else ""
+        hint = ""
+        if exc.code == 404:
+            hint = "\nHint: the node API route was not found. Run `doctor-node status` and update/restart the node if the installed agent is old."
+        elif exc.code == 401:
+            hint = "\nHint: the node API key is invalid. Check `doctor-node config show --show-secrets` or rotate it with `doctor-node api-key rotate --restart`."
+        raise SystemExit(f"Node API request failed: {exc.code} {exc.reason}\nURL: {url}\nResponse: {body}{hint}") from None
+    except URLError as exc:
+        raise SystemExit(f"Node API is not reachable.\nURL: {url}\nError: {exc.reason}\nCheck service with: doctor-node status") from None
+    except TimeoutError as exc:
+        raise SystemExit(f"Node API request timed out.\nURL: {url}") from None
 
 
 def service_action(action: str, name: str | None) -> None:
@@ -475,7 +488,7 @@ def cmd_cert(args: argparse.Namespace) -> None:
 
 
 def cmd_runtime(args: argparse.Namespace) -> None:
-    print(json.dumps(request_json(args.name, "/runtime"), indent=2, ensure_ascii=False))
+    print(json.dumps(request_json(args.name, "/api/runtime"), indent=2, ensure_ascii=False))
 
 
 def cmd_health(args: argparse.Namespace) -> None:

@@ -145,17 +145,37 @@ async def stop_runtime(authorization: str | None = Header(default=None)) -> dict
     return {"ok": True, "message": "runtime tunnel listeners stopped"}
 
 
-@app.get("/api/runtime")
-async def runtime(authorization: str | None = Header(default=None)) -> dict[str, Any]:
-    require_agent_auth(authorization)
+def runtime_payload() -> dict[str, Any]:
     return {"ok": True, "node_name": NODE_NAME, "runtime": _RUNTIME, "tunnel": tunnel_manager.snapshot()}
 
 
-@app.get("/api/logs")
-async def logs(limit: int = Query(200, ge=1, le=2000), authorization: str | None = Header(default=None)) -> dict[str, Any]:
+@app.get("/api/runtime")
+async def runtime(authorization: str | None = Header(default=None)) -> dict[str, Any]:
     require_agent_auth(authorization)
+    return runtime_payload()
+
+
+@app.get("/runtime")
+async def runtime_compat(authorization: str | None = Header(default=None)) -> dict[str, Any]:
+    require_agent_auth(authorization)
+    return runtime_payload()
+
+
+def logs_payload(limit: int) -> dict[str, Any]:
     ensure_dirs()
     if not AGENT_LOG_FILE.exists():
         return {"ok": True, "node_name": NODE_NAME, "lines": []}
     lines = AGENT_LOG_FILE.read_text(encoding="utf-8", errors="replace").splitlines()
     return {"ok": True, "node_name": NODE_NAME, "lines": lines[-limit:]}
+
+
+@app.get("/api/logs")
+async def logs(limit: int = Query(200, ge=1, le=2000), authorization: str | None = Header(default=None)) -> dict[str, Any]:
+    require_agent_auth(authorization)
+    return logs_payload(limit)
+
+
+@app.get("/logs")
+async def logs_compat(limit: int = Query(200, ge=1, le=2000), authorization: str | None = Header(default=None)) -> dict[str, Any]:
+    require_agent_auth(authorization)
+    return logs_payload(limit)
