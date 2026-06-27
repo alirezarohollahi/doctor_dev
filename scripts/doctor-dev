@@ -3,7 +3,12 @@ set -Eeuo pipefail
 
 APP_DIR="${DOCTOR_DEV_APP_DIR:-/opt/doctor-dev-panel}"
 SERVICE_NAME="${DOCTOR_DEV_SERVICE_NAME:-doctor-dev-panel}"
-ENV_FILE="${DOCTOR_DEV_ENV_FILE:-$APP_DIR/.env}"
+CONFIG_DIR="${DOCTOR_DEV_CONFIG_DIR:-/etc/doctor-dev-panel}"
+ENV_FILE="${DOCTOR_DEV_ENV_FILE:-$CONFIG_DIR/panel.env}"
+LEGACY_ENV_FILE="$APP_DIR/.env"
+INSTALLER_URL="${DOCTOR_DEV_INSTALLER_URL:-https://github.com/alirezarohollahi/doctor_dev/raw/refs/heads/master/scripts/doctor_dev.sh}"
+PYTHON_BIN="$APP_DIR/.venv/bin/python"
+[[ -x "$PYTHON_BIN" ]] || PYTHON_BIN="$(command -v python3 || true)"
 
 BOLD="\033[1m"; DIM="\033[2m"; RED="\033[31m"; GREEN="\033[32m"; YELLOW="\033[33m"; BLUE="\033[34m"; CYAN="\033[36m"; RESET="\033[0m"
 
@@ -11,35 +16,81 @@ cecho() { printf "%b\n" "$1"; }
 editor_cmd() {
   if command -v nano >/dev/null 2>&1; then echo nano; elif command -v vim >/dev/null 2>&1; then echo vim; else echo vi; fi
 }
+active_env_file() {
+  if [[ -f "$ENV_FILE" ]]; then echo "$ENV_FILE"; elif [[ -f "$LEGACY_ENV_FILE" ]]; then echo "$LEGACY_ENV_FILE"; else echo "$ENV_FILE"; fi
+}
+safe_env_get() {
+  local key="$1" file="$(active_env_file)"
+  [[ -n "$PYTHON_BIN" && -x "$PYTHON_BIN" && -f "$file" ]] || return 0
+  "$PYTHON_BIN" - "$key" "$file" <<'PY'
+import sys
+key, path = sys.argv[1], sys.argv[2]
+try:
+    for raw in open(path, encoding='utf-8'):
+        line = raw.strip()
+        if not line or line.startswith('#') or '=' not in line:
+            continue
+        k, v = line.split('=', 1)
+        if k.strip() == key:
+            print(v.strip().strip('"').strip("'"))
+            break
+except FileNotFoundError:
+    pass
+PY
+}
 
 help_screen() {
-  cecho "${CYAN}${BOLD}=========================================${RESET}"
-  cecho "${CYAN}${BOLD}          doctor-dev Help${RESET}"
-  cecho "${CYAN}${BOLD}=========================================${RESET}"
+  cecho "${CYAN}${BOLD}============================================================${RESET}"
+  cecho "${CYAN}${BOLD}                     doctor-dev Help${RESET}"
+  cecho "${CYAN}${BOLD}============================================================${RESET}"
   cecho "${BOLD}Usage:${RESET}"
   cecho "  doctor-dev [command]"
   echo
-  cecho "${BOLD}Commands:${RESET}"
-  cecho "  ${GREEN}start${RESET}           – Start panel service"
-  cecho "  ${GREEN}stop${RESET}            – Stop panel service"
-  cecho "  ${GREEN}restart${RESET}         – Restart panel service"
-  cecho "  ${GREEN}status${RESET}          – Show systemd status"
-  cecho "  ${GREEN}logs${RESET}            – Follow service logs"
-  cecho "  ${GREEN}config edit${RESET}     – Edit panel .env config"
-  cecho "  ${GREEN}edit-env${RESET}        – Edit panel .env config"
-  cecho "  ${GREEN}health${RESET}          – Call local /health endpoint"
-  cecho "  ${GREEN}update${RESET}          – Run installer update-panel"
-  cecho "  ${GREEN}help${RESET}            – Show this help message"
+  cecho "${BOLD}Service commands:${RESET}"
+  cecho "  ${GREEN}start${RESET}             - Start panel service"
+  cecho "  ${GREEN}stop${RESET}              - Stop panel service"
+  cecho "  ${GREEN}restart${RESET}           - Restart panel service"
+  cecho "  ${GREEN}status${RESET}            - Show systemd status"
+  cecho "  ${GREEN}logs${RESET}              - Follow service logs"
+  cecho "  ${GREEN}health${RESET}            - Call local /health endpoint"
+  echo
+  cecho "${BOLD}Config commands:${RESET}"
+  cecho "  ${GREEN}config edit${RESET}       - Edit panel environment config"
+  cecho "  ${GREEN}update${RESET}            - Download installer and run update-panel"
+  echo
+  cecho "${BOLD}Admin commands:${RESET}"
+  cecho "  ${GREEN}admin list${RESET}        - List panel admins"
+  cecho "  ${GREEN}admin add USER${RESET}    - Add admin or update password"
+  cecho "  ${GREEN}admin remove USER${RESET} - Remove admin"
+  cecho "  ${GREEN}admin passwd USER${RESET} - Change admin password"
   echo
   cecho "${BOLD}Directories:${RESET}"
   cecho "  App directory:  ${BLUE}${APP_DIR}${RESET}"
-  cecho "  Env file:       ${BLUE}${ENV_FILE}${RESET}"
+  cecho "  Config file:    ${BLUE}$(active_env_file)${RESET}"
+  cecho "  Config dir:     ${BLUE}${CONFIG_DIR}${RESET}"
   cecho "  Service name:   ${BLUE}${SERVICE_NAME}${RESET}"
-  cecho "${CYAN}${BOLD}=========================================${RESET}"
+  cecho "${CYAN}${BOLD}============================================================${RESET}"
 }
 
 require_systemctl() {
   command -v systemctl >/dev/null 2>&1 || { cecho "${RED}systemctl not found.${RESET}"; exit 1; }
+}
+
+run_admin_cli() {
+  if [[ ! -x "$PYTHON_BIN" ]]; then
+    cecho "${RED}Python runtime not found. Run: doctor-dev update${RESET}"
+    exit 1
+  fi
+  if [[ ! -d "$APP_DIR/doctor_dev_panel" ]]; then
+    cecho "${RED}Project package not found at $APP_DIR. Run: doctor-dev update${RESET}"
+    exit 1
+  fi
+  local env_file="$(active_env_file)"
+  if [[ $EUID -eq 0 ]]; then
+    DOCTOR_DEV_ENV="$env_file" PYTHONPATH="$APP_DIR" "$PYTHON_BIN" -m doctor_dev_panel.admin_cli "$@"
+  else
+    sudo env DOCTOR_DEV_ENV="$env_file" PYTHONPATH="$APP_DIR" "$PYTHON_BIN" -m doctor_dev_panel.admin_cli "$@"
+  fi
 }
 
 cmd="${1:-help}"
@@ -57,21 +108,27 @@ case "$cmd" in
   config)
     sub="${2:-}"
     if [[ "$sub" == "edit" ]]; then
-      sudo "$(editor_cmd)" "$ENV_FILE"
+      sudo mkdir -p "$(dirname "$(active_env_file)")"
+      sudo "$(editor_cmd)" "$(active_env_file)"
     else
       cecho "${YELLOW}Usage: doctor-dev config edit${RESET}"
       exit 2
     fi
     ;;
   edit-env)
-    sudo "$(editor_cmd)" "$ENV_FILE" ;;
+    cecho "${YELLOW}edit-env is a legacy alias. Use: doctor-dev config edit${RESET}"
+    sudo mkdir -p "$(dirname "$(active_env_file)")"
+    sudo "$(editor_cmd)" "$(active_env_file)"
+    ;;
+  admin)
+    shift || true
+    [[ $# -ge 1 ]] || { cecho "${YELLOW}Usage: doctor-dev admin [list|add|remove|passwd]${RESET}"; exit 2; }
+    run_admin_cli "$@"
+    ;;
   health)
-    if [[ -f "$ENV_FILE" ]]; then set -a; # shellcheck disable=SC1090
-      source "$ENV_FILE"; set +a; fi
-    scheme="${PUBLIC_SCHEME:-http}"
-    port="${PORT:-8080}"
+    port="$(safe_env_get PORT)"; port="${port:-8080}"
     curl -fsS "http://127.0.0.1:${port}/health" || {
-      cecho "${YELLOW}Local health check failed. Is the service running?${RESET}"; exit 1;
+      cecho "${YELLOW}Local health check failed. Is the service running on port ${port}?${RESET}"; exit 1;
     }
     echo
     ;;
@@ -79,8 +136,11 @@ case "$cmd" in
     if [[ -x "$APP_DIR/scripts/doctor_dev.sh" ]]; then
       sudo bash "$APP_DIR/scripts/doctor_dev.sh" update-panel
     else
-      cecho "${RED}Installer not found at $APP_DIR/scripts/doctor_dev.sh${RESET}"
-      exit 1
+      tmp="/tmp/doctor_dev_update_$$.sh"
+      cecho "${BLUE}Downloading installer...${RESET}"
+      curl -fsSL "$INSTALLER_URL" -o "$tmp"
+      sudo bash "$tmp" update-panel
+      rm -f "$tmp"
     fi
     ;;
   help|-h|--help)

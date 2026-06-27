@@ -11,24 +11,8 @@ from typing import Optional
 
 from fastapi import HTTPException, Request
 
+from .admin_store import authenticate_admin
 from .config import SESSION_COOKIE, SESSION_TTL_SECONDS
-from .security import verify_password
-
-
-def admin_username() -> str:
-    return os.getenv("ADMIN_USERNAME", "admin")
-
-
-def admin_password_hash() -> str:
-    value = os.getenv("ADMIN_PASSWORD_HASH", "")
-    if not value:
-        # Development fallback only. The installer always writes ADMIN_PASSWORD_HASH.
-        from .security import create_password_hash
-
-        fallback = os.getenv("ADMIN_PASSWORD", "admin")
-        value = create_password_hash(fallback)
-        os.environ["ADMIN_PASSWORD_HASH"] = value
-    return value
 
 
 def app_secret() -> bytes:
@@ -69,7 +53,7 @@ def verify_payload(token: str) -> Optional[dict]:
 
 
 def authenticate(username: str, password: str) -> bool:
-    return hmac.compare_digest(username, admin_username()) and verify_password(password, admin_password_hash())
+    return authenticate_admin(username.strip(), password)
 
 
 def make_session(username: str) -> str:

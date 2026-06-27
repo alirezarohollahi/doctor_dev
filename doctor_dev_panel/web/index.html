@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="fa" dir="rtl">
+<html lang="en" dir="ltr">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -28,17 +28,17 @@
         </div>
         <div>
           <p class="eyebrow">Doctor Dev</p>
-          <h1>پنل مدیریت نودها، تمیز و از صفر</h1>
+          <h1>Clean node management foundation, rebuilt from zero.</h1>
         </div>
       </div>
 
       <p class="brand-copy">
-        فعلاً فقط ورود امن ادمین فعال است. بعد از لاگین، داشبورد اولیه باز می‌شود و در فاز بعدی Nodes، Cores، Logs و Config Editor روی همین اسکلت سوار می‌شوند.
+        This first version only includes a secure admin login and a clean dashboard shell. Nodes, Cores, Logs and Config Editor will be added on top of this structure in the next phases.
       </p>
 
       <div class="feature-grid">
         <div class="feature-pill"><span>●</span> FastAPI</div>
-        <div class="feature-pill"><span>●</span> Signed Session</div>
+        <div class="feature-pill"><span>●</span> Multi Admin</div>
         <div class="feature-pill"><span>●</span> Systemd Ready</div>
         <div class="feature-pill"><span>●</span> CLI Ready</div>
       </div>
@@ -48,7 +48,7 @@
       <div class="login-header">
         <div>
           <p class="eyebrow">Admin Login</p>
-          <h2>ورود به پنل</h2>
+          <h2>Sign in</h2>
         </div>
         <div class="lock-badge" aria-hidden="true">
           <svg viewBox="0 0 24 24"><path d="M7 10V8a5 5 0 0 1 10 0v2"/><path d="M6 10h12v10H6z"/><path d="M12 14v3"/></svg>
@@ -57,28 +57,28 @@
 
       <form id="loginForm" class="form" autocomplete="on">
         <label class="field">
-          <span>نام کاربری</span>
+          <span>Username</span>
           <input id="username" name="username" type="text" inputmode="text" autocomplete="username" placeholder="admin" required />
         </label>
 
         <label class="field">
-          <span>رمز عبور</span>
+          <span>Password</span>
           <div class="password-wrap">
             <input id="password" name="password" type="password" autocomplete="current-password" placeholder="••••••••••••" required />
-            <button id="togglePassword" type="button" aria-label="نمایش رمز عبور">نمایش</button>
+            <button id="togglePassword" type="button" aria-label="Show password">Show</button>
           </div>
         </label>
 
         <div class="form-row">
           <label class="remember">
             <input type="checkbox" checked disabled />
-            <span>نشست امن ۱۲ ساعته</span>
+            <span>Secure 12-hour session</span>
           </label>
-          <span class="hint">Enter برای ورود</span>
+          <span class="hint">Press Enter to continue</span>
         </div>
 
         <button id="submitButton" class="primary-btn" type="submit">
-          <span>ورود به پروژه</span>
+          <span>Open Panel</span>
           <svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
         </button>
 
@@ -90,26 +90,26 @@
       <div class="dashboard-top">
         <div>
           <p class="eyebrow">Dashboard</p>
-          <h2>خوش آمدی، <span id="adminName">admin</span></h2>
+          <h2>Welcome, <span id="adminName">admin</span></h2>
         </div>
-        <button id="logoutButton" class="ghost-btn" type="button">خروج</button>
+        <button id="logoutButton" class="ghost-btn" type="button">Logout</button>
       </div>
 
       <div class="cards">
         <article class="mini-card">
           <span class="mini-icon">⌁</span>
           <h3>Nodes</h3>
-          <p>در فاز بعدی ساخت و مدیریت Node اضافه می‌شود.</p>
+          <p>Node creation and management will be added in the next phase.</p>
         </article>
         <article class="mini-card">
           <span class="mini-icon">⚙</span>
           <h3>Cores</h3>
-          <p>اتصال Core Configuration و وضعیت سرویس‌ها اینجا می‌آید.</p>
+          <p>Core configuration, status checks and runtime actions will be placed here.</p>
         </article>
         <article class="mini-card">
           <span class="mini-icon">≡</span>
           <h3>Logs</h3>
-          <p>نمایش لاگ، فیلتر، Pause و Download در مرحله بعد.</p>
+          <p>Live logs, filters, pause and download actions will be added here.</p>
         </article>
       </div>
     </section>

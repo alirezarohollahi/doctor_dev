@@ -4,8 +4,13 @@ set -Eeuo pipefail
 APP_DIR="${DOCTOR_DEV_APP_DIR:-/opt/doctor-dev-panel}"
 SERVICE_NAME="${DOCTOR_DEV_SERVICE_NAME:-doctor-dev-panel}"
 REPO_URL="${DOCTOR_DEV_REPO_URL:-https://github.com/alirezarohollahi/doctor_dev.git}"
+RAW_INSTALLER_URL="${DOCTOR_DEV_INSTALLER_URL:-https://github.com/alirezarohollahi/doctor_dev/raw/refs/heads/master/scripts/doctor_dev.sh}"
 BRANCH="${DOCTOR_DEV_BRANCH:-master}"
-ENV_FILE="$APP_DIR/.env"
+CONFIG_DIR="${DOCTOR_DEV_CONFIG_DIR:-/etc/doctor-dev-panel}"
+DATA_DIR="${DOCTOR_DEV_DATA_DIR:-/var/lib/doctor-dev-panel}"
+LOG_DIR="${DOCTOR_DEV_LOG_DIR:-/var/log/doctor-dev-panel}"
+ENV_FILE="${DOCTOR_DEV_ENV_FILE:-$CONFIG_DIR/panel.env}"
+ADMIN_STORE_PATH="${ADMIN_STORE_PATH:-$CONFIG_DIR/admins.json}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 
 BOLD="\033[1m"; DIM="\033[2m"; RED="\033[31m"; GREEN="\033[32m"; YELLOW="\033[33m"; BLUE="\033[34m"; MAGENTA="\033[35m"; CYAN="\033[36m"; RESET="\033[0m"
@@ -25,7 +30,7 @@ header() {
   cecho "${CYAN}${BOLD}============================================================${RESET}"
   cecho "${CYAN}${BOLD}                 Doctor Dev Panel Installer${RESET}"
   cecho "${CYAN}${BOLD}============================================================${RESET}"
-  cecho "${DIM}Clean login foundation + CLI + optional systemd service${RESET}"
+  cecho "${DIM}Clean login foundation + multi-admin CLI + safe updater${RESET}"
   echo
 }
 
@@ -35,7 +40,7 @@ usage() {
   cecho "  sudo bash doctor_dev.sh ${GREEN}update-panel${RESET}"
   echo
   cecho "${BOLD}Remote usage:${RESET}"
-  cecho "  curl -fsSL https://github.com/alirezarohollahi/doctor_dev/raw/refs/heads/master/scripts/doctor_dev.sh -o /tmp/doctor_dev.sh \\\n    && sudo bash /tmp/doctor_dev.sh install-panel"
+  cecho "  curl -fsSL $RAW_INSTALLER_URL -o /tmp/doctor_dev.sh \\\n    && sudo bash /tmp/doctor_dev.sh install-panel"
 }
 
 ask() {
@@ -97,9 +102,33 @@ install_packages() {
   info "Checking OS packages..."
   if command -v apt-get >/dev/null 2>&1; then
     apt-get update -y
-    DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-venv python3-pip git curl ca-certificates openssl nano
+    DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-venv python3-pip git curl ca-certificates openssl nano rsync
   else
     warn "apt-get not found. Please make sure python3, venv, pip, git, curl and openssl are installed."
+  fi
+}
+
+stop_existing_service() {
+  if command -v systemctl >/dev/null 2>&1 && systemctl list-units --all --type=service | grep -q "^${SERVICE_NAME}.service"; then
+    info "Stopping existing service..."
+    systemctl stop "$SERVICE_NAME" 2>/dev/null || true
+  fi
+}
+
+prepare_dirs() {
+  mkdir -p "$CONFIG_DIR" "$DATA_DIR" "$LOG_DIR"
+  chmod 700 "$CONFIG_DIR" || true
+  chmod 755 "$DATA_DIR" "$LOG_DIR" || true
+}
+
+migrate_legacy_env() {
+  prepare_dirs
+  local legacy="$APP_DIR/.env"
+  if [[ ! -f "$ENV_FILE" && -f "$legacy" ]]; then
+    info "Migrating legacy env file to $ENV_FILE"
+    cp "$legacy" "$ENV_FILE"
+    chmod 600 "$ENV_FILE" || true
+    ok "Legacy env migrated."
   fi
 }
 
@@ -109,64 +138,85 @@ copy_from_current_tree() {
   if [[ -f "$src_dir/main.py" && -d "$src_dir/doctor_dev_panel" ]]; then
     info "Installing from local source: $src_dir"
     mkdir -p "$APP_DIR"
-    rsync -a --delete --exclude '.git' --exclude '.venv' --exclude '__pycache__' "$src_dir/" "$APP_DIR/" 2>/dev/null || cp -a "$src_dir/." "$APP_DIR/"
+    rsync -a --delete --exclude '.git' --exclude '.venv' --exclude '__pycache__' --exclude '.env' "$src_dir/" "$APP_DIR/" 2>/dev/null || cp -a "$src_dir/." "$APP_DIR/"
     return 0
   fi
   return 1
 }
 
-clone_or_update_repo() {
-  if copy_from_current_tree; then return; fi
-
-  if [[ -d "$APP_DIR/.git" ]]; then
-    info "Updating existing repository in $APP_DIR"
-    git -C "$APP_DIR" fetch --all --prune
-    git -C "$APP_DIR" checkout "$BRANCH"
-    git -C "$APP_DIR" pull --ff-only origin "$BRANCH"
-  else
-    if [[ -e "$APP_DIR" ]]; then
-      local backup="${APP_DIR}.backup.$(date +%Y%m%d-%H%M%S)"
-      if ask_yes_no "Existing $APP_DIR found. Backup and replace it?" "y"; then
-        mv "$APP_DIR" "$backup"
-        ok "Backup saved: $backup"
-      else
-        fail "Install cancelled."
-      fi
-    fi
-    info "Cloning $REPO_URL#$BRANCH into $APP_DIR"
-    git clone --branch "$BRANCH" "$REPO_URL" "$APP_DIR"
+backup_and_replace_app_dir() {
+  if [[ -e "$APP_DIR" ]]; then
+    local backup="${APP_DIR}.backup.$(date +%Y%m%d-%H%M%S)"
+    warn "Existing app directory is not a clean git checkout. Backing it up automatically."
+    mv "$APP_DIR" "$backup"
+    ok "Backup saved: $backup"
   fi
 }
 
+clone_or_update_repo() {
+  migrate_legacy_env
+
+  if copy_from_current_tree; then
+    validate_project_tree
+    return
+  fi
+
+  if [[ -d "$APP_DIR/.git" ]]; then
+    info "Updating repository in $APP_DIR"
+    git -C "$APP_DIR" fetch origin "$BRANCH" --prune
+    git -C "$APP_DIR" checkout "$BRANCH"
+    git -C "$APP_DIR" reset --hard "origin/$BRANCH"
+  else
+    backup_and_replace_app_dir
+    info "Cloning $REPO_URL#$BRANCH into $APP_DIR"
+    git clone --branch "$BRANCH" "$REPO_URL" "$APP_DIR"
+  fi
+
+  validate_project_tree
+}
+
+validate_project_tree() {
+  [[ -f "$APP_DIR/main.py" ]] || fail "Project is incomplete: $APP_DIR/main.py not found. Check repository branch/path."
+  [[ -d "$APP_DIR/doctor_dev_panel" ]] || fail "Project is incomplete: $APP_DIR/doctor_dev_panel package not found. Check repository branch/path."
+  [[ -f "$APP_DIR/requirements.txt" ]] || fail "Project is incomplete: $APP_DIR/requirements.txt not found."
+  [[ -f "$APP_DIR/scripts/doctor-dev" ]] || fail "Project is incomplete: $APP_DIR/scripts/doctor-dev not found."
+  [[ -f "$APP_DIR/scripts/doctor_dev.sh" ]] || warn "Local installer is missing; doctor-dev update will download it when needed."
+}
+
 setup_venv() {
-  info "Creating Python virtualenv..."
+  info "Creating/updating Python virtualenv..."
   "$PYTHON_BIN" -m venv "$APP_DIR/.venv"
   "$APP_DIR/.venv/bin/python" -m pip install --upgrade pip wheel
   "$APP_DIR/.venv/bin/pip" install -r "$APP_DIR/requirements.txt"
+  PYTHONPATH="$APP_DIR" "$APP_DIR/.venv/bin/python" -c 'import doctor_dev_panel; print("import ok")' >/dev/null || fail "Python package import failed even after install."
   ok "Python dependencies installed."
 }
 
-generate_hash() {
-  local password="$1"
-  # The project is not installed as a pip package yet; make imports work from APP_DIR.
-  PYTHONPATH="$APP_DIR" "$APP_DIR/.venv/bin/python" -c 'from doctor_dev_panel.security import create_password_hash; import sys; print(create_password_hash(sys.argv[1]))' "$password"
-}
-
 generate_secret() {
-  # The project is not installed as a pip package yet; make imports work from APP_DIR.
   PYTHONPATH="$APP_DIR" "$APP_DIR/.venv/bin/python" -c 'from doctor_dev_panel.security import generate_secret; print(generate_secret())'
 }
 
+create_admin_store() {
+  local username="$1" password="$2"
+  info "Creating admin store: $ADMIN_STORE_PATH"
+  ADMIN_STORE_PATH="$ADMIN_STORE_PATH" DOCTOR_DEV_BOOTSTRAP_ADMIN="$username" DOCTOR_DEV_BOOTSTRAP_PASSWORD="$password" \
+    PYTHONPATH="$APP_DIR" "$APP_DIR/.venv/bin/python" - <<'PY'
+import os
+from doctor_dev_panel.admin_store import set_password
+set_password(os.environ["DOCTOR_DEV_BOOTSTRAP_ADMIN"], os.environ["DOCTOR_DEV_BOOTSTRAP_PASSWORD"])
+PY
+  chmod 600 "$ADMIN_STORE_PATH" || true
+  ok "Admin user saved."
+}
+
 write_env() {
-  local username="$1" password_hash="$2" host="$3" port="$4" public_host="$5" public_scheme="$6" use_tls="$7" cert_path="$8" key_path="$9"
+  local host="$1" port="$2" public_host="$3" public_scheme="$4" use_tls="$5" cert_path="$6" key_path="$7"
+  prepare_dirs
   info "Writing $ENV_FILE"
   cat > "$ENV_FILE" <<ENV
-APP_NAME=Doctor Dev Panel
+APP_NAME=DoctorDevPanel
 APP_ENV=production
 APP_SECRET=$(generate_secret)
-
-ADMIN_USERNAME=$username
-ADMIN_PASSWORD_HASH=$password_hash
 
 HOST=$host
 PORT=$port
@@ -181,10 +231,12 @@ USE_TLS=$use_tls
 SSL_CERT_PATH=$cert_path
 SSL_KEY_PATH=$key_path
 
-DOCTOR_DEV_CONFIG_PATH=/etc/doctor-dev/config.json
-DOCTOR_DEV_LOG_DIR=/var/log/doctor-dev
+ADMIN_STORE_PATH=$ADMIN_STORE_PATH
+DOCTOR_DEV_DATA_DIR=$DATA_DIR
+DOCTOR_DEV_LOG_DIR=$LOG_DIR
 ENV
   chmod 600 "$ENV_FILE"
+  ln -sfn "$ENV_FILE" "$APP_DIR/.env" 2>/dev/null || true
   ok "Environment saved."
 }
 
@@ -194,8 +246,8 @@ install_cli() {
   ok "CLI installed. Try: doctor-dev help"
 }
 
-install_service() {
-  info "Installing systemd service: $SERVICE_NAME"
+write_service_file() {
+  info "Writing systemd service: $SERVICE_NAME"
   cat > "/etc/systemd/system/${SERVICE_NAME}.service" <<SERVICE
 [Unit]
 Description=Doctor Dev Panel
@@ -218,6 +270,11 @@ User=root
 WantedBy=multi-user.target
 SERVICE
   systemctl daemon-reload
+  ok "Service file is ready."
+}
+
+install_service() {
+  write_service_file
   systemctl enable "$SERVICE_NAME"
   systemctl restart "$SERVICE_NAME"
   ok "Service started."
@@ -263,6 +320,7 @@ configure_tls() {
 install_panel() {
   header
   need_root
+  stop_existing_service
   install_packages
   clone_or_update_repo
   setup_venv
@@ -271,7 +329,7 @@ install_panel() {
   cecho "  1) Install on IP"
   cecho "  2) Install on domain"
   cecho "  3) Localhost only"
-  local target_choice install_target public_host bind_host port admin_user admin_pass pass_hash tls_result use_tls public_scheme cert_path key_path
+  local target_choice install_target public_host bind_host port admin_user admin_pass tls_result use_tls public_scheme cert_path key_path
   target_choice="$(ask "Choose target" "1")"
   case "$target_choice" in
     2) install_target="domain"; public_host="$(ask_non_empty "Domain" "panel.example.com")"; bind_host="0.0.0.0" ;;
@@ -283,18 +341,19 @@ install_panel() {
   port="$(ask_port)"
   admin_user="$(ask_non_empty "Admin username" "admin")"
   admin_pass="$(ask_password)"
-  pass_hash="$(generate_hash "$admin_pass")"
 
   tls_result="$(configure_tls "$install_target" "$public_host")"
   IFS='|' read -r use_tls public_scheme cert_path key_path <<< "$tls_result"
 
-  write_env "$admin_user" "$pass_hash" "$bind_host" "$port" "$public_host" "$public_scheme" "$use_tls" "$cert_path" "$key_path"
+  write_env "$bind_host" "$port" "$public_host" "$public_scheme" "$use_tls" "$cert_path" "$key_path"
+  create_admin_store "$admin_user" "$admin_pass"
   install_cli
 
   if ask_yes_no "Install and start systemd service now?" "y"; then
     install_service
   else
-    warn "Service not installed. You can run manually: cd $APP_DIR && .venv/bin/python main.py --env .env"
+    write_service_file
+    warn "Service was not started. You can start it later with: doctor-dev start"
   fi
 
   echo
@@ -306,16 +365,22 @@ install_panel() {
 update_panel() {
   header
   need_root
+  stop_existing_service
   install_packages
   clone_or_update_repo
   setup_venv
   install_cli
-  if systemctl list-unit-files | grep -q "^${SERVICE_NAME}.service"; then
-    systemctl daemon-reload
-    systemctl restart "$SERVICE_NAME"
-    ok "Service restarted."
+  if [[ -f "$ENV_FILE" || -f "$APP_DIR/.env" ]]; then
+    ln -sfn "$ENV_FILE" "$APP_DIR/.env" 2>/dev/null || true
+    write_service_file
+    if command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files | grep -q "^${SERVICE_NAME}.service"; then
+      systemctl restart "$SERVICE_NAME"
+      ok "Service restarted."
+    else
+      warn "Service does not exist yet. Run install-panel once to create it."
+    fi
   else
-    warn "Service does not exist yet. Run install-panel to create it."
+    warn "No environment file found. Run install-panel once, then use update-panel after that."
   fi
   ok "Update finished."
 }

@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__
+from .admin_store import list_admins
 from .auth import authenticate, make_session, require_admin
 from .config import APP_TITLE, SECURITY_HEADERS, SESSION_COOKIE, WEB_DIR
 from .schemas import LoginBody
@@ -40,7 +40,7 @@ async def admin() -> FileResponse:
 @app.post("/api/auth/login")
 async def login(body: LoginBody) -> JSONResponse:
     if not authenticate(body.username, body.password):
-        raise HTTPException(status_code=401, detail="نام کاربری یا رمز عبور اشتباه است")
+        raise HTTPException(status_code=401, detail="Invalid username or password.")
 
     response = JSONResponse({"ok": True, "username": body.username})
     secure_cookie = os.getenv("COOKIE_SECURE", "0") == "1" or os.getenv("USE_TLS", "0") == "1"
@@ -73,8 +73,13 @@ async def panel_summary(user: str = Depends(require_admin)) -> dict:
         "ok": True,
         "user": user,
         "phase": "login-foundation",
-        "message": "پنل پایه آماده است؛ بخش‌های Nodes / Cores / Logs در فاز بعد اضافه می‌شوند.",
+        "message": "Login foundation is ready. Nodes, Cores, Logs and Config Editor will be added in the next phases.",
     }
+
+
+@app.get("/api/admins")
+async def admins(user: str = Depends(require_admin)) -> dict:
+    return {"ok": True, "admins": list_admins()}
 
 
 @app.get("/health")

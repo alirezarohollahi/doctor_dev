@@ -34,13 +34,13 @@ async function checkSession() {
     const data = await response.json();
     if (data.ok) showDashboard(data.username);
   } catch (_) {
-    // keep login visible
+    // Keep login visible.
   }
 }
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
-  setMessage('در حال بررسی اطلاعات ورود...', '');
+  setMessage('Checking credentials...', '');
   submitButton.disabled = true;
 
   const payload = {
@@ -58,13 +58,13 @@ form.addEventListener('submit', async (event) => {
 
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(data.detail || 'ورود ناموفق بود.');
+      throw new Error(data.detail || 'Login failed.');
     }
 
-    setMessage('ورود موفق بود. در حال باز کردن پنل...', 'success');
+    setMessage('Login successful. Opening panel...', 'success');
     setTimeout(() => showDashboard(data.username), 350);
   } catch (error) {
-    setMessage(error.message || 'خطا در اتصال به سرور.', 'error');
+    setMessage(error.message || 'Cannot connect to the server.', 'error');
   } finally {
     submitButton.disabled = false;
   }
@@ -73,13 +73,14 @@ form.addEventListener('submit', async (event) => {
 logoutButton.addEventListener('click', async () => {
   await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }).catch(() => {});
   showLogin();
-  setMessage('از پنل خارج شدی.', 'success');
+  setMessage('You have been logged out.', 'success');
 });
 
 togglePassword.addEventListener('click', () => {
   const visible = passwordInput.type === 'text';
   passwordInput.type = visible ? 'password' : 'text';
-  togglePassword.textContent = visible ? 'نمایش' : 'مخفی';
+  togglePassword.textContent = visible ? 'Show' : 'Hide';
+  togglePassword.setAttribute('aria-label', visible ? 'Show password' : 'Hide password');
 });
 
 checkSession();
