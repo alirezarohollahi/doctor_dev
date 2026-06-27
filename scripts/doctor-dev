@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+APP_DIR="${DOCTOR_DEV_APP_DIR:-/opt/doctor-dev-panel}"
+SERVICE_NAME="${DOCTOR_DEV_SERVICE_NAME:-doctor-dev-panel}"
+ENV_FILE="${DOCTOR_DEV_ENV_FILE:-$APP_DIR/.env}"
+
+BOLD="\033[1m"; DIM="\033[2m"; RED="\033[31m"; GREEN="\033[32m"; YELLOW="\033[33m"; BLUE="\033[34m"; CYAN="\033[36m"; RESET="\033[0m"
+
+cecho() { printf "%b\n" "$1"; }
+editor_cmd() {
+  if command -v nano >/dev/null 2>&1; then echo nano; elif command -v vim >/dev/null 2>&1; then echo vim; else echo vi; fi
+}
+
+help_screen() {
+  cecho "${CYAN}${BOLD}=========================================${RESET}"
+  cecho "${CYAN}${BOLD}          doctor-dev Help${RESET}"
+  cecho "${CYAN}${BOLD}=========================================${RESET}"
+  cecho "${BOLD}Usage:${RESET}"
+  cecho "  doctor-dev [command]"
+  echo
+  cecho "${BOLD}Commands:${RESET}"
+  cecho "  ${GREEN}start${RESET}           – Start panel service"
+  cecho "  ${GREEN}stop${RESET}            – Stop panel service"
+  cecho "  ${GREEN}restart${RESET}         – Restart panel service"
+  cecho "  ${GREEN}status${RESET}          – Show systemd status"
+  cecho "  ${GREEN}logs${RESET}            – Follow service logs"
+  cecho "  ${GREEN}config edit${RESET}     – Edit panel .env config"
+  cecho "  ${GREEN}edit-env${RESET}        – Edit panel .env config"
+  cecho "  ${GREEN}health${RESET}          – Call local /health endpoint"
+  cecho "  ${GREEN}update${RESET}          – Run installer update-panel"
+  cecho "  ${GREEN}help${RESET}            – Show this help message"
+  echo
+  cecho "${BOLD}Directories:${RESET}"
+  cecho "  App directory:  ${BLUE}${APP_DIR}${RESET}"
+  cecho "  Env file:       ${BLUE}${ENV_FILE}${RESET}"
+  cecho "  Service name:   ${BLUE}${SERVICE_NAME}${RESET}"
+  cecho "${CYAN}${BOLD}=========================================${RESET}"
+}
+
+require_systemctl() {
+  command -v systemctl >/dev/null 2>&1 || { cecho "${RED}systemctl not found.${RESET}"; exit 1; }
+}
+
+cmd="${1:-help}"
+case "$cmd" in
+  start)
+    require_systemctl; sudo systemctl start "$SERVICE_NAME" ;;
+  stop)
+    require_systemctl; sudo systemctl stop "$SERVICE_NAME" ;;
+  restart)
+    require_systemctl; sudo systemctl restart "$SERVICE_NAME" ;;
+  status)
+    require_systemctl; systemctl status "$SERVICE_NAME" --no-pager ;;
+  logs)
+    require_systemctl; journalctl -u "$SERVICE_NAME" -f -n "${2:-120}" ;;
+  config)
+    sub="${2:-}"
+    if [[ "$sub" == "edit" ]]; then
+      sudo "$(editor_cmd)" "$ENV_FILE"
+    else
+      cecho "${YELLOW}Usage: doctor-dev config edit${RESET}"
+      exit 2
+    fi
+    ;;
+  edit-env)
+    sudo "$(editor_cmd)" "$ENV_FILE" ;;
+  health)
+    if [[ -f "$ENV_FILE" ]]; then set -a; # shellcheck disable=SC1090
+      source "$ENV_FILE"; set +a; fi
+    scheme="${PUBLIC_SCHEME:-http}"
+    port="${PORT:-8080}"
+    curl -fsS "http://127.0.0.1:${port}/health" || {
+      cecho "${YELLOW}Local health check failed. Is the service running?${RESET}"; exit 1;
+    }
+    echo
+    ;;
+  update)
+    if [[ -x "$APP_DIR/scripts/doctor_dev.sh" ]]; then
+      sudo bash "$APP_DIR/scripts/doctor_dev.sh" update-panel
+    else
+      cecho "${RED}Installer not found at $APP_DIR/scripts/doctor_dev.sh${RESET}"
+      exit 1
+    fi
+    ;;
+  help|-h|--help)
+    help_screen ;;
+  *)
+    cecho "${RED}Unknown command: $cmd${RESET}"
+    echo
+    help_screen
+    exit 2
+    ;;
+esac
