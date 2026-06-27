@@ -1,338 +1,291 @@
 # Doctor Dev
 
-Doctor Dev is a local-first control panel for managing node agents, tunnel cores, inbound listeners, routes, balancers, certificates, runtime metrics, config versions, rollback and logs.
+Doctor Dev is a Linux-first control center for managing node agents, tunnel cores, inbound listeners, routes, balancers, certificates, runtime metrics, config versions, rollback and logs.
 
-The project is split into two runtime parts:
+The project has two runtime roles:
 
 ```text
 Panel  -> central management UI/API
-Agent  -> node-side runtime that receives generated config and runs tunnel listeners
+Node   -> node-side agent that receives generated config and runs listeners
 ```
 
-## What is ready
+## Production install with curl
+
+Panel install:
+
+```bash
+curl -fsSL https://github.com/PasarGuard/scripts/raw/main/doctor_dev.sh -o /tmp/doctor_dev.sh \
+  && sudo bash /tmp/doctor_dev.sh install-panel
+```
+
+Node install:
+
+```bash
+curl -fsSL https://github.com/PasarGuard/scripts/raw/main/doctor_dev.sh -o /tmp/doctor_dev.sh \
+  && sudo bash /tmp/doctor_dev.sh install-node
+```
+
+Default `install` is the same as `install-panel`:
+
+```bash
+curl -fsSL https://github.com/PasarGuard/scripts/raw/main/doctor_dev.sh -o /tmp/doctor_dev.sh \
+  && sudo bash /tmp/doctor_dev.sh install
+```
+
+The bootstrap script clones or updates this repository:
 
 ```text
-- SAP/Fiori-inspired separated work centers
-- Nodes page with grid cards
-- Click a node card to edit it
-- Select multiple nodes, Select All, and bulk delete
-- Standalone Certificate Manager with certificate aliases
-- Visual Core Builder
-- Multiple inbound listeners per inbound
-- Static targets with multiple ports
-- Local inbound chain targets
-- Remote node group targets
-- Balancers: round_robin, random, failover, weighted_round_robin
-- max_users and max_active_connections policies
-- TLS certificate validation
-- Real TLS runtime listener for local testing
-- Dry Run / Apply
-- Config Versioning / Diff / Rollback
-- Audit Log
-- Runtime metrics
-- Node logs
-- Local TCP/TLS Test Lab
-- Python reset/start script with generated admin credentials
-- Python node start script
+https://github.com/alirezarohollahi/doctor_dev
 ```
 
-## Install on Windows
+## Supported Linux package managers
 
-Open PowerShell in the project folder:
-
-```powershell
-py -3 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\.venv\Scripts\pip.exe install -r requirements.txt
-.\.venv\Scripts\pip.exe install -e .
-.\.venv\Scripts\python.exe -m pytest -q
-```
-
-Or use the helper:
-
-```powershell
-.\install-windows.ps1
-```
-
-## Clean reset and start from zero
-
-This is the recommended way for a full local test. It clears local state, generates random admin credentials, starts two local node agents, then starts the panel.
-
-```powershell
-.\.venv\Scripts\python.exe .\scripts\reset_and_start.py
-```
-
-The script asks for:
+The installer detects and supports:
 
 ```text
-- Panel host
-- Panel port
-- Node A API port
-- Node B API port
-- Echo ports for both nodes
-- Admin username
-- Whether to remove custom certificates
+apt      Debian / Ubuntu
+apk      Alpine
+dnf      Fedora / RHEL / Rocky / Alma
+yum      older CentOS/RHEL
+zypper   openSUSE
+pacman   Arch
 ```
 
-At the end it prints:
+It installs the required system packages such as Python 3, venv/pip, git, curl, certificates, OpenSSL, tar and unzip.
+
+## Panel installer flow
+
+Run:
+
+```bash
+sudo python3 scripts/install_panel.py
+```
+
+The installer does the following:
 
 ```text
-Panel URL
-Admin username
-Admin password
-Node A / Node B details
-State and log paths
+1. Checks root/sudo.
+2. Detects Linux distribution and package manager.
+3. Checks whether a previous Panel installation exists.
+4. If it exists, asks whether to remove it and continue.
+5. Installs system and Python requirements.
+6. Clones or updates the project from GitHub.
+7. Creates /opt/doctor_dev/.venv and installs the project.
+8. Asks how the Panel should be exposed:
+   - IP without certificate
+   - Domain with certificate
+   - IP with certificate
+9. Handles certificate paths, Let's Encrypt issuance, or self-signed certificate generation when explicitly requested.
+10. Creates or accepts admin credentials.
+11. Writes production config under /etc/doctor_dev/panel.
+12. Installs the `doctor-panel` CLI.
+13. Optionally creates and starts the systemd service.
+14. Prints Panel URL, admin username and admin password.
+15. Optionally starts the Node installer on the same machine.
 ```
 
-Open the printed Panel URL. If the browser asks for credentials, use the printed admin username/password.
-
-## Start a single node manually
-
-Use this when you want to bring up a node by itself:
-
-```powershell
-.\.venv\Scripts\python.exe .\scripts\start_node.py `
-  --name local-node-a `
-  --api-port 9101 `
-  --api-key local-dev-key-a `
-  --echo-ports 3000,3001
-```
-
-Another node:
-
-```powershell
-.\.venv\Scripts\python.exe .\scripts\start_node.py `
-  --name local-node-b `
-  --api-port 9102 `
-  --api-key local-dev-key-b `
-  --echo-ports 3100,3101
-```
-
-Then start the panel:
-
-```powershell
-$env:DOCTOR_DEV_PANEL_HOST="127.0.0.1"
-$env:DOCTOR_DEV_PANEL_PORT="8088"
-$env:DOCTOR_DEV_AUTH_REQUIRED="0"
-.\.venv\Scripts\python.exe -m doctor_dev_panel
-```
-
-## Quick local test inside the UI
-
-After `reset_and_start.py` opens the panel:
-
-### 1. Register local nodes
-
-Open **Nodes**.
-
-Click:
+At the end you get output similar to:
 
 ```text
-Seed Local Nodes
-Refresh
+Panel URL: https://panel.example.com
+Admin username: admin_xxxxxx
+Admin password: generated-password
+Credentials file: /etc/doctor_dev/panel/admin_credentials.txt
+Service: doctor-dev-panel.service
 ```
 
-You should see two cards:
+The credentials file is written with `0600` permissions.
+
+## Panel exposure modes
+
+### IP without certificate
+
+Use this when you want a direct HTTP panel:
 
 ```text
-local-node-a
-local-node-b
+http://SERVER_IP:8088
 ```
 
-Click **Check** on both cards. Their status should become `online`.
+### Domain with certificate
 
-### 2. Test node grid and bulk delete
-
-In **Nodes**:
+Use this when you have a domain:
 
 ```text
-- Use search to filter nodes
-- Click a card to edit node settings
-- Tick one or more checkboxes
-- Use Select All
-- Use Delete Selected only on throwaway nodes
+https://panel.example.com
 ```
 
-Do not delete `local-node-a` or `local-node-b` until you finish the local test.
+The installer can either use existing certificate files or issue a certificate through Certbot.
 
-### 3. Create and apply a TLS runtime core
+### IP with certificate
 
-Open **Local Test Lab**.
+Use this when you already have certificate files for the IP, or when you intentionally want a self-signed certificate. Self-signed certificates are not trusted by browsers by default.
 
-Click:
+## Node installer flow
+
+Run:
+
+```bash
+sudo python3 scripts/install_node.py
+```
+
+The installer does the following:
 
 ```text
-Create TLS Test Core
-Apply TLS Test Core
-Run TLS Test
+1. Checks root/sudo.
+2. Detects Linux distribution and package manager.
+3. Installs required packages.
+4. Checks whether a previous Node installation exists.
+5. Clones or updates the project.
+6. Creates /opt/doctor_dev/.venv and installs the project.
+7. Asks for Node name, public address, API bind address and API port.
+8. Generates or accepts a UUID API key.
+9. Asks for protocol metadata: rest or grpc.
+10. Asks for initial ports.
+11. Asks for certificate mode:
+    - no API certificate
+    - existing fullchain/privkey
+    - generated self-signed certificate
+12. Writes production config under /etc/doctor_dev/nodes/<node-name>.
+13. Installs the `doctor-node` CLI.
+14. Optionally creates and starts a systemd service.
+15. Prints node address, API port, protocol and API key.
 ```
 
-Expected response contains:
+Node information is saved to:
 
 ```text
-doctor-dev-echo:local-node-a:hello-doctor-dev-tls
+/etc/doctor_dev/nodes/<node-name>/node_credentials.txt
 ```
 
-This validates:
+## CLI commands
+
+### Panel CLI
+
+```bash
+doctor-panel status
+doctor-panel start
+doctor-panel stop
+doctor-panel restart
+doctor-panel logs -f
+doctor-panel config show
+doctor-panel admin show
+doctor-panel nodes list
+doctor-panel cert list
+doctor-panel backup create
+```
+
+### Node CLI
+
+```bash
+doctor-node status
+doctor-node start
+doctor-node stop
+doctor-node restart
+doctor-node logs -f
+doctor-node config show
+doctor-node runtime
+doctor-node health
+```
+
+For multiple nodes on one host, pass the node name:
+
+```bash
+doctor-node --name edge-node-1 status
+```
+
+## systemd services
+
+Panel service:
+
+```bash
+sudo systemctl status doctor-dev-panel
+sudo systemctl restart doctor-dev-panel
+sudo journalctl -u doctor-dev-panel -f
+```
+
+Node service:
+
+```bash
+sudo systemctl status doctor-dev-node-edge-node-1
+sudo systemctl restart doctor-dev-node-edge-node-1
+sudo journalctl -u doctor-dev-node-edge-node-1 -f
+```
+
+If systemd is not available, the installer prints a manual command using the generated environment file.
+
+## Production paths
 
 ```text
-Panel -> Agent
-Certificate path validation
-TLS listener
-TLS test client
-Tunnel forwarding to local echo target
-Runtime logs
+/opt/doctor_dev                 source and virtualenv
+/etc/doctor_dev                 configuration
+/etc/doctor_dev/panel           panel config
+/etc/doctor_dev/nodes           node config
+/etc/doctor_dev/certs           certificate aliases
+/var/lib/doctor_dev             runtime state
+/var/log/doctor_dev             logs
+/var/backups/doctor_dev         backups
 ```
 
-### 4. Create and apply a remote route
+## Panel UI workflow
 
-Open **Local Test Lab**.
+1. Open the Panel URL printed by the installer.
+2. Enter the admin username and password.
+3. Open **Nodes**.
+4. Add nodes as cards.
+5. Click a node card to edit it.
+6. Use multi-select, Select All and Delete Selected for bulk operations.
+7. Open **Certificates** to create reusable certificate aliases.
+8. Open **Cores** to build inbound listeners, routes, targets, balancers and policies.
+9. Use **Dry Run** before applying a core.
+10. Use **Apply** to push generated config to the selected node.
+11. Use **Runtime**, **Logs**, **Versions** and **Audit** for operation and troubleshooting.
 
-Click:
+## Uninstall
 
-```text
-Create Remote Route
-Apply Remote Route
+Using the bootstrap script:
+
+```bash
+sudo bash /tmp/doctor_dev.sh uninstall
 ```
 
-Then set:
+Or from the project:
 
-```text
-Host: 127.0.0.1
-Port: 18090
-Payload: hello-remote-route
+```bash
+sudo python3 scripts/uninstall.py
 ```
 
-Click:
+The uninstaller asks whether to remove only services/CLI wrappers or also source, config, data, logs and backups.
 
-```text
-Run TCP Test
+## Development install on Linux
+
+```bash
+git clone https://github.com/alirezarohollahi/doctor_dev
+cd doctor_dev
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -U pip setuptools wheel
+pip install -r requirements.txt
+pip install -e .
+pytest -q
 ```
 
-Expected response contains:
+Manual Panel start:
 
-```text
-doctor-dev-echo:local-node-b:hello-remote-route
+```bash
+DOCTOR_DEV_AUTH_REQUIRED=1 \
+DOCTOR_DEV_ADMIN_USERNAME=admin \
+DOCTOR_DEV_ADMIN_PASSWORD='change-me' \
+DOCTOR_DEV_PANEL_HOST=0.0.0.0 \
+DOCTOR_DEV_PANEL_PORT=8088 \
+python -m doctor_dev_panel
 ```
 
-This validates:
+Manual Node start:
 
-```text
-Node A inbound
-Remote group target resolution
-Node B inbound
-Node B final static echo targets
-Balancer path
-Logs on both nodes
+```bash
+DOCTOR_DEV_NODE_NAME=edge-node-1 \
+DOCTOR_DEV_AGENT_HOST=0.0.0.0 \
+DOCTOR_DEV_AGENT_PORT=9101 \
+DOCTOR_DEV_AGENT_API_KEY='replace-with-uuid' \
+python -m doctor_dev_agent
 ```
-
-### 5. Build a custom core manually
-
-Open **Cores**.
-
-Use **Core Builder**:
-
-```text
-1. Select Node
-2. Set Core Name
-3. Set inbound name, listen IP and listen ports CSV
-4. Set limits: Max Users / Max Active Connections
-5. Choose TLS mode if needed
-6. Choose target mode:
-   - static IP/ports
-   - local inbound chain
-   - remote node group
-7. Choose balancer
-8. Preview Payload
-9. Save Core
-10. Dry Run
-11. Apply
-```
-
-Then test the port from **Local Test Lab**.
-
-### 6. Certificate aliases
-
-Open **Certificates**.
-
-Create a certificate alias using the bundled local certificate:
-
-```text
-Alias: local-test-cert
-Domain: local.test
-fullchain path: certs/local.test/fullchain.pem
-privkey path: certs/local.test/privkey.pem
-```
-
-Click:
-
-```text
-Validate Paths
-Create Path Certificate
-```
-
-Then in **Cores**, set:
-
-```text
-TLS Mode: stored certificate alias
-Certificate Alias: local-test-cert / local.test
-```
-
-### 7. Config versions, diff and rollback
-
-After you run **Dry Run** or **Apply** on a core:
-
-Open **Cores** and click:
-
-```text
-Versions
-Diff
-```
-
-Open **Versions & Audit** to inspect version history. You can restore a version with:
-
-```text
-Rollback + Apply
-```
-
-### 8. Runtime and logs
-
-Open **Runtime**:
-
-```text
-Fetch Runtime From All Nodes
-Discover All Nodes
-```
-
-Open **Logs**:
-
-```text
-Fetch Logs From All Nodes
-```
-
-## Useful ports in the default local lab
-
-```text
-Panel: 127.0.0.1:8088
-Agent local-node-a: 127.0.0.1:9101
-Agent local-node-b: 127.0.0.1:9102
-Node A echo targets: 3000,3001
-Node B echo targets: 3100,3101
-TLS test listener: 18443
-Remote route entry listener: 18090
-Node B remote inbound: 19100
-```
-
-## Data locations
-
-```text
-data/panel_state.json             Panel state
-logs/                             Panel and agent logs
-configs/generated/                Generated apply/dry-run configs
-certs/local.test/                 Bundled local self-signed certificate
-.env.local                        Generated local credentials and API keys
-```
-
-## Notes for real deployment later
-
-The local project is ready for full local testing. For real public deployment, use a reverse proxy or firewall, enable authentication, keep API keys secret, use real certificates, and run panel/agents as services instead of interactive terminals.

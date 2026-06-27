@@ -30,7 +30,7 @@ class JsonStore:
             if not self.path.exists():
                 return self._empty_state()
             data = json.loads(self.path.read_text(encoding="utf-8"))
-            # Backward-compatible state upgrade for older local test files.
+            # Backward-compatible state upgrade for older state files.
             changed = False
             for key, default in self._empty_state().items():
                 if key not in data:
@@ -197,7 +197,7 @@ class JsonStore:
     # Config versions + audit logs
     # -------------------------
 
-    def create_audit_log(self, action: str, entity_type: str, entity_id: str | None = None, message: str | None = None, details: dict[str, Any] | None = None, actor: str = "local-admin") -> dict[str, Any]:
+    def create_audit_log(self, action: str, entity_type: str, entity_id: str | None = None, message: str | None = None, details: dict[str, Any] | None = None, actor: str = "panel-admin") -> dict[str, Any]:
         item = {
             "id": new_id("audit"),
             "created_at": now_iso(),

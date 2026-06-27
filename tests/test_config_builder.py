@@ -1,12 +1,11 @@
 from doctor_dev_shared.config_builder import build_generated_config
-from doctor_dev_shared.models import CoreOut, InboundConfig, InboundListener, RouteConfig, RouteTarget
+from doctor_dev_shared.models import CoreOut, InboundConfig, InboundListener, NodeCreate, RouteConfig, RouteTarget
 
 
-def test_config_builder_outputs_routes_and_inbounds():
-    route = RouteConfig(name="route-a", targets=[RouteTarget(type="static", host="127.0.0.1", ports=[8080])])
-    inbound = InboundConfig(name="inbound-a", listeners=[InboundListener(listen_port=18080)], route_id=route.id)
-    core = CoreOut(node_id="node_1", name="core-a", inbounds=[inbound], routes=[route])
-    config = build_generated_config(core)
-    assert config.core_name == "core-a"
-    assert config.inbounds[0]["route_id"] == route.id
-    assert config.routes[0]["targets"][0]["ports"] == [8080]
+def test_generated_config_contains_balancer_and_policies():
+    route = RouteConfig(name="route", balancer="weighted_round_robin", targets=[RouteTarget(type="static", host="127.0.0.1", ports=[3000], weight=2)])
+    inbound = InboundConfig(name="in", listeners=[InboundListener(listen_ip="0.0.0.0", listen_port=443)], route_id=route.id, limits={"max_users": 10, "max_active_connections": 20})
+    core = CoreOut(node_id="node", name="core", inbounds=[inbound], routes=[route])
+    generated = build_generated_config(core)
+    assert generated.routes[0]["balancer"] == "weighted_round_robin"
+    assert generated.inbounds[0]["limits"]["max_active_connections"] == 20

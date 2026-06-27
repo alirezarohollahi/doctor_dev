@@ -4,10 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "doctor-dev"
-version = "1.0.0"
-description = "Doctor Dev multi-node panel with local runtime test lab, config versioning, diff, rollback and audit log"
+version = "1.1.0"
+description = "Doctor Dev production Linux panel and node agent for multi-node tunnel management"
 requires-python = ">=3.10"
 dependencies = ["fastapi>=0.110", "uvicorn[standard]>=0.27", "pydantic>=2.6", "httpx>=0.27", "python-multipart>=0.0.9"]
+
+[project.scripts]
+doctor-panel = "doctor_dev_panel.cli:main"
+doctor-node = "doctor_dev_agent.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

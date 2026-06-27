@@ -4,7 +4,7 @@ import asyncio
 from typing import Callable
 
 
-async def start_echo_server(host: str, port: int, log: Callable[[str, str], None], label: str = "local") -> asyncio.AbstractServer:
+async def start_echo_server(host: str, port: int, log: Callable[[str, str], None], label: str = "node") -> asyncio.AbstractServer:
     async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         peer = writer.get_extra_info("peername")
         log("info", f"echo accepted peer={peer} on {host}:{port} label={label}")
@@ -20,5 +20,5 @@ async def start_echo_server(host: str, port: int, log: Callable[[str, str], None
             await writer.wait_closed()
 
     server = await asyncio.start_server(handle, host, port)
-    log("info", f"local echo target started on {host}:{port} label={label}")
+    log("info", f"echo target started on {host}:{port} label={label}")
     return server

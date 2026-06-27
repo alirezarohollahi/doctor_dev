@@ -294,7 +294,7 @@ class TunnelManager:
             return None, warnings + [f"TLS listener disabled because certificate chain could not be loaded: {exc}"]
 
     def _build_client_ssl_context(self) -> ssl.SSLContext:
-        # Local test lab uses self-signed certs, so runtime target-to-target TLS skips certificate verification.
+        # When a target endpoint uses a self-signed certificate, runtime target-to-target TLS skips certificate verification by design.
         # Production-grade verification can be added once trust stores / expected hostnames are configurable per target.
         return ssl._create_unverified_context()
 

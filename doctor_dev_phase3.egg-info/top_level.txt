@@ -1,3 +1,0 @@
-doctor_dev_agent
-doctor_dev_panel
-doctor_dev_shared
