@@ -3184,3 +3184,113 @@ textarea:hover {
         align-items: flex-start;
     }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   Local Font Awesome icon system
+   All UI icons are rendered with local webfont assets instead of inline SVG.
+   ═══════════════════════════════════════════════════════════ */
+.fa,
+.fa-solid,
+.fa-regular,
+.fa-brands {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  width: 1em;
+  height: 1em;
+  flex: 0 0 auto;
+  pointer-events: none;
+}
+
+.btn .fa,
+.btn .fa-solid,
+.btn .fa-regular,
+.btn .fa-brands,
+.toast-icon .fa,
+.actions-cell .fa,
+.dashboard-node-actions .fa,
+.input-suffix-btn .fa,
+.modal-close-btn .fa,
+.sidebar-close-btn .fa,
+.mobile-menu-btn .fa,
+.breadcrumb .fa,
+.status-strip-controls .fa {
+  font-size: 0.92rem;
+}
+
+.btn-xs .fa,
+.btn-xs .fa-solid,
+.btn-xs .fa-regular,
+.actions-cell .btn-xs .fa {
+  font-size: 0.78rem;
+}
+
+.btn-sm .fa,
+.btn-sm .fa-solid,
+.btn-sm .fa-regular {
+  font-size: 0.88rem;
+}
+
+.brand-logo,
+.sidebar-logo,
+.login-card-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.brand-logo .fa,
+.sidebar-logo .fa,
+.login-card-logo .fa {
+  color: currentColor;
+}
+
+.brand-logo .fa { font-size: 1.45rem; }
+.sidebar-logo .fa { font-size: 1.05rem; }
+.login-card-logo .fa { font-size: 1rem; }
+
+.brand-feature-icon,
+.feature-icon,
+.nav-icon,
+.user-avatar,
+.input-icon,
+.tiny-icon,
+.stat-card-icon,
+.quick-action-icon,
+.empty-state-icon,
+.dialog-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.brand-feature-icon .fa,
+.feature-icon .fa { font-size: 1.05rem; }
+.nav-icon .fa { font-size: 0.96rem; }
+.user-avatar .fa { font-size: 1rem; }
+.input-icon .fa { font-size: 0.9rem; }
+.input-suffix-btn .fa { font-size: 0.82rem; }
+.tiny-icon .fa { font-size: 0.78rem; }
+.stat-card-icon .fa { font-size: 1.25rem; }
+.quick-action-icon .fa { font-size: 1.05rem; }
+.empty-state-icon .fa { font-size: 2rem; }
+.empty-state--sm .empty-state-icon .fa { font-size: 1.55rem; }
+.dialog-icon .fa { font-size: 1.35rem; }
+.logs-placeholder .fa { font-size: 1.25rem; }
+
+.btn-spinner.fa-spin {
+  margin-left: 0.55rem;
+}
+
+/* Product-safe icon sizing guard: no icon can stretch like the old SVGs did. */
+.fa::before,
+.fa-solid::before,
+.fa-regular::before,
+.fa-brands::before {
+  display: inline-block;
+  max-width: 1em;
+  max-height: 1em;
+}

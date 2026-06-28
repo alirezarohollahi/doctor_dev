@@ -156,12 +156,12 @@ function showToast(message, type, duration) {
 
   var icons = {
     success:
-      '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
+      '<i class="fa-solid fa-check" aria-hidden="true"></i>',
     error:
-      '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>',
+      '<i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i>',
     warning:
-      '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
-    info: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
+      '<i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>',
+    info: '<i class="fa-solid fa-circle-info" aria-hidden="true"></i>',
   };
 
   var container = $("#toastContainer");
@@ -617,12 +617,12 @@ function renderDashboard() {
         '<button class="btn btn-xs btn-ghost" data-action="check" data-id="' +
         escapeHtml(String(node.id || "")) +
         '" title="Check node">' +
-        '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>' +
+        '<i class="fa-solid fa-rotate-right" aria-hidden="true"></i>' +
         "</button>" +
         '<button class="btn btn-xs btn-ghost" data-action="edit" data-id="' +
         escapeHtml(String(node.id || "")) +
         '" title="Edit node">' +
-        '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>' +
+        '<i class="fa-solid fa-pen-to-square" aria-hidden="true"></i>' +
         "</button>" +
         "</div>" +
         "</div>"
@@ -704,7 +704,7 @@ function renderNodes() {
         '<button class="btn btn-xs btn-ghost" data-node-action="check" data-id="' +
         escapeHtml(String(node.id || "")) +
         '" title="Check">' +
-        '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>' +
+        '<i class="fa-solid fa-rotate-right" aria-hidden="true"></i>' +
         "</button>" +
         '<button class="btn btn-xs btn-secondary" data-node-action="edit"   data-id="' +
         escapeHtml(String(node.id || "")) +
@@ -1049,7 +1049,7 @@ function renderCores() {
           '<div class="core-card-main">' +
             '<h3 class="core-card-name">' + escapeHtml(core.name || "Unnamed Core") + '</h3>' +
             '<div class="core-card-node-line">' +
-              '<span class="tiny-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></span>' +
+              '<span class="tiny-icon"><i class="fa-solid fa-desktop" aria-hidden="true"></i></span>' +
               '<span>' + escapeHtml(nName) + '</span>' +
             '</div>' +
           '</div>' +
