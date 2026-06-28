@@ -2029,6 +2029,8 @@ function endpointInboundOptions(nodeId) {
       node_id: item.node_id || nodeId,
       label: inboundOptionLabel(item),
       ports: Array.isArray(item.ports) ? item.ports : [],
+      port_mode: item.port_mode || "fixed",
+      random_count: item.random_count || 1,
       public_host: item.public_host || "",
       bind_ip: item.bind_ip || "",
     });
@@ -2074,6 +2076,10 @@ function fillEndpointInboundSelect(select, nodeId, value, coreId) {
         escapeHtml(item.core_id || "") +
         '" data-ports="' +
         escapeHtml((item.ports || []).join(",")) +
+        '" data-port-mode="' +
+        escapeHtml(item.port_mode || "fixed") +
+        '" data-random-count="' +
+        escapeHtml(String(item.random_count || 1)) +
         '"' +
         (selected ? " selected" : "") +
         ">" +
@@ -2094,8 +2100,13 @@ function applyEndpointInboundSelection(ep, select) {
   ep.inbound_name = select.value;
   ep.core_id = opt ? (opt.getAttribute("data-core-id") || "") : "";
   var ports = opt ? String(opt.getAttribute("data-ports") || "") : "";
+  var portMode = opt ? String(opt.getAttribute("data-port-mode") || "fixed") : "fixed";
+  var randomCount = opt ? Math.max(1, Number(opt.getAttribute("data-random-count") || 1) || 1) : 1;
   var firstPort = ports.split(",").map(function (p) { return parseInt(p.trim(), 10); }).filter(function (p) { return p >= 1 && p <= 65535; })[0];
+  ep.remote_port_mode = portMode;
+  ep.remote_random_count = randomCount;
   if (firstPort) ep.port = firstPort;
+  else ep.port = 80;
   if (!ep.host) ep.host = "127.0.0.1";
 }
 
@@ -2653,7 +2664,12 @@ function sanitizeCorePayload(payload) {
       ep.weight = Math.max(0, Number(ep.weight) || 1);
       if (ep.type === "node_inbound") {
         if (!ep.host) ep.host = "127.0.0.1";
+        // Node Inbound endpoints are semantic references. The real port is
+        // enriched by the panel for fixed/live inbounds or resolved by node
+        // peer-sync for remote random inbounds. Keep a safe placeholder here
+        // so random_count values such as 8 never leak into endpoint.port.
         ep.port = Math.max(1, Math.min(65535, Number(ep.port) || 80));
+        if (ep.remote_port_mode === "random" && !Array.isArray(ep.live_ports)) ep.port = 80;
         ep.node_id = String(ep.node_id || "");
         ep.core_id = String(ep.core_id || "");
         ep.inbound_name = String(ep.inbound_name || "");

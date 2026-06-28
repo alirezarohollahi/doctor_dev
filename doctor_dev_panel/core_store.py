@@ -390,6 +390,7 @@ def _attach_peer_sync_fields(endpoint: dict[str, Any], target_node: dict[str, An
     endpoint["update_interval"] = _node_update_interval(target_node)
     endpoint["sync_interval"] = _node_update_interval(target_node)
     endpoint["api_port"] = int(target_node.get("api_port") or 62051)
+    endpoint["peer_host"] = _address_host(target_node.get("address"))
 
 def _first_fixed_port(inbound: dict[str, Any]) -> Optional[int]:
     for item in inbound.get("fixed_ports") or []:
@@ -449,6 +450,8 @@ def _enrich_node_inbound_endpoints(config_node_id: str, cores: list[dict[str, An
                 endpoint["inbound_name"] = str(target_inbound.get("name") or inbound_name)
                 target_node = node_map.get(target_node_id, {})
                 _attach_peer_sync_fields(endpoint, target_node, target_node_id, target_core_id, str(endpoint.get("inbound_name") or ""))
+                endpoint["remote_port_mode"] = str(target_inbound.get("port_mode") or "fixed")
+                endpoint["remote_random_count"] = int(target_inbound.get("random_count") or 1)
 
                 live_ports = find_live_inbound_ports(target_node_id, target_core_id, str(endpoint.get("inbound_name") or ""))
                 if live_ports:
@@ -470,9 +473,12 @@ def _enrich_node_inbound_endpoints(config_node_id: str, cores: list[dict[str, An
 
                 if target_inbound.get("port_mode") == "random":
                     # Same-node random inbounds are resolved directly from the active listener table.
-                    # Remote random inbounds are resolved by node-side peer sync using sync_urls + secret_token.
+                    # Remote random inbounds must be resolved by node-side peer sync using
+                    # sync_urls + secret_token. Never use random_count as a TCP port and
+                    # never fall back to a placeholder port for remote random inbounds.
                     endpoint["host"] = "127.0.0.1" if target_node_id == config_node_id else str(target_inbound.get("public_host") or _address_host(target_node.get("address")))
                     endpoint["port"] = 80
+                    endpoint["live_ports"] = []
                     endpoint["resolved_from"] = "node_inbound_random_peer_sync" if target_node_id != config_node_id else "node_inbound_random_runtime"
                     continue
 

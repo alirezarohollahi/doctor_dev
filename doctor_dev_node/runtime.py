@@ -563,10 +563,21 @@ class ForwarderRuntime:
         inbound_name = str(endpoint.get("inbound_name") or "")
         current_node_id = str(self.config.get("node_id") or "")
         remote_node_id = str(endpoint.get("remote_node_id") or endpoint.get("node_id") or "")
-        if remote_node_id and current_node_id and remote_node_id != current_node_id:
+        is_remote_node_inbound = bool(remote_node_id and current_node_id and remote_node_id != current_node_id)
+        if is_remote_node_inbound:
             cached_target = self._target_from_cached_peer(endpoint)
             if cached_target:
                 return cached_target
+            resolved_from = str(endpoint.get("resolved_from") or "")
+            remote_port_mode = str(endpoint.get("remote_port_mode") or endpoint.get("port_mode") or "")
+            if resolved_from == "node_inbound_random_peer_sync" or remote_port_mode == "random":
+                logger.debug(
+                    "remote random node inbound is not synced yet: node=%s core=%s inbound=%s",
+                    remote_node_id,
+                    core_id,
+                    inbound_name,
+                )
+                return None
         if inbound_name or core_id:
             active = self._target_from_active_listener(core_id, inbound_name)
             if active:
