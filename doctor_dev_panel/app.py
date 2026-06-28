@@ -146,7 +146,7 @@ def _check_node_sync(payload: dict) -> dict:
                             certificate and scheme == "https"
                         ),
                         "response": data,
-                        "message": "Node API is reachable.",
+                        "message": "Node connection is healthy.",
                     }
                 last_error = f"{url} returned HTTP {status_code}"
             except HTTPError as exc:
@@ -157,7 +157,7 @@ def _check_node_sync(payload: dict) -> dict:
     return {
         "ok": False,
         "status": "error",
-        "message": last_error or "Node API check failed.",
+        "message": last_error or "Node connection check failed.",
         "attempts": attempts[-6:],
         "using_api_port": port,
     }
@@ -187,13 +187,13 @@ def _read_node_api(node: dict, path: str, *, timeout: float = 5.0) -> dict:
     except HTTPError as exc:
         if exc.code == 404 and path.startswith("/logs"):
             raise NodeAPIError(
-                "Node logs endpoint was not found. Run update-node on this node, then restart it."
+                "This node is running an older agent. Update the node service, restart it, then try again."
             ) from exc
-        raise NodeAPIError(f"Node API returned HTTP {exc.code} for {path}.") from exc
+        raise NodeAPIError(f"Node returned HTTP {exc.code} while handling {path}.") from exc
     except (URLError, TimeoutError, OSError, ssl.SSLError, ValueError) as exc:
-        raise NodeAPIError(f"Node API is unreachable for {path}: {exc}") from exc
+        raise NodeAPIError(f"Node is unreachable while handling {path}: {exc}") from exc
     if not (200 <= status_code < 300):
-        raise NodeAPIError(f"Node API returned HTTP {status_code} for {path}.")
+        raise NodeAPIError(f"Node returned HTTP {status_code} while handling {path}.")
     return data
 
 
@@ -220,16 +220,16 @@ def _post_node_api(node: dict, path: str, payload: dict, *, timeout: float = 8.0
             raw = response.read(1024 * 256).decode("utf-8", errors="replace")
             data = json.loads(raw) if raw else {}
             if not (200 <= int(response.status) < 300):
-                raise NodeAPIError(f"Node API returned HTTP {response.status} for {path}.")
+                raise NodeAPIError(f"Node returned HTTP {response.status} while handling {path}.")
             return data
     except HTTPError as exc:
         if exc.code == 404 and path == "/config/apply":
             raise NodeAPIError(
-                "Node apply endpoint was not found. Run update-node on this node, then restart it."
+                "This node does not support configuration apply yet. Update the node service and restart it."
             ) from exc
-        raise NodeAPIError(f"Node API returned HTTP {exc.code} for {path}.") from exc
+        raise NodeAPIError(f"Node returned HTTP {exc.code} while handling {path}.") from exc
     except (URLError, TimeoutError, OSError, ssl.SSLError, ValueError, json.JSONDecodeError) as exc:
-        raise NodeAPIError(f"Node API apply request failed for {path}: {exc}") from exc
+        raise NodeAPIError(f"Node apply request failed for {path}: {exc}") from exc
 
 
 @app.middleware("http")
@@ -299,10 +299,9 @@ async def panel_summary(user: str = Depends(require_admin)) -> dict:
     return {
         "ok": True,
         "user": user,
-        "phase": "core-editor-ui-foundation",
         "nodes_total": len(nodes),
         "nodes_enabled": len([node for node in nodes if node.get("enabled")]),
-        "message": "Node API checks, TLS certificate handling and the core editor UI are ready.",
+        "message": "Panel is ready.",
         "cores_total": len(list_cores()),
     }
 
@@ -534,7 +533,7 @@ async def api_apply_node_config(node_id: str, user: str = Depends(require_admin)
         logger.info("node config applied: node_id=%s cores=%s by=%s", node_id, len(payload.get("cores", [])), user)
         return {
             "ok": True,
-            "message": f"Applied {len(payload.get('cores', []))} core(s) to {node.get('name') or node.get('address')}.",
+            "message": f"Applied {len(payload.get('cores', []))} core configuration(s) to {node.get('name') or node.get('address')}.",
             "node_response": data,
             "updated_cores": changed,
         }
@@ -560,7 +559,7 @@ async def api_apply_core(core_id: str, user: str = Depends(require_admin)) -> di
         data = await asyncio.to_thread(_post_node_api, node, "/config/apply", payload)
         updated = set_core_apply_result(core_id, ok=True)
         logger.info("core applied: core_id=%s node_id=%s by=%s", core_id, node_id, user)
-        return {"ok": True, "message": "Core config applied to node.", "core": updated, "node_response": data}
+        return {"ok": True, "message": "Core configuration was applied successfully.", "core": updated, "node_response": data}
     except NodeAPIError as exc:
         updated = set_core_apply_result(core_id, ok=False, error=str(exc))
         logger.warning("core apply failed: core_id=%s node_id=%s error=%s", core_id, node_id, exc)

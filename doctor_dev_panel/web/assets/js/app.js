@@ -7,6 +7,25 @@
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
+const UI_TEXT = Object.freeze({
+  invalidNode: "This node has invalid saved data. Refresh the page or run Repair Data.",
+  invalidCore: "This core has invalid saved data. Refresh the page or run Repair Data.",
+  unknownNode: "Unlinked node",
+  missingNode: "Missing linked node",
+  notApplied: "Not applied yet",
+  noNodes: "No server nodes have been added yet.",
+  addFirstNode: "Add First Node",
+  repairSuccess: "Saved data was checked and repaired. Active issues: ",
+  repairFailed: "Data repair could not be completed.",
+  nodeHealthy: "Node connection is healthy.",
+  checkFailed: "Connection check failed.",
+  nodeDeleted: "Node was deleted.",
+  coreDeleted: "Core was deleted.",
+  coreSaved: "Core configuration was saved.",
+  coreCreated: "Core configuration was created.",
+  nodeSaved: "Node was saved.",
+});
+
 function escapeHtml(v) {
   return String(v ?? "").replace(
     /[&<>'"]/g,
@@ -36,19 +55,19 @@ function coreById(id) {
 }
 function warnInvalidIdentifier(kind) {
   showToast(
-    "This " + kind + " has invalid data. Refresh the page or run Repair Data.",
+    kind === "core" ? UI_TEXT.invalidCore : UI_TEXT.invalidNode,
     "warning",
   );
 }
 function nodeName(id) {
   const n = nodeById(id);
-  return n ? n.name || n.address : "Unknown node";
+  return n ? n.name || n.address : UI_TEXT.unknownNode;
 }
 
 function timeAgo(iso) {
-  if (!iso) return "Never";
+  if (!iso) return "Not yet";
   const d = new Date(iso);
-  if (isNaN(d.getTime())) return "Unknown";
+  if (isNaN(d.getTime())) return "Unknown time";
   const sec = Math.floor((Date.now() - d.getTime()) / 1000);
   if (sec < 5) return "just now";
   if (sec < 60) return sec + " seconds ago";
@@ -65,7 +84,7 @@ function timeAgo(iso) {
 }
 
 function formatApiError(data, fallback) {
-  fallback = fallback || "Request failed.";
+  fallback = fallback || "Request could not be completed.";
   if (!data || typeof data !== "object") return fallback;
   if (typeof data.detail === "string") return data.detail;
   if (data.detail && typeof data.detail === "object" && !Array.isArray(data.detail)) {
@@ -252,14 +271,13 @@ async function handleLoginSubmit(e) {
   var username = unameEl ? unameEl.value.trim() : "";
   var password = pwdEl ? pwdEl.value : "";
   var submitBtn = form.querySelector('[type="submit"]');
+  var btnText = $("#loginBtnText");
   var errorEl = $("#loginMessage");
 
   if (errorEl) errorEl.textContent = "";
-  var origText = submitBtn ? submitBtn.textContent : "";
-  if (submitBtn) {
-    submitBtn.disabled = true;
-    submitBtn.textContent = "Signing in\u2026";
-  }
+  var origText = btnText ? btnText.textContent : "Sign In";
+  if (submitBtn) submitBtn.disabled = true;
+  if (btnText) btnText.textContent = "Signing in…";
 
   try {
     var data = await api("/api/auth/login", {
@@ -278,10 +296,8 @@ async function handleLoginSubmit(e) {
     if (errorEl) errorEl.textContent = msg2;
     showToast(msg2, "error");
   } finally {
-    if (submitBtn) {
-      submitBtn.disabled = false;
-      submitBtn.textContent = origText;
-    }
+    if (submitBtn) submitBtn.disabled = false;
+    if (btnText) btnText.textContent = origText;
   }
 }
 
@@ -416,12 +432,12 @@ async function repairPanelData() {
     var data = await api("/api/panel/repair", { method: "POST" });
     var summary = data.integrity && data.integrity.summary ? data.integrity.summary : {};
     showToast(
-      "Data repair completed. Remaining active issues: " + String(summary.problems_total || 0),
+      UI_TEXT.repairSuccess + String(summary.problems_total || 0),
       summary.problems_total ? "warning" : "success",
     );
     await refreshAll();
   } catch (err) {
-    showToast(err.message || "Data repair failed.", "error");
+    showToast(err.message || UI_TEXT.repairFailed, "error");
   }
 }
 
@@ -560,8 +576,8 @@ function renderDashboard() {
   if (!state.nodes.length) {
     nodeList.innerHTML =
       '<div class="dashboard-empty">' +
-      "<p>No nodes configured yet.</p>" +
-      '<button class="btn btn-primary btn-sm" id="dashEmptyAddNode">Add Your First Node</button>' +
+      "<p>No server nodes have been added yet.</p>" +
+      '<button class="btn btn-primary btn-sm" id="dashEmptyAddNode">Add First Node</button>' +
       "</div>";
     var addBtn = $("#dashEmptyAddNode");
     if (addBtn)
@@ -651,7 +667,7 @@ function renderNodes() {
         : "";
       var checkedAt = node.last_checked_at
         ? timeAgo(node.last_checked_at)
-        : "Never";
+        : "Not yet";
       return (
         "<tr" +
         titleAttr +
@@ -841,10 +857,8 @@ async function saveNode(e) {
   } catch (err) {
     showToast(err.message || "Failed to save node.", "error");
   } finally {
-    if (submitBtn) {
-      submitBtn.disabled = false;
-      submitBtn.textContent = origText;
-    }
+    if (submitBtn) submitBtn.disabled = false;
+    if (btnText) btnText.textContent = origText;
   }
 }
 
@@ -905,7 +919,7 @@ async function checkFormNode() {
   var origText = checkBtn ? checkBtn.textContent : "";
   if (checkBtn) {
     checkBtn.disabled = true;
-    checkBtn.textContent = "Checking\u2026";
+    checkBtn.textContent = "Checking…";
   }
 
   try {
@@ -958,7 +972,7 @@ async function checkFormNode() {
   } catch (err) {
     state.lastFormCheck = { status: "error", message: err.message };
     updateStatusPreview();
-    showToast(err.message || "Check failed.", "error");
+    showToast(err.message || UI_TEXT.checkFailed, "error");
   } finally {
     if (checkBtn) {
       checkBtn.disabled = false;
@@ -1015,11 +1029,11 @@ function renderCores() {
       var blCnt = Array.isArray(core.balancers) ? core.balancers.length : 0;
       var dpCnt = Array.isArray(core.dependencies) ? core.dependencies.length : 0;
       var upd = core.updated_at ? timeAgo(core.updated_at) : "unknown";
-      var applied = core.last_applied_at ? timeAgo(core.last_applied_at) : "Not applied";
+      var applied = core.last_applied_at ? timeAgo(core.last_applied_at) : UI_TEXT.notApplied;
       var coreIdOk = isValidCoreId(core.id);
       var node = nodeById(core.node_id);
       var nodeMissing = !node;
-      var nName = nodeMissing ? "Missing linked node" : nodeName(core.node_id);
+      var nName = nodeMissing ? UI_TEXT.missingNode : nodeName(core.node_id);
       var nodeStatus = nodeMissing ? "error" : statusFor(node);
       var healthClass = nodeStatus === "running" ? "ok" : nodeStatus === "error" ? "bad" : "warn";
       var actionDisabled = !coreIdOk || nodeMissing;
@@ -1029,7 +1043,7 @@ function renderCores() {
           '<div class="core-card-topline">' +
             '<span class="badge badge-' + escapeHtml(st) + '">' + escapeHtml(statusLabel(st)) + '</span>' +
             '<span class="core-health core-health-' + healthClass + '">' +
-              '<span class="status-dot-mini"></span>' + escapeHtml(nodeMissing ? "Broken link" : nodeStatus === "running" ? "Node online" : nodeStatus === "error" ? "Node issue" : "Pending node") +
+              '<span class="status-dot-mini"></span>' + escapeHtml(nodeMissing ? "Broken Link" : nodeStatus === "running" ? "Node online" : nodeStatus === "error" ? "Node issue" : "Pending node") +
             '</span>' +
           '</div>' +
           '<div class="core-card-main">' +
@@ -1168,10 +1182,8 @@ async function createCore(e) {
   } catch (err) {
     showToast(err.message || "Failed to create core.", "error");
   } finally {
-    if (submitBtn) {
-      submitBtn.disabled = false;
-      submitBtn.textContent = origText;
-    }
+    if (submitBtn) submitBtn.disabled = false;
+    if (btnText) btnText.textContent = origText;
   }
 }
 

@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Doctor Dev Admin Panel — app.css
+   Doctor Dev Control Panel — app.css
    Design System: Dark theme, Vazirmatn + Inter, CSS custom properties
    ========================================================================== */
 
@@ -2628,4 +2628,559 @@ svg {
     border-radius: 14px;
     padding: 12px 14px;
     line-height: 1.55;
+}
+
+/* ========================================================================== 
+   V10 PRODUCT UI PASS — final visual polish and class compatibility
+   ========================================================================== */
+
+:root {
+    --surface-glass: rgba(15, 23, 42, 0.72);
+    --surface-glass-strong: rgba(17, 24, 39, 0.92);
+    --ring-blue: 0 0 0 3px rgba(109, 157, 255, 0.16);
+}
+
+/* Hard safety: SVGs should never inherit full container dimensions. */
+svg:not(.allow-large-svg) {
+    display: block;
+    flex: 0 0 auto;
+    max-width: 100%;
+    max-height: 100%;
+}
+
+.btn svg,
+.nav-icon svg,
+.sidebar-logo svg,
+.user-avatar svg,
+.mobile-menu-btn svg,
+.modal-close-btn svg,
+.input-icon svg,
+.input-suffix-btn svg,
+.status-strip-controls svg,
+.quick-action-icon svg,
+.stat-card-icon svg,
+.empty-state-icon svg,
+.dialog-icon svg,
+.login-card-logo svg,
+.brand-feature-icon svg {
+    width: 18px !important;
+    height: 18px !important;
+}
+
+.btn-xs svg { width: 13px !important; height: 13px !important; }
+.btn-sm svg { width: 15px !important; height: 15px !important; }
+
+/* Login brand feature cards: fixes oversized shield/lightning/globe icons. */
+.brand-features {
+    gap: 14px;
+}
+
+.brand-feature-item,
+.feature-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-width: 0;
+    padding: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.075);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.035);
+}
+
+.brand-feature-icon,
+.feature-icon {
+    width: 42px;
+    height: 42px;
+    min-width: 42px;
+    border-radius: 14px;
+    display: grid;
+    place-items: center;
+    color: var(--blue);
+    background: var(--blue-dark);
+    border: 1px solid var(--blue-border);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.brand-feature-item:nth-child(2) .brand-feature-icon,
+.feature-item:nth-child(2) .feature-icon {
+    color: var(--green);
+    background: var(--green-dark);
+    border-color: var(--green-border);
+}
+
+.brand-feature-item:nth-child(3) .brand-feature-icon,
+.feature-item:nth-child(3) .feature-icon {
+    color: var(--purple);
+    background: var(--purple-dark);
+    border-color: var(--purple-border);
+}
+
+.brand-feature-item strong,
+.feature-item strong {
+    display: block;
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--text);
+    margin-bottom: 3px;
+}
+
+.brand-feature-item span,
+.feature-item span {
+    display: block;
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--text-2);
+}
+
+.login-card {
+    max-width: 420px;
+    padding: 0;
+}
+
+.login-card-header {
+    display: grid;
+    grid-template-columns: 48px 1fr;
+    gap: 10px 14px;
+    align-items: center;
+}
+
+.login-card-logo {
+    width: 48px;
+    height: 48px;
+    grid-row: span 3;
+    display: grid;
+    place-items: center;
+    border-radius: 16px;
+    color: var(--blue);
+    background: linear-gradient(135deg, rgba(109, 157, 255, 0.18), rgba(167, 139, 250, 0.12));
+    border: 1px solid rgba(109, 157, 255, 0.28);
+    box-shadow: 0 18px 50px rgba(77, 116, 255, 0.14);
+}
+
+.login-card-eyebrow {
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--blue);
+}
+
+.login-card-header h2 {
+    font-size: 24px;
+    line-height: 1.15;
+}
+
+.login-card-header p {
+    color: var(--text-2);
+    font-size: 13px;
+}
+
+.login-footer {
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+/* Inputs with leading icons and suffix actions. */
+.input-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+}
+
+.input-icon {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 18px;
+    height: 18px;
+    display: grid;
+    place-items: center;
+    color: var(--text-muted);
+    pointer-events: none;
+    z-index: 2;
+}
+
+.input-wrap input,
+.input-wrap select {
+    padding-left: 40px;
+}
+
+.input-suffix input {
+    padding-right: 46px;
+}
+
+.input-suffix-btn {
+    right: 7px;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    border-radius: 10px;
+    color: var(--text-2);
+    background: rgba(15, 23, 42, 0.84);
+}
+
+.input-suffix-btn:hover {
+    color: var(--text);
+    border-color: var(--border-strong);
+}
+
+input:hover,
+select:hover,
+textarea:hover {
+    border-color: rgba(255, 255, 255, 0.16);
+}
+
+/* Toggle compatibility with the current HTML track/thumb structure. */
+.toggle-label {
+    user-select: none;
+}
+
+.toggle-input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+    width: 1px;
+    height: 1px;
+}
+
+.toggle-track {
+    width: 42px;
+    height: 24px;
+    padding: 3px;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.18);
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    transition: all var(--transition);
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.toggle-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 999px;
+    background: rgba(226, 232, 240, 0.9);
+    transition: transform var(--transition), background var(--transition);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.34);
+}
+
+.toggle-input:checked + .toggle-track {
+    background: rgba(109, 157, 255, 0.32);
+    border-color: rgba(109, 157, 255, 0.46);
+}
+
+.toggle-input:checked + .toggle-track .toggle-thumb {
+    transform: translateX(18px);
+    background: #fff;
+}
+
+.toggle-label--block {
+    width: 100%;
+    justify-content: space-between;
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: rgba(255, 255, 255, 0.035);
+}
+
+.toggle-label-content {
+    display: grid;
+    gap: 2px;
+}
+
+.toggle-label-text {
+    color: var(--text);
+    font-weight: 800;
+}
+
+.toggle-label-desc {
+    color: var(--text-2);
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+/* Page layout and actions. */
+.page-header {
+    align-items: flex-start;
+}
+
+.page-actions .btn,
+.logs-toolbar-actions .btn,
+.modal-footer .btn,
+.core-card-actions .btn,
+.actions-cell .btn {
+    min-width: max-content;
+}
+
+.actions-cell,
+.row-actions {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    flex-wrap: nowrap;
+}
+
+.th-actions {
+    text-align: right !important;
+}
+
+.data-table td:last-child,
+.data-table th:last-child {
+    text-align: right;
+}
+
+.table-container {
+    border-radius: var(--radius-xl);
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.data-table th {
+    background: rgba(255, 255, 255, 0.025);
+}
+
+/* Status and stat cards. */
+.stat-card {
+    position: relative;
+    overflow: hidden;
+}
+
+.stat-card::after {
+    content: "";
+    position: absolute;
+    inset: auto -40px -70px auto;
+    width: 150px;
+    height: 150px;
+    border-radius: 999px;
+    background: rgba(109, 157, 255, 0.08);
+    pointer-events: none;
+}
+
+.stat-card-icon--nodes,
+.stat-card-icon--blue {
+    color: var(--blue);
+    background: var(--blue-dark);
+    border-color: var(--blue-border);
+}
+
+.stat-card-icon--cores,
+.stat-card-icon--green {
+    color: var(--green);
+    background: var(--green-dark);
+    border-color: var(--green-border);
+}
+
+.stat-card-icon--inbounds,
+.stat-card-icon--purple {
+    color: var(--purple);
+    background: var(--purple-dark);
+    border-color: var(--purple-border);
+}
+
+.stat-card-icon--balancers,
+.stat-card-icon--amber {
+    color: var(--amber);
+    background: var(--amber-dark);
+    border-color: var(--amber-border);
+}
+
+.status-strip-indicator {
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    background: var(--text-muted);
+    box-shadow: 0 0 0 4px rgba(148, 163, 184, 0.12);
+}
+
+.status-strip-indicator.running { background: var(--green); box-shadow: 0 0 0 4px rgba(74, 222, 128, 0.12); }
+.status-strip-indicator.error { background: var(--red); box-shadow: 0 0 0 4px rgba(244, 63, 94, 0.12); }
+.status-strip-indicator.pending { background: var(--amber); box-shadow: 0 0 0 4px rgba(251, 191, 36, 0.12); }
+.status-strip-indicator.disabled { background: var(--text-muted); }
+
+.status-strip-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Empty states and oversized placeholders. */
+.empty-state {
+    min-height: 260px;
+    padding: 44px 24px;
+}
+
+.empty-state--sm {
+    min-height: 120px;
+    padding: 26px 18px;
+}
+
+.empty-state-icon {
+    width: 58px;
+    height: 58px;
+    display: grid;
+    place-items: center;
+    border-radius: 20px;
+    color: var(--blue);
+    background: rgba(109, 157, 255, 0.08);
+    border: 1px solid rgba(109, 157, 255, 0.16);
+}
+
+.empty-state--sm .empty-state-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 15px;
+}
+
+.empty-state-icon svg {
+    width: 28px !important;
+    height: 28px !important;
+}
+
+.empty-state--sm .empty-state-icon svg {
+    width: 20px !important;
+    height: 20px !important;
+}
+
+/* Modal polish. */
+.modal-close-btn {
+    width: 34px;
+    height: 34px;
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-2);
+    cursor: pointer;
+    transition: all var(--transition);
+}
+
+.modal-close-btn:hover {
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.075);
+    border-color: var(--border-strong);
+}
+
+.modal-card {
+    box-shadow: var(--shadow-modal), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.modal-header-text {
+    min-width: 0;
+}
+
+.modal-body {
+    overflow-x: hidden;
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.form-hint {
+    color: var(--text-2);
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+/* Core cards. */
+.core-card-name {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.core-card-v2 .badge,
+.core-health {
+    white-space: nowrap;
+}
+
+.core-card-v2 .core-card-actions .btn {
+    min-height: 36px;
+}
+
+/* Logs. */
+.logs-output {
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.logs-toolbar,
+.logs-status-bar {
+    gap: 12px;
+}
+
+/* Responsive refinements. */
+@media (max-width: 980px) {
+    .login-shell {
+        grid-template-columns: 1fr;
+    }
+
+    .login-brand {
+        min-height: auto;
+        padding: 32px 22px;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .login-brand-inner {
+        max-width: 620px;
+        gap: 18px;
+    }
+
+    .brand-features {
+        grid-template-columns: 1fr;
+    }
+
+    .login-form-side {
+        padding: 36px 20px;
+    }
+}
+
+@media (max-width: 720px) {
+    .page-header,
+    .section-header,
+    .modal-header,
+    .modal-footer,
+    .editor-bottom-actions {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .page-actions,
+    .modal-footer-right,
+    .modal-footer-left,
+    .logs-toolbar-actions {
+        width: 100%;
+        justify-content: stretch;
+    }
+
+    .page-actions .btn,
+    .modal-footer .btn,
+    .logs-toolbar-actions .btn {
+        flex: 1;
+    }
+
+    .form-row,
+    .form-row-2,
+    .node-form-grid,
+    .editor-header-fields {
+        grid-template-columns: 1fr !important;
+    }
+
+    .modal-card {
+        max-height: calc(100vh - 24px);
+    }
+
+    .brand-feature-item {
+        align-items: flex-start;
+    }
 }

@@ -15,7 +15,7 @@ function setMessage(text, type = '') {
 }
 
 function showDashboard(username) {
-  adminName.textContent = username || 'admin';
+  adminName.textContent = username || 'Admin';
   loginCard.classList.add('hidden');
   brandCard.classList.add('hidden');
   dashboard.classList.remove('hidden');
@@ -40,7 +40,7 @@ async function checkSession() {
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
-  setMessage('Checking credentials...', '');
+  setMessage('Checking credentials…', '');
   submitButton.disabled = true;
 
   const payload = {
@@ -58,13 +58,13 @@ form.addEventListener('submit', async (event) => {
 
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(data.detail || 'Login failed.');
+      throw new Error(data.detail || 'Login failed. Check your username and password.');
     }
 
-    setMessage('Login successful. Opening panel...', 'success');
+    setMessage('Login successful. Opening panel…', 'success');
     setTimeout(() => showDashboard(data.username), 350);
   } catch (error) {
-    setMessage(error.message || 'Cannot connect to the server.', 'error');
+    setMessage(error.message || 'The panel is not reachable right now.', 'error');
   } finally {
     submitButton.disabled = false;
   }
@@ -73,7 +73,7 @@ form.addEventListener('submit', async (event) => {
 logoutButton.addEventListener('click', async () => {
   await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }).catch(() => {});
   showLogin();
-  setMessage('You have been logged out.', 'success');
+  setMessage('Signed out successfully.', 'success');
 });
 
 togglePassword.addEventListener('click', () => {

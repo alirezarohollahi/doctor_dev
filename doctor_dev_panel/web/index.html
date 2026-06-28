@@ -5,10 +5,10 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <meta
             name="description"
-            content="Doctor Dev — VPN Infrastructure Management Panel"
+            content="Doctor Dev — secure node and core management console"
         />
         <meta name="theme-color" content="#0a0f1e" />
-        <title>Doctor Dev — Admin Panel</title>
+        <title>Doctor Dev — Control Panel</title>
         <link rel="stylesheet" href="/assets/css/app.css" />
     </head>
     <body>
@@ -105,12 +105,11 @@
                     <div class="brand-text">
                         <div class="brand-eyebrow">
                             <span class="status-pulse"><span></span></span>
-                            System Online
+                            Control Plane Ready
                         </div>
                         <h1>Doctor Dev</h1>
                         <p>
-                            Enterprise-grade VPN infrastructure management
-                            platform for professionals.
+                            Manage nodes, cores, routing and logs from one secure control center.
                         </p>
                     </div>
 
@@ -133,9 +132,9 @@
                                 </svg>
                             </span>
                             <div>
-                                <strong>Secure by Design</strong>
+                                <strong>Secure Access</strong>
                                 <span
-                                    >End-to-end encrypted node management</span
+                                    >Session-protected administration and API key based node access</span
                                 >
                             </div>
                         </div>
@@ -158,8 +157,8 @@
                                 </svg>
                             </span>
                             <div>
-                                <strong>High Performance</strong>
-                                <span>Real-time monitoring and control</span>
+                                <strong>Fast Operations</strong>
+                                <span>Quick checks, clean logs and reliable apply workflows</span>
                             </div>
                         </div>
 
@@ -185,8 +184,7 @@
                             <div>
                                 <strong>Multi-Node Ready</strong>
                                 <span
-                                    >Manage distributed infrastructure at
-                                    scale</span
+                                    >Manage distributed infrastructure with clear status visibility</span
                                 >
                             </div>
                         </div>
@@ -219,10 +217,10 @@
                             </svg>
                         </div>
                         <div class="login-card-eyebrow">
-                            Administrator Access
+                            Administrator Console
                         </div>
-                        <h2>Welcome Back</h2>
-                        <p>Sign in to your Doctor Dev control panel.</p>
+                        <h2>Sign in securely</h2>
+                        <p>Access your Doctor Dev control center.</p>
                     </div>
 
                     <form id="loginForm" novalidate autocomplete="on">
@@ -343,7 +341,7 @@
                     </form>
 
                     <div class="login-footer">
-                        <span>Doctor Dev Admin Panel</span>
+                        <span>Doctor Dev Control Panel</span>
                         <span class="login-footer-sep" aria-hidden="true"
                             >&middot;</span
                         >
@@ -384,7 +382,7 @@
                     </div>
                     <div class="sidebar-brand-text">
                         <strong>Doctor Dev</strong>
-                        <span>Admin Panel</span>
+                        <span>Control Panel</span>
                     </div>
                     <button
                         id="closeSidebarBtn"
@@ -665,8 +663,7 @@
                             </div>
                             <h2>Dashboard</h2>
                             <p class="page-subtitle">
-                                Overview of your infrastructure health and live
-                                status.
+                                Monitor node health, core readiness and routing capacity in one view.
                             </p>
                         </div>
                         <div class="page-actions">
@@ -695,7 +692,7 @@
                             <button
                                 id="repairDataButton"
                                 class="btn btn-secondary btn-sm"
-                                aria-label="Repair invalid panel data"
+                                aria-label="Repair invalid saved data"
                             >
                                 Repair Data
                             </button>
@@ -1043,7 +1040,7 @@
                                     <line x1="6" y1="18" x2="6.01" y2="18" />
                                 </svg>
                             </div>
-                            <p>No nodes configured yet.</p>
+                            <p>No server nodes have been added yet.</p>
                         </div>
                     </div>
                 </section>
@@ -1248,7 +1245,7 @@
                                     >Cores</span
                                 >
                             </div>
-                            <h2>Xray Cores</h2>
+                            <h2>Core Configurations</h2>
                             <p class="page-subtitle">
                                 Create and manage Xray core configurations for
                                 your nodes.
@@ -1388,7 +1385,7 @@
                                     >Logs</span
                                 >
                             </div>
-                            <h2>System Logs</h2>
+                            <h2>Operations Logs</h2>
                             <p class="page-subtitle">
                                 Stream and inspect real-time logs from nodes and
                                 cores.
@@ -2708,9 +2705,9 @@
                     <!-- Modal header -->
                     <div class="modal-header">
                         <div class="modal-header-text">
-                            <h3 id="coreCreateTitle">Create New Core</h3>
+                            <h3 id="coreCreateTitle">Create Core</h3>
                             <p class="modal-subtitle">
-                                Set up a new Xray core configuration.
+                                Create a new deployable core configuration.
                             </p>
                         </div>
                         <button
@@ -2794,8 +2791,7 @@
                                             >Enable Core</span
                                         >
                                         <span class="toggle-label-desc"
-                                            >Core will start automatically when
-                                            the node is active.</span
+                                            >Core can be applied when its node is available.</span
                                         >
                                     </div>
                                     <input
