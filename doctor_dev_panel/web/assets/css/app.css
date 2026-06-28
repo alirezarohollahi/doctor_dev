@@ -3726,3 +3726,186 @@ input[type="checkbox"].toggle-input {
     width: 100%;
   }
 }
+
+/* ========================================================================== 
+   BALANCER ENDPOINT TREE HOTFIX
+   ========================================================================== */
+.balancer-tree-header .editor-card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mini-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--blue);
+  background: rgba(109, 157, 255, 0.11);
+  border: 1px solid rgba(109, 157, 255, 0.18);
+}
+
+.endpoints-tree-section {
+  display: grid;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.endpoints-header--clean {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.endpoints-header--clean > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.endpoint-tree {
+  position: relative;
+  display: grid;
+  gap: 10px;
+  margin-left: 8px;
+  padding-left: 16px;
+}
+
+.endpoint-tree::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 3px;
+  width: 1px;
+  background: linear-gradient(to bottom, rgba(109, 157, 255, 0.35), rgba(109, 157, 255, 0.03));
+}
+
+.endpoint-tree-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.endpoint-tree-rail {
+  position: relative;
+  height: 34px;
+}
+
+.endpoint-tree-rail span {
+  position: absolute;
+  top: 16px;
+  left: -13px;
+  width: 24px;
+  height: 1px;
+  background: rgba(109, 157, 255, 0.32);
+}
+
+.endpoint-card--tree {
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid rgba(109, 157, 255, 0.13);
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.endpoint-card-header--tree {
+  min-height: 52px;
+  padding: 10px 12px;
+  gap: 10px;
+}
+
+.endpoint-collapse-btn {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  border-radius: 10px;
+  border: 1px solid rgba(109, 157, 255, 0.18);
+  background: rgba(109, 157, 255, 0.08);
+  color: var(--blue);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.endpoint-collapse-btn:hover {
+  background: rgba(109, 157, 255, 0.14);
+  border-color: rgba(109, 157, 255, 0.34);
+}
+
+.endpoint-title-wrap {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: grid;
+  gap: 2px;
+}
+
+.endpoint-title-wrap strong {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.endpoint-title-wrap span {
+  color: var(--text-2);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.endpoint-title-wrap small {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.endpoint-card-body {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.endpoint-card--tree.is-collapsed .endpoint-card-body {
+  display: none;
+}
+
+.endpoints-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 2px;
+}
+
+.endpoint-add-bottom {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+@media (max-width: 720px) {
+  .endpoint-tree {
+    margin-left: 0;
+    padding-left: 10px;
+  }
+  .endpoint-card-header--tree {
+    flex-direction: row;
+    align-items: center;
+  }
+  .endpoint-card-header--tree .btn-remove-soft {
+    width: auto;
+  }
+}

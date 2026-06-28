@@ -142,6 +142,7 @@ const state = {
   logRefreshIntervalSeconds: 10,
   logsLoading: false,
   rawLogLines: [],
+  endpointOpen: {},
 };
 
 // ============================================================
@@ -1319,7 +1320,7 @@ function defaultEndpoint() {
   return {
     type: "static",
     host: "",
-    port: "",
+    port: 80,
     node_id: "",
     core_id: "",
     inbound_name: "",
@@ -1661,16 +1662,17 @@ function renderBalancerEditor() {
 
   container.innerHTML = balancers
     .map(function (bal, i) {
+      var endpointCount = Array.isArray(bal.endpoints) ? bal.endpoints.length : 0;
       return (
-        '<div class="editor-card" data-bal-index="' +
+        '<div class="editor-card balancer-tree-card" data-bal-index="' +
         i +
         '">' +
-        '<div class="editor-card-header">' +
-        '<span class="editor-card-title">Balancer ' +
+        '<div class="editor-card-header balancer-tree-header">' +
+        '<span class="editor-card-title"><i class="fa-solid fa-scale-balanced" aria-hidden="true"></i> Balancer ' +
         (i + 1) +
         ": " +
         escapeHtml(bal.alias || "Unnamed") +
-        "</span>" +
+        ' <span class="badge mini-badge">' + endpointCount + " endpoint" + (endpointCount === 1 ? "" : "s") + "</span></span>" +
         '<button class="btn btn-xs btn-danger btn-remove-soft" data-bal-index="' +
         i +
         '" data-action="remove-balancer" aria-label="Remove balancer">' +
@@ -1722,16 +1724,18 @@ function renderBalancerEditor() {
         escapeHtml(bal.notes || "") +
         '"></div>' +
         "</div>" +
-        '<div class="endpoints-section">' +
-        '<div class="endpoints-header">' +
-        "<span>Endpoints</span>" +
-        '<button class="btn btn-xs btn-secondary" data-bal-index="' +
-        i +
-        '" data-action="add-endpoint">+ Add Endpoint</button>' +
+        '<div class="endpoints-section endpoints-tree-section">' +
+        '<div class="endpoints-header endpoints-header--clean">' +
+        '<span><i class="fa-solid fa-diagram-project" aria-hidden="true"></i> Endpoints</span>' +
         "</div>" +
-        '<div class="endpoints-list" id="endpointList_' +
+        '<div class="endpoints-list endpoint-tree" id="endpointList_' +
         i +
         '"></div>' +
+        '<div class="endpoints-footer">' +
+        '<button class="btn btn-sm btn-primary endpoint-add-bottom" data-bal-index="' +
+        i +
+        '" data-action="add-endpoint"><i class="fa-solid fa-plus" aria-hidden="true"></i><span>Add Endpoint</span></button>' +
+        "</div>" +
         "</div>" +
         "</div>" +
         "</div>"
@@ -1752,8 +1756,13 @@ function renderBalancerEditor() {
     } else if (action === "add-endpoint") {
       el.addEventListener("click", function () {
         var idx = parseInt(el.dataset.balIndex, 10);
-        state.editorDraft.balancers[idx].endpoints.push(defaultEndpoint());
-        renderEndpointList(idx);
+        if (!Array.isArray(state.editorDraft.balancers[idx].endpoints)) {
+          state.editorDraft.balancers[idx].endpoints = [];
+        }
+        var ep = defaultEndpoint();
+        state.editorDraft.balancers[idx].endpoints.push(ep);
+        state.endpointOpen[idx + ":" + (state.editorDraft.balancers[idx].endpoints.length - 1)] = true;
+        renderBalancerEditor();
       });
     } else if (el.tagName !== "BUTTON") {
       (function () {
@@ -1769,8 +1778,16 @@ function renderBalancerEditor() {
             if (card) {
               var titleEl = card.querySelector(".editor-card-title");
               if (titleEl)
-                titleEl.textContent =
-                  "Balancer " + (balIdx + 1) + ": " + (el.value || "Unnamed");
+                titleEl.innerHTML =
+                  '<i class="fa-solid fa-scale-balanced" aria-hidden="true"></i> Balancer ' +
+                  (balIdx + 1) +
+                  ": " +
+                  escapeHtml(el.value || "Unnamed") +
+                  ' <span class="badge mini-badge">' +
+                  (Array.isArray(bal.endpoints) ? bal.endpoints.length : 0) +
+                  " endpoint" +
+                  ((Array.isArray(bal.endpoints) ? bal.endpoints.length : 0) === 1 ? "" : "s") +
+                  "</span>";
             }
             renderRoutingEditor();
           }
@@ -1786,32 +1803,166 @@ function renderBalancerEditor() {
   });
 }
 
+function endpointKey(balancerIndex, endpointIndex) {
+  return String(balancerIndex) + ":" + String(endpointIndex);
+}
+
+function endpointTitle(ep, index) {
+  if (!ep) return "Endpoint " + (index + 1);
+  if (ep.type === "node_inbound") {
+    var node = nodeById(ep.node_id);
+    var inbound = ep.inbound_name || "Select inbound";
+    return (inbound || "Node inbound") + " → " + (node ? nodeDisplayName(node) : "Select node");
+  }
+  return (ep.host || "Static target") + ":" + (ep.port || "port");
+}
+
+function endpointSubTitle(ep) {
+  if (!ep) return "";
+  if (ep.type === "node_inbound") {
+    return "Node inbound" + (ep.weight ? " · weight " + ep.weight : "");
+  }
+  return "Static" + (ep.weight ? " · weight " + ep.weight : "");
+}
+
+function inboundOptionLabel(item) {
+  var name = item.inbound_name || item.name || "Unnamed inbound";
+  var coreName = item.core_name || (state.editingCore && state.editingCore.name) || "Current core";
+  var ports = Array.isArray(item.ports) && item.ports.length ? " · " + item.ports.join(",") : "";
+  return coreName + " / " + name + ports;
+}
+
+function endpointInboundOptions(nodeId) {
+  nodeId = String(nodeId || "");
+  var options = [];
+  var seen = {};
+
+  function addOption(item) {
+    var name = String(item.inbound_name || item.name || "").trim();
+    if (!name) return;
+    var key = String(item.core_id || "") + "::" + name;
+    if (seen[key]) return;
+    seen[key] = true;
+    options.push({
+      name: name,
+      core_id: item.core_id || "",
+      node_id: item.node_id || nodeId,
+      label: inboundOptionLabel(item),
+      ports: Array.isArray(item.ports) ? item.ports : [],
+      public_host: item.public_host || "",
+      bind_ip: item.bind_ip || "",
+    });
+  }
+
+  if (state.editorDraft && String(state.editorDraft.node_id || "") === nodeId) {
+    (state.editorDraft.inbounds || []).forEach(function (ib) {
+      addOption({
+        core_id: state.editingCore ? state.editingCore.id : "",
+        core_name: state.editorDraft.name || (state.editingCore && state.editingCore.name) || "Current core",
+        node_id: nodeId,
+        inbound_name: ib.name,
+        ports: ib.port_mode === "fixed" ? (ib.fixed_ports || []) : [],
+        public_host: ib.public_host || "",
+        bind_ip: ib.bind_ip || "",
+      });
+    });
+  }
+
+  (state.inboundCatalog || [])
+    .filter(function (ib) { return String(ib.node_id || "") === nodeId; })
+    .forEach(addOption);
+
+  return options;
+}
+
+function fillEndpointInboundSelect(select, nodeId, value, coreId) {
+  value = value || "";
+  coreId = coreId || "";
+  nodeId = nodeId || "";
+  if (!select) return;
+  var options = endpointInboundOptions(nodeId);
+  var html = '<option value="">— Select Inbound —</option>';
+  html += options
+    .map(function (item) {
+      var selected = item.name === value && (!coreId || !item.core_id || String(item.core_id) === String(coreId));
+      return (
+        '<option value="' +
+        escapeHtml(item.name) +
+        '" data-core-id="' +
+        escapeHtml(item.core_id || "") +
+        '" data-ports="' +
+        escapeHtml((item.ports || []).join(",")) +
+        '"' +
+        (selected ? " selected" : "") +
+        ">" +
+        escapeHtml(item.label || item.name) +
+        "</option>"
+      );
+    })
+    .join("");
+  if (value && !options.some(function (item) { return item.name === value; })) {
+    html += '<option value="' + escapeHtml(value) + '" selected>' + escapeHtml(value + " (missing)") + "</option>";
+  }
+  select.innerHTML = html;
+}
+
+function applyEndpointInboundSelection(ep, select) {
+  if (!ep || !select) return;
+  var opt = select.options[select.selectedIndex];
+  ep.inbound_name = select.value;
+  ep.core_id = opt ? (opt.getAttribute("data-core-id") || "") : "";
+  var ports = opt ? String(opt.getAttribute("data-ports") || "") : "";
+  var firstPort = ports.split(",").map(function (p) { return parseInt(p.trim(), 10); }).filter(function (p) { return p >= 1 && p <= 65535; })[0];
+  if (firstPort) ep.port = firstPort;
+  if (!ep.host) ep.host = "127.0.0.1";
+}
+
 function renderEndpointList(balancerIndex) {
   var container = $("#endpointList_" + balancerIndex);
   if (!container) return;
   var bal = state.editorDraft.balancers[balancerIndex];
   if (!bal) return;
-  var endpoints = bal.endpoints || [];
+  if (!Array.isArray(bal.endpoints)) bal.endpoints = [];
+  var endpoints = bal.endpoints;
 
   if (!endpoints.length) {
-    container.innerHTML =
-      '<div class="editor-empty editor-empty--sm">No endpoints. Add one above.</div>';
+    container.innerHTML = "";
     return;
   }
 
   container.innerHTML = endpoints
     .map(function (ep, j) {
       var isStatic = ep.type !== "node_inbound";
+      var key = endpointKey(balancerIndex, j);
+      var isOpen = state.endpointOpen[key] !== false;
       return (
-        '<div class="endpoint-card" data-ep-bal="' +
+        '<div class="endpoint-tree-item" data-ep-bal="' +
         balancerIndex +
         '" data-ep-index="' +
         j +
         '">' +
-        '<div class="endpoint-card-header">' +
-        "<span>Endpoint " +
+        '<div class="endpoint-tree-rail" aria-hidden="true"><span></span></div>' +
+        '<div class="endpoint-card endpoint-card--tree' +
+        (isOpen ? " is-open" : " is-collapsed") +
+        '" data-ep-bal="' +
+        balancerIndex +
+        '" data-ep-index="' +
+        j +
+        '">' +
+        '<div class="endpoint-card-header endpoint-card-header--tree">' +
+        '<button type="button" class="endpoint-collapse-btn" data-ep-bal="' +
+        balancerIndex +
+        '" data-ep-index="' +
+        j +
+        '" data-action="toggle-ep" aria-label="Toggle endpoint">' +
+        '<i class="fa-solid ' + (isOpen ? "fa-chevron-down" : "fa-chevron-right") + '" aria-hidden="true"></i></button>' +
+        '<div class="endpoint-title-wrap"><strong>Endpoint ' +
         (j + 1) +
-        "</span>" +
+        '</strong><span>' +
+        escapeHtml(endpointTitle(ep, j)) +
+        '</span><small>' +
+        escapeHtml(endpointSubTitle(ep)) +
+        '</small></div>' +
         '<button class="btn btn-xs btn-danger btn-remove-soft" data-ep-bal="' +
         balancerIndex +
         '" data-ep-index="' +
@@ -1819,6 +1970,7 @@ function renderEndpointList(balancerIndex) {
         '" data-action="remove-ep" aria-label="Remove endpoint">' +
         '<i class="fa-solid fa-trash-can" aria-hidden="true"></i><span>Remove</span></button>' +
         "</div>" +
+        '<div class="endpoint-card-body">' +
         '<div class="form-row">' +
         '<div class="form-group"><label>Type</label>' +
         '<select class="form-input ep-field" data-ep-bal="' +
@@ -1854,12 +2006,12 @@ function renderEndpointList(balancerIndex) {
         "-" +
         j +
         '"><label>Port</label>' +
-        '<input type="text" class="form-input ep-field" data-ep-bal="' +
+        '<input type="number" class="form-input ep-field" min="1" max="65535" data-ep-bal="' +
         balancerIndex +
         '" data-ep-index="' +
         j +
         '" data-field="port" value="' +
-        escapeHtml(String(ep.port || "")) +
+        escapeHtml(String(ep.port || 80)) +
         '"></div>' +
         "</div>" +
         '<div class="form-row"' +
@@ -1919,6 +2071,8 @@ function renderEndpointList(balancerIndex) {
         '<span class="toggle-track" aria-hidden="true"><span class="toggle-thumb"></span></span>' +
         '<span class="toggle-text">Enabled</span></label></div>' +
         "</div>" +
+        "</div>" +
+        "</div>" +
         "</div>"
       );
     })
@@ -1936,7 +2090,18 @@ function renderEndpointList(balancerIndex) {
       sel,
       ep ? ep.node_id : "",
       ep ? ep.inbound_name : "",
+      ep ? ep.core_id : "",
     );
+  });
+
+  container.querySelectorAll('[data-action="toggle-ep"]').forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var bi = parseInt(btn.dataset.epBal, 10);
+      var j = parseInt(btn.dataset.epIndex, 10);
+      var key = endpointKey(bi, j);
+      state.endpointOpen[key] = state.endpointOpen[key] === false;
+      renderEndpointList(bi);
+    });
   });
 
   container
@@ -1946,7 +2111,8 @@ function renderEndpointList(balancerIndex) {
         var bi = parseInt(btn.dataset.epBal, 10);
         var j = parseInt(btn.dataset.epIndex, 10);
         state.editorDraft.balancers[bi].endpoints.splice(j, 1);
-        renderEndpointList(bi);
+        delete state.endpointOpen[endpointKey(bi, j)];
+        renderBalancerEditor();
       });
     });
 
@@ -1962,18 +2128,31 @@ function renderEndpointList(balancerIndex) {
           ep[field] = el.checked;
         } else if (field === "weight") {
           ep.weight = Math.max(1, Number(el.value) || 1);
+        } else if (field === "port") {
+          ep.port = Math.max(1, Math.min(65535, Number(el.value) || 80));
         } else if (field === "node_id") {
           ep.node_id = el.value;
+          ep.core_id = "";
+          ep.inbound_name = "";
+          if (!ep.host) ep.host = "127.0.0.1";
+          if (!Number(ep.port)) ep.port = 80;
           var niG = container.querySelector(
             '[data-ep-ni-g="' + bi + "-" + j + '"]',
           );
           if (niG) {
             var inbSel = niG.querySelector(".ep-inb-sel");
-            if (inbSel) fillEndpointInboundSelect(inbSel, el.value, "");
+            if (inbSel) fillEndpointInboundSelect(inbSel, el.value, "", "");
           }
+        } else if (field === "inbound_name") {
+          applyEndpointInboundSelection(ep, el);
         } else if (field === "type") {
           ep.type = el.value;
           var isSt = el.value !== "node_inbound";
+          if (!isSt) {
+            if (!ep.node_id && state.editorDraft && isValidNodeId(state.editorDraft.node_id)) ep.node_id = state.editorDraft.node_id;
+            if (!Number(ep.port)) ep.port = 80;
+            if (!ep.host) ep.host = "127.0.0.1";
+          }
           var stG = container.querySelector(
             '[data-ep-static-g="' + bi + "-" + j + '"]',
           );
@@ -1986,8 +2165,17 @@ function renderEndpointList(balancerIndex) {
           if (stG) stG.style.display = isSt ? "" : "none";
           if (spG) spG.style.display = isSt ? "" : "none";
           if (niG2) niG2.style.display = !isSt ? "" : "none";
+          renderEndpointList(bi);
         } else {
           ep[field] = el.value;
+        }
+
+        var card = el.closest(".endpoint-card");
+        if (card) {
+          var wrap = card.querySelector(".endpoint-title-wrap");
+          if (wrap) {
+            wrap.innerHTML = '<strong>Endpoint ' + (j + 1) + '</strong><span>' + escapeHtml(endpointTitle(ep, j)) + '</span><small>' + escapeHtml(endpointSubTitle(ep)) + '</small>';
+          }
         }
       }
       el.addEventListener("input", bindEp);
@@ -2011,30 +2199,6 @@ function fillEndpointNodeSelect(select, value) {
           (String(n.id) === String(value) ? " selected" : "") +
           ">" +
           escapeHtml(nodeDisplayName(n)) +
-          "</option>"
-        );
-      })
-      .join("");
-}
-
-function fillEndpointInboundSelect(select, nodeId, value) {
-  value = value || "";
-  nodeId = nodeId || "";
-  if (!select) return;
-  var filtered = (state.inboundCatalog || []).filter(function (ib) {
-    return String(ib.node_id) === String(nodeId);
-  });
-  select.innerHTML =
-    '<option value="">— Select Inbound —</option>' +
-    filtered
-      .map(function (ib) {
-        return (
-          '<option value="' +
-          escapeHtml(ib.name || "") +
-          '"' +
-          ((ib.name || "") === value ? " selected" : "") +
-          ">" +
-          escapeHtml(ib.name || "") +
           "</option>"
         );
       })
@@ -2278,10 +2442,52 @@ async function validateAdvancedConfig(options) {
   }
 }
 
+
+function sanitizeCorePayload(payload) {
+  payload = payload || {};
+  (payload.balancers || []).forEach(function (bal) {
+    if (!Array.isArray(bal.endpoints)) bal.endpoints = [];
+    bal.endpoints.forEach(function (ep) {
+      ep.type = ep.type === "node_inbound" ? "node_inbound" : "static";
+      ep.weight = Math.max(0, Number(ep.weight) || 1);
+      if (ep.type === "node_inbound") {
+        if (!ep.host) ep.host = "127.0.0.1";
+        ep.port = Math.max(1, Math.min(65535, Number(ep.port) || 80));
+        ep.node_id = String(ep.node_id || "");
+        ep.core_id = String(ep.core_id || "");
+        ep.inbound_name = String(ep.inbound_name || "");
+      } else {
+        ep.host = String(ep.host || "127.0.0.1").trim() || "127.0.0.1";
+        ep.port = Math.max(1, Math.min(65535, Number(ep.port) || 80));
+        ep.node_id = "";
+        ep.core_id = "";
+        ep.inbound_name = "";
+      }
+    });
+  });
+  return payload;
+}
+
+function validateEditorBalancerEndpoints(payload) {
+  var errors = [];
+  (payload.balancers || []).forEach(function (bal, bi) {
+    (bal.endpoints || []).forEach(function (ep, ei) {
+      if (ep.type === "node_inbound") {
+        if (!isValidNodeId(ep.node_id)) errors.push("Balancer " + (bi + 1) + ", endpoint " + (ei + 1) + ": select a valid node.");
+        if (!String(ep.inbound_name || "").trim()) errors.push("Balancer " + (bi + 1) + ", endpoint " + (ei + 1) + ": select an inbound.");
+      } else {
+        if (!String(ep.host || "").trim()) errors.push("Balancer " + (bi + 1) + ", endpoint " + (ei + 1) + ": target host is required.");
+        if (!(Number(ep.port) >= 1 && Number(ep.port) <= 65535)) errors.push("Balancer " + (bi + 1) + ", endpoint " + (ei + 1) + ": target port must be between 1 and 65535.");
+      }
+    });
+  });
+  return errors;
+}
+
 function collectEditorPayload() {
   syncEditorHeaderToDraft();
   var d = state.editorDraft;
-  return {
+  return sanitizeCorePayload({
     name: d.name,
     node_id: d.node_id,
     enabled: d.enabled,
@@ -2289,7 +2495,7 @@ function collectEditorPayload() {
     balancers: d.balancers || [],
     dependencies: d.dependencies || [],
     advanced_config: ensureAdvancedConfig(d),
-  };
+  });
 }
 
 async function saveCoreEditor() {
@@ -2297,6 +2503,8 @@ async function saveCoreEditor() {
   if (!isValidCoreId(state.editingCore.id)) { warnInvalidIdentifier("core"); await refreshAll(); return false; }
   var payload = collectEditorPayload();
   if (!isValidNodeId(payload.node_id)) { showToast("Select a valid node before saving this core.", "warning"); return false; }
+  var endpointErrors = validateEditorBalancerEndpoints(payload);
+  if (endpointErrors.length) { showToast(endpointErrors[0], "warning"); return false; }
   if (payload.advanced_config && payload.advanced_config.enabled) {
     var advancedOk = await validateAdvancedConfig({ silent: true });
     if (!advancedOk) return false;

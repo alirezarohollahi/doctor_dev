@@ -79,6 +79,21 @@ class CoreBalancerEndpointBody(BaseModel):
     enabled: bool = True
     notes: str = Field(default="", max_length=500)
 
+    @field_validator("port", mode="before")
+    @classmethod
+    def normalize_endpoint_port(cls, value: object) -> int:
+        # The UI hides port for Node Inbound endpoints, but Pydantic still
+        # receives the field. Empty strings must not produce a raw validation
+        # error like "unable to parse string as an integer". Runtime/panel
+        # enrichment resolves the real selected inbound port before apply.
+        if value in {None, ""}:
+            return 80
+        try:
+            port = int(value)
+        except (TypeError, ValueError):
+            return 80
+        return port if 1 <= port <= 65535 else 80
+
 
 class CoreBalancerBody(BaseModel):
     alias: str = Field(min_length=1, max_length=120)

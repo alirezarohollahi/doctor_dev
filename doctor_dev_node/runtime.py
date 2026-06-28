@@ -341,6 +341,27 @@ class ForwarderRuntime:
                 return Target(host, port, "static-endpoint")
             return None
 
+        # Node-inbound endpoints are semantic references. Resolve by
+        # core_id/inbound_name first so hidden/default host/port values from the
+        # UI never accidentally send traffic to 127.0.0.1:80. If the panel
+        # enriched a remote node-inbound with explicit host/port and the target
+        # core is not in this node config, we use that explicit fallback.
+        core_id = str(endpoint.get("core_id") or "")
+        inbound_name = str(endpoint.get("inbound_name") or "")
+        if inbound_name or core_id:
+            for core in self.config.get("cores", []) if isinstance(self.config.get("cores"), list) else []:
+                if core_id and str(core.get("id")) != core_id:
+                    continue
+                for inbound in core.get("inbounds", []) if isinstance(core.get("inbounds"), list) else []:
+                    if inbound_name and str(inbound.get("name")) != inbound_name:
+                        continue
+                    ports = inbound.get("fixed_ports") or []
+                    if ports:
+                        host = str(inbound.get("public_host") or inbound.get("bind_ip") or "127.0.0.1")
+                        if host in {"", "0.0.0.0", "*", "::"}:
+                            host = "127.0.0.1"
+                        return Target(host, int(ports[0]), "node-inbound")
+
         host = str(endpoint.get("host") or "").strip()
         try:
             port = int(endpoint.get("port") or 0)
@@ -348,18 +369,6 @@ class ForwarderRuntime:
             port = 0
         if host and 1 <= port <= 65535:
             return Target(host, port, "node-inbound-explicit")
-
-        core_id = str(endpoint.get("core_id") or "")
-        inbound_name = str(endpoint.get("inbound_name") or "")
-        for core in self.config.get("cores", []) if isinstance(self.config.get("cores"), list) else []:
-            if core_id and str(core.get("id")) != core_id:
-                continue
-            for inbound in core.get("inbounds", []) if isinstance(core.get("inbounds"), list) else []:
-                if inbound_name and str(inbound.get("name")) != inbound_name:
-                    continue
-                ports = inbound.get("fixed_ports") or []
-                if ports:
-                    return Target(str(inbound.get("public_host") or inbound.get("bind_ip") or "127.0.0.1"), int(ports[0]), "node-inbound")
         return None
 
     def _is_direct_self_loop(self, target: Target, bind_ip: str, listen_port: int, inbound: dict[str, Any]) -> bool:

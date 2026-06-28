@@ -7,6 +7,7 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from .id_utils import is_valid_core_id, is_valid_node_id
 
@@ -329,6 +330,84 @@ def inbound_catalog(node_id: str | None = None) -> list[dict[str, Any]]:
     return catalog
 
 
+def _address_host(address: Any) -> str:
+    raw = str(address or "").strip()
+    if not raw:
+        return "127.0.0.1"
+    parsed = urlparse(raw if "://" in raw else f"//{raw}")
+    host = parsed.hostname or raw.split("/", 1)[0].split(":", 1)[0]
+    return host.strip() or "127.0.0.1"
+
+
+def _first_fixed_port(inbound: dict[str, Any]) -> int | None:
+    for item in inbound.get("fixed_ports") or []:
+        try:
+            port = int(item)
+        except (TypeError, ValueError):
+            continue
+        if 1 <= port <= 65535:
+            return port
+    return None
+
+
+def _enrich_node_inbound_endpoints(config_node_id: str, cores: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Resolve Node Inbound endpoint references into usable host/port data.
+
+    The UI stores semantic references (`node_id`, `core_id`, `inbound_name`).
+    The node runtime only receives the config for the node being applied, so
+    references to remote nodes must be enriched with the remote node host and
+    selected inbound port here. Same-node references can still be resolved by
+    the runtime, but we also attach the first fixed port for diagnostics.
+    """
+    try:
+        from .node_store import list_nodes
+    except Exception:  # pragma: no cover - defensive fallback
+        list_nodes = lambda: []  # type: ignore[assignment]
+
+    all_cores = list_cores()
+    node_map = {str(node.get("id")): node for node in list_nodes() if isinstance(node, dict)}
+
+    def find_inbound(target_node_id: str, core_id: str, inbound_name: str) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+        for core in all_cores:
+            if target_node_id and str(core.get("node_id") or "") != target_node_id:
+                continue
+            if core_id and str(core.get("id") or "") != core_id:
+                continue
+            for inbound in core.get("inbounds", []) if isinstance(core.get("inbounds"), list) else []:
+                if inbound_name and str(inbound.get("name") or "") != inbound_name:
+                    continue
+                return core, inbound
+        return None, None
+
+    for core in cores:
+        for balancer in core.get("balancers", []) if isinstance(core.get("balancers"), list) else []:
+            endpoints = balancer.get("endpoints") if isinstance(balancer.get("endpoints"), list) else []
+            for endpoint in endpoints:
+                if not isinstance(endpoint, dict) or endpoint.get("type") != "node_inbound":
+                    continue
+                target_node_id = str(endpoint.get("node_id") or config_node_id)
+                inbound_name = str(endpoint.get("inbound_name") or "")
+                core_id = str(endpoint.get("core_id") or "")
+                target_core, target_inbound = find_inbound(target_node_id, core_id, inbound_name)
+                if not target_inbound:
+                    endpoint["resolve_error"] = "Selected node inbound was not found."
+                    continue
+                port = _first_fixed_port(target_inbound)
+                if not port:
+                    endpoint["resolve_error"] = "Selected node inbound has no fixed port."
+                    continue
+                endpoint["core_id"] = str(target_core.get("id") or core_id or "") if target_core else core_id
+                endpoint["inbound_name"] = str(target_inbound.get("name") or inbound_name)
+                endpoint["port"] = port
+                if target_node_id == config_node_id:
+                    endpoint["host"] = "127.0.0.1"
+                else:
+                    target_node = node_map.get(target_node_id, {})
+                    endpoint["host"] = str(target_inbound.get("public_host") or _address_host(target_node.get("address")))
+                endpoint["resolved_from"] = "node_inbound"
+    return cores
+
+
 def build_node_config(node_id: str) -> dict[str, Any]:
     """Return a normalized node-side routing config preview.
 
@@ -339,6 +418,7 @@ def build_node_config(node_id: str) -> dict[str, Any]:
         cores = []
     else:
         cores = [core for core in list_cores() if core.get("node_id") == node_id]
+    cores = _enrich_node_inbound_endpoints(node_id, cores)
     for core in cores:
         adv = core.get("advanced_config") if isinstance(core.get("advanced_config"), dict) else {}
         raw = str(adv.get("json_config") or "").strip()
