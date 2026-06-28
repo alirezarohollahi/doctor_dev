@@ -1387,9 +1387,10 @@ function renderInboundEditor() {
         ": " +
         escapeHtml(ib.name || "Unnamed") +
         "</span>" +
-        '<button class="btn btn-xs btn-danger" data-in-index="' +
+        '<button class="btn btn-xs btn-danger btn-remove-soft" data-in-index="' +
         i +
-        '" data-action="remove-inbound">Remove</button>' +
+        '" data-action="remove-inbound" aria-label="Remove inbound">' +
+        '<i class="fa-solid fa-trash-can" aria-hidden="true"></i><span>Remove</span></button>' +
         "</div>" +
         '<div class="editor-card-body">' +
         '<div class="form-row">' +
@@ -1446,17 +1447,19 @@ function renderInboundEditor() {
         escapeHtml(ib.certificate || "") +
         "</textarea></div>" +
         "</div>" +
-        '<div class="form-row"><div class="form-group form-group--inline">' +
-        '<input type="checkbox" id="inbEnabled_' +
+        '<div class="form-row"><div class="form-group form-group--inline switch-field">' +
+        '<label class="toggle-label toggle-label--inline toggle-label--state" for="inbEnabled_' +
+        i +
+        '">' +
+        '<input type="checkbox" class="toggle-input" id="inbEnabled_' +
         i +
         '" data-in-index="' +
         i +
         '" data-field="enabled"' +
         (ib.enabled !== false ? " checked" : "") +
         ">" +
-        '<label for="inbEnabled_' +
-        i +
-        '">Enabled</label>' +
+        '<span class="toggle-track" aria-hidden="true"><span class="toggle-thumb"></span></span>' +
+        '<span class="toggle-text">Enabled</span></label>' +
         "</div></div>" +
         "</div>" +
         "</div>"
@@ -1671,9 +1674,10 @@ function renderBalancerEditor() {
         ": " +
         escapeHtml(bal.alias || "Unnamed") +
         "</span>" +
-        '<button class="btn btn-xs btn-danger" data-bal-index="' +
+        '<button class="btn btn-xs btn-danger btn-remove-soft" data-bal-index="' +
         i +
-        '" data-action="remove-balancer">Remove</button>' +
+        '" data-action="remove-balancer" aria-label="Remove balancer">' +
+        '<i class="fa-solid fa-trash-can" aria-hidden="true"></i><span>Remove</span></button>' +
         "</div>" +
         '<div class="editor-card-body">' +
         '<div class="form-row">' +
@@ -1700,17 +1704,19 @@ function renderBalancerEditor() {
         (bal.strategy === "least_connections" ? " selected" : "") +
         ">Least Connections</option>" +
         "</select></div>" +
-        '<div class="form-group form-group--inline">' +
-        '<input type="checkbox" id="balEnabled_' +
+        '<div class="form-group form-group--inline switch-field">' +
+        '<label class="toggle-label toggle-label--inline toggle-label--state" for="balEnabled_' +
+        i +
+        '">' +
+        '<input type="checkbox" class="toggle-input" id="balEnabled_' +
         i +
         '" data-bal-index="' +
         i +
         '" data-field="enabled"' +
         (bal.enabled !== false ? " checked" : "") +
         ">" +
-        '<label for="balEnabled_' +
-        i +
-        '">Enabled</label></div>' +
+        '<span class="toggle-track" aria-hidden="true"><span class="toggle-thumb"></span></span>' +
+        '<span class="toggle-text">Enabled</span></label></div>' +
         "</div>" +
         '<div class="form-row"><div class="form-group"><label>Notes</label>' +
         '<input type="text" class="form-input" data-bal-index="' +
@@ -1809,11 +1815,12 @@ function renderEndpointList(balancerIndex) {
         "<span>Endpoint " +
         (j + 1) +
         "</span>" +
-        '<button class="btn btn-xs btn-danger" data-ep-bal="' +
+        '<button class="btn btn-xs btn-danger btn-remove-soft" data-ep-bal="' +
         balancerIndex +
         '" data-ep-index="' +
         j +
-        '" data-action="remove-ep">Remove</button>' +
+        '" data-action="remove-ep" aria-label="Remove endpoint">' +
+        '<i class="fa-solid fa-trash-can" aria-hidden="true"></i><span>Remove</span></button>' +
         "</div>" +
         '<div class="form-row">' +
         '<div class="form-group"><label>Type</label>' +
@@ -1895,23 +1902,25 @@ function renderEndpointList(balancerIndex) {
         '" data-field="certificate" value="' +
         escapeHtml(ep.certificate || "") +
         '"></div>' +
-        '<div class="form-group form-group--inline">' +
+        '<div class="form-group form-group--inline switch-field">' +
+        '<label class="toggle-label toggle-label--inline toggle-label--state" for="epEnabled_' +
+        balancerIndex +
+        "_" +
+        j +
+        '">' +
         '<input type="checkbox" id="epEnabled_' +
         balancerIndex +
         "_" +
         j +
-        '" class="ep-field" data-ep-bal="' +
+        '" class="ep-field toggle-input" data-ep-bal="' +
         balancerIndex +
         '" data-ep-index="' +
         j +
         '" data-field="enabled"' +
         (ep.enabled !== false ? " checked" : "") +
         ">" +
-        '<label for="epEnabled_' +
-        balancerIndex +
-        "_" +
-        j +
-        '">Enabled</label></div>' +
+        '<span class="toggle-track" aria-hidden="true"><span class="toggle-thumb"></span></span>' +
+        '<span class="toggle-text">Enabled</span></label></div>' +
         "</div>" +
         "</div>"
       );
@@ -2057,9 +2066,10 @@ function renderDependencyEditor() {
         '<span class="editor-card-title">Dependency ' +
         (i + 1) +
         "</span>" +
-        '<button class="btn btn-xs btn-danger" data-dep-index="' +
+        '<button class="btn btn-xs btn-danger btn-remove-soft" data-dep-index="' +
         i +
-        '" data-action="remove-dep">Remove</button>' +
+        '" data-action="remove-dep" aria-label="Remove dependency">' +
+        '<i class="fa-solid fa-trash-can" aria-hidden="true"></i><span>Remove</span></button>' +
         "</div>" +
         '<div class="editor-card-body">' +
         '<div class="form-row">' +
@@ -2080,17 +2090,19 @@ function renderDependencyEditor() {
         '" data-field="ref_id">' +
         dependencyOptions(dep.type, dep.ref_id) +
         "</select></div>" +
-        '<div class="form-group form-group--inline">' +
-        '<input type="checkbox" id="depReq_' +
+        '<div class="form-group form-group--inline switch-field">' +
+        '<label class="toggle-label toggle-label--inline toggle-label--state" for="depReq_' +
+        i +
+        '">' +
+        '<input type="checkbox" class="toggle-input" id="depReq_' +
         i +
         '" data-dep-index="' +
         i +
         '" data-field="required"' +
         (dep.required !== false ? " checked" : "") +
         ">" +
-        '<label for="depReq_' +
-        i +
-        '">Required</label></div>' +
+        '<span class="toggle-track" aria-hidden="true"><span class="toggle-thumb"></span></span>' +
+        '<span class="toggle-text">Required</span></label></div>' +
         "</div>" +
         '<div class="form-row"><div class="form-group"><label>Notes</label>' +
         '<input type="text" class="form-input" data-dep-index="' +

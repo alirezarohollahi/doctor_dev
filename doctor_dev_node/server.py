@@ -35,7 +35,7 @@ def check_auth(authorization: str | None) -> None:
 
 
 def node_data_dir() -> Path:
-    path = Path(os.getenv("DOCTOR_DEV_NODE_DATA_DIR", "/var/lib/docter-node")).expanduser()
+    path = Path(os.getenv("DOCTOR_DEV_NODE_DATA_DIR", "/var/lib/doctor-node")).expanduser()
     path.mkdir(parents=True, exist_ok=True)
     return path
 
