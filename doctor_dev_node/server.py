@@ -241,8 +241,25 @@ async def apply_config(body: ApplyConfigBody, authorization: str | None = Header
     if is_debug_enabled():
         logger.debug("node.apply.received %s", debug_json(data))
     data["applied_at"] = now()
-    write_routing_config(data)
+    validation_errors = runtime.validate_config(data)
+    if validation_errors:
+        logger.warning("routing config rejected: node_id=%s errors=%s", data.get("node_id"), validation_errors)
+        return {
+            "ok": False,
+            "message": "Routing config is invalid and was not applied.",
+            "errors": validation_errors,
+            "summary": runtime.summary() | {"ok": False, "listener_errors": len(validation_errors)},
+        }
     summary = await runtime.apply_config(data)
+    if not summary.get("ok", True):
+        logger.warning("routing config apply finished with errors: node_id=%s summary=%s", data.get("node_id"), summary)
+        return {
+            "ok": False,
+            "message": summary.get("last_error") or "Routing config could not start any listener.",
+            "errors": summary.get("errors") or [],
+            "summary": summary,
+        }
+    write_routing_config(data)
     logger.info("routing config applied: node_id=%s cores=%s listeners=%s", data.get("node_id"), len(data.get("cores") or []), summary.get("listeners_total"))
     return {"ok": True, "message": "Routing config saved and runtime reloaded on node.", "summary": runtime_summary()}
 

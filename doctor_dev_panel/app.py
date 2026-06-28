@@ -361,6 +361,16 @@ def _post_node_api(node: dict, path: str, payload: dict, *, timeout: float = 8.0
                 if not (200 <= int(response.status) < 300):
                     attempts.append(f"{url} returned HTTP {response.status}")
                     continue
+                if path == "/config/apply" and data.get("ok") is False:
+                    errors = data.get("errors") if isinstance(data.get("errors"), list) else []
+                    summary = data.get("summary") if isinstance(data.get("summary"), dict) else {}
+                    listener_errors = [
+                        str(item.get("error"))
+                        for item in summary.get("listeners", [])
+                        if isinstance(item, dict) and item.get("status") == "error" and item.get("error")
+                    ]
+                    details = errors or listener_errors or [str(data.get("message") or "Node rejected the routing configuration.")]
+                    raise NodeAPIError("Node rejected routing config: " + " | ".join(details[:4]))
                 return data
         except HTTPError as exc:
             if exc.code == 404 and path == "/config/apply":
@@ -640,6 +650,50 @@ async def api_validate_advanced_config(
 
 
 
+
+
+def _validate_core_forwarding_topology(body: CoreBody) -> None:
+    local_hosts = {"", "127.0.0.1", "localhost", "::1", "0.0.0.0", "[::1]"}
+    balancers = {b.alias: b for b in body.balancers if b.enabled}
+    errors: list[str] = []
+
+    def local_self(host: str, port: int, inbound) -> bool:
+        fixed = set(int(p) for p in inbound.fixed_ports or [])
+        if port not in fixed:
+            return False
+        host_l = str(host or "").strip().lower()
+        bind_l = str(inbound.bind_ip or "0.0.0.0").strip().lower()
+        public_l = str(inbound.public_host or "").strip().lower()
+        return host_l in local_hosts or host_l == bind_l or (public_l and host_l == public_l)
+
+    for inbound in body.inbounds:
+        if not inbound.enabled:
+            continue
+        if inbound.port_mode == "fixed" and not inbound.fixed_ports:
+            errors.append(f"{inbound.name}: choose at least one listen port.")
+        if inbound.target_type == "static":
+            if local_self(inbound.target_host, int(inbound.target_port), inbound):
+                errors.append(
+                    f"{inbound.name}: target points back to the same inbound port. "
+                    "Use the real upstream host/port, not the listen port."
+                )
+        elif inbound.target_type == "balancer":
+            balancer = balancers.get(inbound.target_balancer)
+            if not balancer:
+                errors.append(f"{inbound.name}: selected balancer does not exist or is disabled.")
+                continue
+            enabled_endpoints = [e for e in balancer.endpoints if e.enabled]
+            if not enabled_endpoints:
+                errors.append(f"{inbound.name}: selected balancer has no enabled endpoint.")
+            for endpoint in enabled_endpoints:
+                if endpoint.type == "static" and local_self(endpoint.host, int(endpoint.port), inbound):
+                    errors.append(
+                        f"{inbound.name}: balancer endpoint {endpoint.host}:{endpoint.port} "
+                        "points back to this inbound listener."
+                    )
+    if errors:
+        raise api_error(400, "INVALID_FORWARDING_TOPOLOGY", " | ".join(errors[:6]))
+
 def _validate_core_advanced_config(body: CoreBody) -> None:
     adv = body.advanced_config
     if not adv or not adv.enabled:
@@ -657,6 +711,7 @@ async def api_create_core(body: CoreBody, user: str = Depends(require_admin)) ->
     if not get_node(body.node_id):
         raise api_error(400, "NODE_NOT_FOUND", "The selected node no longer exists. Refresh the page.")
     _validate_core_advanced_config(body)
+    _validate_core_forwarding_topology(body)
     core = create_core(body.model_dump())
     logger.info(
         "core created: id=%s name=%s node_id=%s by=%s",
@@ -678,6 +733,7 @@ async def api_update_core(
     if not get_node(body.node_id):
         raise api_error(400, "NODE_NOT_FOUND", "The selected node no longer exists. Refresh the page.")
     _validate_core_advanced_config(body)
+    _validate_core_forwarding_topology(body)
     core = update_core(core_id, body.model_dump())
     if not core:
         raise api_error(404, "CORE_NOT_FOUND", "The selected core no longer exists. Refresh the page.")
