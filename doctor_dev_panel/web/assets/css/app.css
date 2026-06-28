@@ -3909,3 +3909,81 @@ input[type="checkbox"].toggle-input {
     width: auto;
   }
 }
+
+/* ========================================================================== 
+   CORE BUILDER COLLAPSIBLE CARDS HOTFIX
+   ========================================================================== */
+.editor-card-heading {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.editor-collapse-btn {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  border-radius: 10px;
+  border: 1px solid rgba(109, 157, 255, 0.18);
+  background: rgba(109, 157, 255, 0.08);
+  color: var(--blue);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 0.18s ease;
+}
+
+.editor-collapse-btn:hover {
+  background: rgba(109, 157, 255, 0.14);
+  border-color: rgba(109, 157, 255, 0.34);
+  color: #dbe8ff;
+}
+
+.editor-collapse-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(109, 157, 255, 0.22);
+}
+
+.editor-collapse-btn .fa-solid {
+  font-size: 0.78rem !important;
+  line-height: 1;
+}
+
+.editor-card--collapsible.is-collapsed .editor-card-body {
+  display: none;
+}
+
+.editor-card--collapsible.is-collapsed .editor-card-header {
+  border-bottom-color: transparent;
+}
+
+.editor-card--collapsible.is-collapsed {
+  background: rgba(17, 24, 39, 0.42);
+}
+
+.editor-card-title-main {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.balancer-tree-header .editor-card-heading .editor-card-title {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+@media (max-width: 640px) {
+  .editor-card-heading {
+    width: 100%;
+  }
+  .editor-collapse-btn {
+    width: 30px;
+    height: 30px;
+  }
+}

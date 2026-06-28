@@ -143,7 +143,59 @@ const state = {
   logsLoading: false,
   rawLogLines: [],
   endpointOpen: {},
+  editorCardOpen: {},
 };
+
+function editorCardKey(type, index, extra) {
+  return String(type || "card") + ":" + String(index) + (extra ? ":" + String(extra) : "");
+}
+
+function isEditorCardOpen(type, index, extra) {
+  return state.editorCardOpen[editorCardKey(type, index, extra)] !== false;
+}
+
+function editorCollapseButton(type, index, isOpen, label, extra) {
+  return (
+    '<button type="button" class="editor-collapse-btn" data-action="toggle-editor-card" data-card-type="' +
+    escapeHtml(type) +
+    '" data-card-index="' +
+    escapeHtml(String(index)) +
+    '" data-card-extra="' +
+    escapeHtml(extra || "") +
+    '" aria-label="' +
+    escapeHtml(label || "Toggle card") +
+    '" title="' +
+    escapeHtml(label || "Toggle card") +
+    '"><i class="fa-solid ' +
+    (isOpen ? "fa-chevron-down" : "fa-chevron-right") +
+    '" aria-hidden="true"></i></button>'
+  );
+}
+
+function bindEditorCardToggles(root) {
+  if (!root) return;
+  root.querySelectorAll('[data-action="toggle-editor-card"]').forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var type = btn.dataset.cardType || "card";
+      var idx = btn.dataset.cardIndex || "0";
+      var extra = btn.dataset.cardExtra || "";
+      var key = editorCardKey(type, idx, extra);
+      state.editorCardOpen[key] = state.editorCardOpen[key] === false;
+      var card = btn.closest(".editor-card");
+      var isOpen = state.editorCardOpen[key] !== false;
+      if (card) {
+        card.classList.toggle("is-collapsed", !isOpen);
+        card.classList.toggle("is-open", isOpen);
+      }
+      var icon = btn.querySelector("i");
+      if (icon) {
+        icon.classList.toggle("fa-chevron-down", isOpen);
+        icon.classList.toggle("fa-chevron-right", !isOpen);
+      }
+    });
+  });
+}
+
 
 // ============================================================
 // 3. API HELPER
@@ -1375,16 +1427,21 @@ function renderInboundEditor() {
   container.innerHTML = inbounds
     .map(function (ib, i) {
       var isFixed = ib.port_mode !== "random";
+      var isOpen = isEditorCardOpen("inbound", i);
+      var title = "Inbound " + (i + 1) + ": " + (ib.name || "Unnamed");
       return (
-        '<div class="editor-card" data-in-index="' +
+        '<div class="editor-card editor-card--collapsible' +
+        (isOpen ? " is-open" : " is-collapsed") +
+        '" data-in-index="' +
         i +
         '">' +
         '<div class="editor-card-header">' +
-        '<span class="editor-card-title">Inbound ' +
-        (i + 1) +
-        ": " +
-        escapeHtml(ib.name || "Unnamed") +
-        "</span>" +
+        '<div class="editor-card-heading">' +
+        editorCollapseButton("inbound", i, isOpen, "Toggle inbound") +
+        '<span class="editor-card-title"><span class="editor-card-title-main">' +
+        escapeHtml(title) +
+        '</span></span>' +
+        '</div>' +
         '<button class="btn btn-xs btn-danger btn-remove-soft" data-in-index="' +
         i +
         '" data-action="remove-inbound" aria-label="Remove inbound">' +
@@ -1465,6 +1522,7 @@ function renderInboundEditor() {
     })
     .join("");
 
+  bindEditorCardToggles(container);
   container.querySelectorAll("[data-in-index]").forEach(function (el) {
     if (el.tagName === "BUTTON" && el.dataset.action === "remove-inbound") {
       el.addEventListener("click", function () {
@@ -1510,7 +1568,7 @@ function bindInboundField(el) {
     if (field === "name") {
       var card = el.closest(".editor-card");
       if (card) {
-        var titleEl = card.querySelector(".editor-card-title");
+        var titleEl = card.querySelector(".editor-card-title-main");
         if (titleEl)
           titleEl.textContent =
             "Inbound " + (idx + 1) + ": " + (el.value || "Unnamed");
@@ -1544,6 +1602,7 @@ function renderRoutingEditor() {
           ? (ib.random_count || 1) + " random port(s)"
           : portsToText(ib.fixed_ports) || "No ports";
       var isStatic = ib.target_type !== "balancer";
+      var isOpen = isEditorCardOpen("routing", i);
 
       var balOpts = aliases
         .map(function (a) {
@@ -1560,15 +1619,20 @@ function renderRoutingEditor() {
         .join("");
 
       return (
-        '<div class="editor-card" data-rt-index="' +
+        '<div class="editor-card editor-card--collapsible' +
+        (isOpen ? " is-open" : " is-collapsed") +
+        '" data-rt-index="' +
         i +
         '">' +
         '<div class="editor-card-header">' +
-        '<span class="editor-card-title">' +
+        '<div class="editor-card-heading">' +
+        editorCollapseButton("routing", i, isOpen, "Toggle routing") +
+        '<span class="editor-card-title"><span class="editor-card-title-main">' +
         escapeHtml(ib.name || "Inbound " + (i + 1)) +
-        " \u2014 " +
+        " — " +
         escapeHtml(portSummary) +
-        "</span>" +
+        "</span></span>" +
+        "</div>" +
         "</div>" +
         '<div class="editor-card-body">' +
         '<div class="form-row"><div class="form-group"><label>Target Type</label>' +
@@ -1626,6 +1690,7 @@ function renderRoutingEditor() {
     })
     .join("");
 
+  bindEditorCardToggles(container);
   container.querySelectorAll("[data-rt-index]").forEach(function (el) {
     function update() {
       var idx = parseInt(el.dataset.rtIndex, 10);
@@ -1639,12 +1704,14 @@ function renderRoutingEditor() {
         var blRow = container.querySelector('[data-rt-balancer="' + idx + '"]');
         if (stRow) stRow.style.display = isStatic ? "" : "none";
         if (blRow) blRow.style.display = !isStatic ? "" : "none";
-      } else {
+      } else if (field) {
         ib[field] = el.value;
       }
     }
-    el.addEventListener("input", update);
-    el.addEventListener("change", update);
+    if (el.dataset.field) {
+      el.addEventListener("input", update);
+      el.addEventListener("change", update);
+    }
   });
 }
 
@@ -1663,16 +1730,22 @@ function renderBalancerEditor() {
   container.innerHTML = balancers
     .map(function (bal, i) {
       var endpointCount = Array.isArray(bal.endpoints) ? bal.endpoints.length : 0;
+      var isOpen = isEditorCardOpen("balancer", i);
       return (
-        '<div class="editor-card balancer-tree-card" data-bal-index="' +
+        '<div class="editor-card editor-card--collapsible balancer-tree-card' +
+        (isOpen ? " is-open" : " is-collapsed") +
+        '" data-bal-index="' +
         i +
         '">' +
         '<div class="editor-card-header balancer-tree-header">' +
-        '<span class="editor-card-title"><i class="fa-solid fa-scale-balanced" aria-hidden="true"></i> Balancer ' +
+        '<div class="editor-card-heading">' +
+        editorCollapseButton("balancer", i, isOpen, "Toggle balancer") +
+        '<span class="editor-card-title"><i class="fa-solid fa-scale-balanced" aria-hidden="true"></i> <span class="editor-card-title-main">Balancer ' +
         (i + 1) +
         ": " +
         escapeHtml(bal.alias || "Unnamed") +
-        ' <span class="badge mini-badge">' + endpointCount + " endpoint" + (endpointCount === 1 ? "" : "s") + "</span></span>" +
+        '</span> <span class="badge mini-badge">' + endpointCount + " endpoint" + (endpointCount === 1 ? "" : "s") + "</span></span>" +
+        "</div>" +
         '<button class="btn btn-xs btn-danger btn-remove-soft" data-bal-index="' +
         i +
         '" data-action="remove-balancer" aria-label="Remove balancer">' +
@@ -1743,14 +1816,12 @@ function renderBalancerEditor() {
     })
     .join("");
 
+  bindEditorCardToggles(container);
   container.querySelectorAll("[data-bal-index]").forEach(function (el) {
     var action = el.dataset.action;
     if (action === "remove-balancer") {
       el.addEventListener("click", function () {
-        state.editorDraft.balancers.splice(
-          parseInt(el.dataset.balIndex, 10),
-          1,
-        );
+        state.editorDraft.balancers.splice(parseInt(el.dataset.balIndex, 10), 1);
         renderCoreEditor();
       });
     } else if (action === "add-endpoint") {
@@ -1762,9 +1833,10 @@ function renderBalancerEditor() {
         var ep = defaultEndpoint();
         state.editorDraft.balancers[idx].endpoints.push(ep);
         state.endpointOpen[idx + ":" + (state.editorDraft.balancers[idx].endpoints.length - 1)] = true;
+        state.editorCardOpen[editorCardKey("balancer", idx)] = true;
         renderBalancerEditor();
       });
-    } else if (el.tagName !== "BUTTON") {
+    } else if (el.tagName !== "BUTTON" && el.dataset.field) {
       (function () {
         var balIdx = parseInt(el.dataset.balIndex, 10);
         var field = el.dataset.field;
@@ -1776,18 +1848,8 @@ function renderBalancerEditor() {
           if (field === "alias") {
             var card = el.closest(".editor-card");
             if (card) {
-              var titleEl = card.querySelector(".editor-card-title");
-              if (titleEl)
-                titleEl.innerHTML =
-                  '<i class="fa-solid fa-scale-balanced" aria-hidden="true"></i> Balancer ' +
-                  (balIdx + 1) +
-                  ": " +
-                  escapeHtml(el.value || "Unnamed") +
-                  ' <span class="badge mini-badge">' +
-                  (Array.isArray(bal.endpoints) ? bal.endpoints.length : 0) +
-                  " endpoint" +
-                  ((Array.isArray(bal.endpoints) ? bal.endpoints.length : 0) === 1 ? "" : "s") +
-                  "</span>";
+              var titleEl = card.querySelector(".editor-card-title-main");
+              if (titleEl) titleEl.textContent = "Balancer " + (balIdx + 1) + ": " + (el.value || "Unnamed");
             }
             renderRoutingEditor();
           }
@@ -2219,14 +2281,20 @@ function renderDependencyEditor() {
 
   container.innerHTML = deps
     .map(function (dep, i) {
+      var isOpen = isEditorCardOpen("dependency", i);
       return (
-        '<div class="editor-card" data-dep-index="' +
+        '<div class="editor-card editor-card--collapsible' +
+        (isOpen ? " is-open" : " is-collapsed") +
+        '" data-dep-index="' +
         i +
         '">' +
         '<div class="editor-card-header">' +
-        '<span class="editor-card-title">Dependency ' +
+        '<div class="editor-card-heading">' +
+        editorCollapseButton("dependency", i, isOpen, "Toggle dependency") +
+        '<span class="editor-card-title"><span class="editor-card-title-main">Dependency ' +
         (i + 1) +
-        "</span>" +
+        '</span></span>' +
+        "</div>" +
         '<button class="btn btn-xs btn-danger btn-remove-soft" data-dep-index="' +
         i +
         '" data-action="remove-dep" aria-label="Remove dependency">' +
@@ -2278,16 +2346,14 @@ function renderDependencyEditor() {
     })
     .join("");
 
+  bindEditorCardToggles(container);
   container.querySelectorAll("[data-dep-index]").forEach(function (el) {
     if (el.dataset.action === "remove-dep") {
       el.addEventListener("click", function () {
-        state.editorDraft.dependencies.splice(
-          parseInt(el.dataset.depIndex, 10),
-          1,
-        );
+        state.editorDraft.dependencies.splice(parseInt(el.dataset.depIndex, 10), 1);
         renderDependencyEditor();
       });
-    } else {
+    } else if (el.dataset.field) {
       (function () {
         var depIdx = parseInt(el.dataset.depIndex, 10);
         var field = el.dataset.field;
