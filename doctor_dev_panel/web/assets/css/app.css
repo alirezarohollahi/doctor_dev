@@ -3415,3 +3415,93 @@ textarea:hover {
     justify-content: stretch;
   }
 }
+
+/* Phase 2 UI hotfix: compact tab icons + advanced JSON editor */
+.tab-btn i {
+    width: 16px;
+    height: 16px;
+    font-size: 13px;
+    line-height: 16px;
+    text-align: center;
+    flex: 0 0 16px;
+}
+
+.tab-panel-header:empty {
+    display: none;
+}
+
+.tabs-header {
+    gap: 2px;
+}
+
+.editor-list:empty {
+    display: none;
+}
+
+.advanced-editor-shell {
+    display: grid;
+    gap: 14px;
+}
+
+.advanced-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.advanced-toggle {
+    min-height: 38px;
+}
+
+.advanced-json-editor {
+    width: 100%;
+    min-height: 380px;
+    resize: vertical;
+    padding: 16px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: rgba(11, 17, 28, 0.72);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    line-height: 1.65;
+    outline: none;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.advanced-json-editor:focus {
+    border-color: var(--blue);
+    box-shadow: 0 0 0 3px rgba(96, 141, 255, 0.16);
+}
+
+.advanced-validation {
+    display: none;
+    padding: 12px 14px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    font-size: 12px;
+    line-height: 1.55;
+}
+
+.advanced-validation:not(:empty) {
+    display: block;
+}
+
+.advanced-validation--success {
+    color: var(--green);
+    border-color: rgba(59, 210, 139, 0.35);
+    background: rgba(59, 210, 139, 0.08);
+}
+
+.advanced-validation--error {
+    color: var(--red);
+    border-color: rgba(255, 94, 123, 0.35);
+    background: rgba(255, 94, 123, 0.08);
+}
+
+.advanced-validation--info {
+    color: var(--text-muted);
+    background: rgba(148, 163, 184, 0.08);
+}

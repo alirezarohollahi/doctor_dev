@@ -199,6 +199,23 @@ def normalize_dependency(payload: dict[str, Any], index: int = 0) -> dict[str, A
     }
 
 
+def normalize_advanced_config(payload: Any) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        payload = {}
+    raw = payload.get("json_config", "")
+    if raw is None:
+        raw = ""
+    if not isinstance(raw, str):
+        try:
+            raw = json.dumps(raw, ensure_ascii=False, indent=2)
+        except TypeError:
+            raw = ""
+    return {
+        "enabled": bool(payload.get("enabled", False)),
+        "json_config": raw[:200000],
+    }
+
+
 def normalize_core(payload: dict[str, Any], existing: dict[str, Any] | None = None) -> dict[str, Any]:
     now = _now()
     base = dict(existing or {})
@@ -224,6 +241,7 @@ def normalize_core(payload: dict[str, Any], existing: dict[str, Any] | None = No
     base["inbounds"] = [normalize_inbound(item, idx) for idx, item in enumerate(inbounds_payload)]
     base["balancers"] = [normalize_balancer(item, idx) for idx, item in enumerate(balancers_payload)]
     base["dependencies"] = [normalize_dependency(item, idx) for idx, item in enumerate(dependencies_payload)]
+    base["advanced_config"] = normalize_advanced_config(base.get("advanced_config"))
     base.setdefault("last_applied_at", None)
     base.setdefault("last_error", "")
     return base
@@ -321,6 +339,16 @@ def build_node_config(node_id: str) -> dict[str, Any]:
         cores = []
     else:
         cores = [core for core in list_cores() if core.get("node_id") == node_id]
+    for core in cores:
+        adv = core.get("advanced_config") if isinstance(core.get("advanced_config"), dict) else {}
+        raw = str(adv.get("json_config") or "").strip()
+        if adv.get("enabled") and raw:
+            try:
+                parsed = json.loads(raw)
+                if isinstance(parsed, dict):
+                    core["manual_config"] = parsed
+            except json.JSONDecodeError:
+                core["manual_config_error"] = "Advanced JSON is not valid."
     return {
         "version": 1,
         "node_id": node_id,

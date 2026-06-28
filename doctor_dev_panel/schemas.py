@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -95,6 +95,15 @@ class CoreDependencyBody(BaseModel):
     notes: str = Field(default="", max_length=500)
 
 
+class CoreAdvancedConfigBody(BaseModel):
+    enabled: bool = False
+    json_config: str = Field(default="", max_length=200000)
+
+
+class AdvancedConfigValidateBody(BaseModel):
+    json_config: str = Field(default="", max_length=200000)
+
+
 class CoreBody(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     node_id: str = Field(min_length=1, max_length=120)
@@ -102,3 +111,4 @@ class CoreBody(BaseModel):
     inbounds: list[CoreInboundBody] = Field(default_factory=list)
     balancers: list[CoreBalancerBody] = Field(default_factory=list)
     dependencies: list[CoreDependencyBody] = Field(default_factory=list)
+    advanced_config: CoreAdvancedConfigBody = Field(default_factory=CoreAdvancedConfigBody)

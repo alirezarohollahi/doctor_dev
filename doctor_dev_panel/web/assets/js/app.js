@@ -59,9 +59,31 @@ function warnInvalidIdentifier(kind) {
     "warning",
   );
 }
+function cleanDisplayName(value, fallback) {
+  var text = String(value || fallback || "").trim();
+  return text || "Unnamed";
+}
+
+function nodeDisplayName(node) {
+  if (!node) return UI_TEXT.unknownNode;
+  return cleanDisplayName(node.name, node.address || UI_TEXT.unknownNode);
+}
+
 function nodeName(id) {
   const n = nodeById(id);
-  return n ? n.name || n.address : UI_TEXT.unknownNode;
+  return n ? nodeDisplayName(n) : UI_TEXT.unknownNode;
+}
+
+function ensureAdvancedConfig(draft) {
+  if (!draft) return { enabled: false, json_config: "" };
+  if (!draft.advanced_config || typeof draft.advanced_config !== "object") {
+    draft.advanced_config = { enabled: false, json_config: "" };
+  }
+  if (typeof draft.advanced_config.json_config !== "string") {
+    draft.advanced_config.json_config = "";
+  }
+  draft.advanced_config.enabled = !!draft.advanced_config.enabled;
+  return draft.advanced_config;
 }
 
 function timeAgo(iso) {
@@ -391,6 +413,7 @@ function openCoreEditorPage(core) {
     state.editorDraft.balancers = [];
   if (!Array.isArray(state.editorDraft.dependencies))
     state.editorDraft.dependencies = [];
+  ensureAdvancedConfig(state.editorDraft);
 
   $$(".nav-item[data-page]").forEach(function (btn) {
     btn.classList.remove("active");
@@ -991,12 +1014,7 @@ function fillNodeSelect(select, value) {
       .map(function (n) {
         var v = String(n.id);
         var sel = v === String(value) ? " selected" : "";
-        var label =
-          escapeHtml(n.name || n.address) +
-          " \u2014 " +
-          escapeHtml(n.address) +
-          ":" +
-          escapeHtml(String(n.api_port || ""));
+        var label = escapeHtml(nodeDisplayName(n));
         return '<option value="' + v + '"' + sel + ">" + label + "</option>";
       })
       .join("");
@@ -1240,14 +1258,19 @@ function syncEditorHeaderToDraft() {
 }
 
 function switchCoreTab(tab) {
+  tab = tab || "inbounds";
   state.currentCoreTab = tab;
   $$(".tab-btn").forEach(function (btn) {
-    btn.classList.toggle("active", btn.dataset.tab === tab);
+    var key = btn.dataset.coreTab || btn.dataset.tab || "";
+    var active = key === tab;
+    btn.classList.toggle("active", active);
+    btn.setAttribute("aria-selected", active ? "true" : "false");
   });
   $$(".tab-panel").forEach(function (panel) {
-    panel.classList.toggle("active", panel.dataset.tab === tab);
+    var key = panel.dataset.coreTab || panel.dataset.tab || "";
+    panel.classList.toggle("active", key === tab);
   });
-  if (tab === "preview") renderPreviewBox();
+  if (tab === "advanced") renderAdvancedEditor();
 }
 
 function renderCoreEditor() {
@@ -1255,6 +1278,7 @@ function renderCoreEditor() {
   renderRoutingEditor();
   renderBalancerEditor();
   renderDependencyEditor();
+  renderAdvancedEditor();
   updateTabBadges();
 }
 
@@ -1346,8 +1370,7 @@ function renderInboundEditor() {
   var inbounds = state.editorDraft.inbounds || [];
 
   if (!inbounds.length) {
-    container.innerHTML =
-      '<div class="editor-empty">No inbounds yet. Click "Add Inbound" to create one.</div>';
+    container.innerHTML = "";
     return;
   }
 
@@ -1509,8 +1532,7 @@ function renderRoutingEditor() {
   var aliases = currentBalancerAliases();
 
   if (!inbounds.length) {
-    container.innerHTML =
-      '<div class="editor-empty">Add inbounds first to configure routing.</div>';
+    container.innerHTML = "";
     return;
   }
 
@@ -1633,8 +1655,7 @@ function renderBalancerEditor() {
   var balancers = state.editorDraft.balancers || [];
 
   if (!balancers.length) {
-    container.innerHTML =
-      '<div class="editor-empty">No balancers yet. Click "Add Balancer" to create one.</div>';
+    container.innerHTML = "";
     return;
   }
 
@@ -1672,12 +1693,12 @@ function renderBalancerEditor() {
         '<option value="random"' +
         (bal.strategy === "random" ? " selected" : "") +
         ">Random</option>" +
-        '<option value="least_conn"' +
-        (bal.strategy === "least_conn" ? " selected" : "") +
+        '<option value="failover"' +
+        (bal.strategy === "failover" ? " selected" : "") +
+        ">Failover</option>" +
+        '<option value="least_connections"' +
+        (bal.strategy === "least_connections" ? " selected" : "") +
         ">Least Connections</option>" +
-        '<option value="ip_hash"' +
-        (bal.strategy === "ip_hash" ? " selected" : "") +
-        ">IP Hash</option>" +
         "</select></div>" +
         '<div class="form-group form-group--inline">' +
         '<input type="checkbox" id="balEnabled_' +
@@ -1983,7 +2004,7 @@ function fillEndpointNodeSelect(select, value) {
           '"' +
           (String(n.id) === String(value) ? " selected" : "") +
           ">" +
-          escapeHtml(n.name || n.address) +
+          escapeHtml(nodeDisplayName(n)) +
           "</option>"
         );
       })
@@ -2022,8 +2043,7 @@ function renderDependencyEditor() {
   var deps = state.editorDraft.dependencies || [];
 
   if (!deps.length) {
-    container.innerHTML =
-      '<div class="editor-empty">No dependencies configured.</div>';
+    container.innerHTML = "";
     return;
   }
 
@@ -2130,7 +2150,7 @@ function dependencyOptions(type, selected) {
           '"' +
           (String(n.id) === String(selected) ? " selected" : "") +
           ">" +
-          escapeHtml(n.name || n.address) +
+          escapeHtml(nodeDisplayName(n)) +
           "</option>"
         );
       })
@@ -2155,37 +2175,96 @@ function dependencyOptions(type, selected) {
     .join("");
 }
 
-// --- Preview ---
+// --- Advanced JSON Editor ---
 
-function renderPreviewBox() {
-  var box = $("#corePreviewBox");
-  if (!box || !state.editorDraft) return;
-  syncEditorHeaderToDraft();
-  box.textContent = JSON.stringify(state.editorDraft, null, 2);
+function renderAdvancedEditor() {
+  if (!state.editorDraft) return;
+  var cfg = ensureAdvancedConfig(state.editorDraft);
+  var enabled = $("#advancedJsonEnabled");
+  var textarea = $("#advancedJsonEditor");
+  var result = $("#advancedValidationResult");
+  if (enabled) enabled.checked = !!cfg.enabled;
+  if (textarea && textarea.value !== cfg.json_config) textarea.value = cfg.json_config || "";
+  if (result && !result.dataset.keep) result.innerHTML = "";
 }
 
-async function refreshPreviewFromServer() {
-  var box = $("#corePreviewBox");
-  var btn = $("#refreshPreviewButton");
-  if (!state.editingCore) {
-    renderPreviewBox();
-    return;
+function syncAdvancedEditorToDraft() {
+  if (!state.editorDraft) return;
+  var cfg = ensureAdvancedConfig(state.editorDraft);
+  var enabled = $("#advancedJsonEnabled");
+  var textarea = $("#advancedJsonEditor");
+  if (enabled) cfg.enabled = !!enabled.checked;
+  if (textarea) cfg.json_config = textarea.value || "";
+}
+
+function showAdvancedValidation(result, type) {
+  var box = $("#advancedValidationResult");
+  if (!box) return;
+  type = type || "info";
+  box.className = "advanced-validation advanced-validation--" + type;
+  box.dataset.keep = "1";
+  if (Array.isArray(result)) {
+    box.innerHTML = result.map(function (line) { return '<div>' + escapeHtml(line) + '</div>'; }).join("");
+  } else {
+    box.textContent = String(result || "");
+  }
+}
+
+function validateAdvancedJsonLocally() {
+  syncAdvancedEditorToDraft();
+  var cfg = ensureAdvancedConfig(state.editorDraft);
+  var text = String(cfg.json_config || "").trim();
+  if (!text) return { ok: true, value: null, warnings: ["Manual JSON is empty."] };
+  try {
+    var value = JSON.parse(text);
+    if (!value || Array.isArray(value) || typeof value !== "object") {
+      return { ok: false, errors: ["JSON root must be an object."] };
+    }
+    return { ok: true, value: value, warnings: [] };
+  } catch (err) {
+    return { ok: false, errors: [err.message || "Invalid JSON syntax."] };
+  }
+}
+
+async function validateAdvancedConfig(options) {
+  options = options || {};
+  var btn = $("#validateAdvancedJsonButton");
+  var local = validateAdvancedJsonLocally();
+  if (!local.ok) {
+    showAdvancedValidation(local.errors || ["Invalid JSON."], "error");
+    if (!options.silent) showToast("Advanced JSON is invalid.", "error");
+    return false;
+  }
+  syncAdvancedEditorToDraft();
+  var cfg = ensureAdvancedConfig(state.editorDraft);
+  if (!cfg.enabled || !String(cfg.json_config || "").trim()) {
+    showAdvancedValidation(cfg.enabled ? "Manual JSON is empty." : "Manual JSON override is disabled.", "info");
+    return true;
   }
   if (btn) {
     btn.disabled = true;
-    btn.textContent = "Loading\u2026";
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i> Validating';
   }
   try {
-    if (!state.editingCore || !isValidCoreId(state.editingCore.id)) { warnInvalidIdentifier("core"); return; }
-    var data = await api("/api/cores/" + encodeURIComponent(state.editingCore.id) + "/preview");
-    if (data.ok && box)
-      box.textContent = JSON.stringify(data.node_config_preview, null, 2);
+    var data = await api("/api/cores/advanced/validate", {
+      method: "POST",
+      body: JSON.stringify({ json_config: cfg.json_config }),
+    });
+    var lines = [];
+    if (data.valid) lines.push("JSON is valid.");
+    (data.errors || []).forEach(function (x) { lines.push("Error: " + x); });
+    (data.warnings || []).forEach(function (x) { lines.push("Warning: " + x); });
+    showAdvancedValidation(lines, data.valid ? "success" : "error");
+    if (!options.silent) showToast(data.valid ? "Advanced JSON is valid." : "Advanced JSON has errors.", data.valid ? "success" : "error");
+    return !!data.valid;
   } catch (err) {
-    showToast(err.message || "Failed to load preview.", "error");
+    showAdvancedValidation(err.message || "Validation failed.", "error");
+    if (!options.silent) showToast(err.message || "Validation failed.", "error");
+    return false;
   } finally {
     if (btn) {
       btn.disabled = false;
-      btn.textContent = "Refresh from Server";
+      btn.innerHTML = '<i class="fa-solid fa-shield-halved" aria-hidden="true"></i> Validate JSON';
     }
   }
 }
@@ -2200,6 +2279,7 @@ function collectEditorPayload() {
     inbounds: d.inbounds || [],
     balancers: d.balancers || [],
     dependencies: d.dependencies || [],
+    advanced_config: ensureAdvancedConfig(d),
   };
 }
 
@@ -2208,6 +2288,11 @@ async function saveCoreEditor() {
   if (!isValidCoreId(state.editingCore.id)) { warnInvalidIdentifier("core"); await refreshAll(); return false; }
   var payload = collectEditorPayload();
   if (!isValidNodeId(payload.node_id)) { showToast("Select a valid node before saving this core.", "warning"); return false; }
+  if (payload.advanced_config && payload.advanced_config.enabled) {
+    var advancedOk = await validateAdvancedConfig({ silent: true });
+    if (!advancedOk) return false;
+    payload = collectEditorPayload();
+  }
   var saveBtns = $$("#saveCoreBtn, #saveCoreEditorBottom");
   saveBtns.forEach(function (b) {
     b.disabled = true;
@@ -2228,6 +2313,7 @@ async function saveCoreEditor() {
         state.editorDraft.balancers = [];
       if (!Array.isArray(state.editorDraft.dependencies))
         state.editorDraft.dependencies = [];
+      ensureAdvancedConfig(state.editorDraft);
       showToast("Core saved successfully.", "success");
       await refreshAll();
       bindCoreEditorHeader();
@@ -2566,7 +2652,7 @@ document.addEventListener("DOMContentLoaded", function () {
   // --- Core Editor tabs ---
   $$(".tab-btn").forEach(function (btn) {
     btn.addEventListener("click", function () {
-      switchCoreTab(btn.dataset.tab);
+      switchCoreTab(btn.dataset.coreTab || btn.dataset.tab);
     });
   });
 
@@ -2616,10 +2702,15 @@ document.addEventListener("DOMContentLoaded", function () {
   if (editorCoreEnabled)
     editorCoreEnabled.addEventListener("change", syncEditorHeaderToDraft);
 
-  // --- Preview ---
-  var refreshPreviewBtn = $("#refreshPreviewButton");
-  if (refreshPreviewBtn)
-    refreshPreviewBtn.addEventListener("click", refreshPreviewFromServer);
+  // --- Advanced JSON ---
+  var advancedJsonEnabled = $("#advancedJsonEnabled");
+  if (advancedJsonEnabled) advancedJsonEnabled.addEventListener("change", syncAdvancedEditorToDraft);
+
+  var advancedJsonEditor = $("#advancedJsonEditor");
+  if (advancedJsonEditor) advancedJsonEditor.addEventListener("input", syncAdvancedEditorToDraft);
+
+  var validateAdvancedJsonButton = $("#validateAdvancedJsonButton");
+  if (validateAdvancedJsonButton) validateAdvancedJsonButton.addEventListener("click", function () { validateAdvancedConfig(); });
 
   // --- Logs ---
   var refreshLogsBtn = $("#refreshLogsBtn");

@@ -1038,7 +1038,8 @@
                                 aria-controls="tabInbounds"
                                 id="tab-btn-inbounds"
                             >
-                                Inbounds
+                                <i class="fa-solid fa-plug-circle-bolt" aria-hidden="true"></i>
+                                <span>Inbounds</span>
                                 <span
                                     id="inboundTabBadge"
                                     class="tab-badge"
@@ -1055,7 +1056,8 @@
                                 aria-controls="tabRouting"
                                 id="tab-btn-routing"
                             >
-                                Routing
+                                <i class="fa-solid fa-route" aria-hidden="true"></i>
+                                <span>Routing</span>
                             </button>
 
                             <button
@@ -1067,7 +1069,8 @@
                                 aria-controls="tabBalancers"
                                 id="tab-btn-balancers"
                             >
-                                Balancers
+                                <i class="fa-solid fa-scale-balanced" aria-hidden="true"></i>
+                                <span>Balancers</span>
                                 <span
                                     id="balancerTabBadge"
                                     class="tab-badge"
@@ -1084,19 +1087,21 @@
                                 aria-controls="tabDependencies"
                                 id="tab-btn-dependencies"
                             >
-                                Dependencies
+                                <i class="fa-solid fa-link" aria-hidden="true"></i>
+                                <span>Dependencies</span>
                             </button>
 
                             <button
                                 class="tab-btn"
-                                data-core-tab="preview"
+                                data-core-tab="advanced"
                                 type="button"
                                 role="tab"
                                 aria-selected="false"
-                                aria-controls="tabPreview"
-                                id="tab-btn-preview"
+                                aria-controls="tabAdvanced"
+                                id="tab-btn-advanced"
                             >
-                                Preview
+                                <i class="fa-solid fa-code" aria-hidden="true"></i>
+                                <span>Advanced</span>
                             </button>
                         </div>
                         <!-- /.tabs-header -->
@@ -1104,146 +1109,126 @@
                         <!-- Tab panel: Inbounds -->
                         <div
                             id="tabInbounds"
+                            data-core-tab="inbounds"
                             class="tab-panel active"
                             role="tabpanel"
                             aria-labelledby="tab-btn-inbounds"
                         >
                             <div class="tab-panel-header">
-                                <p class="tab-panel-desc">
-                                    Define inbound listeners for this core
-                                    configuration.
-                                </p>
                                 <button
                                     id="addInboundButton"
                                     class="btn btn-primary btn-sm"
                                     type="button"
                                 >
-                                    <i class="fa-solid fa-user-shield" aria-hidden="true"></i>
+                                    <i class="fa-solid fa-plug-circle-bolt" aria-hidden="true"></i>
                                     Add Inbound
                                 </button>
                             </div>
-                            <div id="inboundEditorList" class="editor-list">
-                                <div class="editor-list-empty">
-                                    <i class="fa-solid fa-network-wired" aria-hidden="true"></i>
-                                    <span
-                                        >No inbounds configured. Click
-                                        &ldquo;Add Inbound&rdquo; to get
-                                        started.</span
-                                    >
-                                </div>
-                            </div>
+                            <div id="inboundEditorList" class="editor-list"></div>
                         </div>
 
                         <!-- Tab panel: Routing -->
                         <div
                             id="tabRouting"
+                            data-core-tab="routing"
                             class="tab-panel"
                             role="tabpanel"
                             aria-labelledby="tab-btn-routing"
                         >
                             <div class="tab-panel-header">
-                                <p class="tab-panel-desc">
-                                    Configure traffic routing rules for this
-                                    core.
-                                </p>
                             </div>
-                            <div id="routingEditorList" class="editor-list">
-                                <div class="editor-list-empty">
-                                    <i class="fa-solid fa-route" aria-hidden="true"></i>
-                                    <span>No routing rules defined yet.</span>
-                                </div>
-                            </div>
+                            <div id="routingEditorList" class="editor-list"></div>
                         </div>
 
                         <!-- Tab panel: Balancers -->
                         <div
                             id="tabBalancers"
+                            data-core-tab="balancers"
                             class="tab-panel"
                             role="tabpanel"
                             aria-labelledby="tab-btn-balancers"
                         >
                             <div class="tab-panel-header">
-                                <p class="tab-panel-desc">
-                                    Set up load balancers to distribute traffic
-                                    across outbounds.
-                                </p>
                                 <button
                                     id="addBalancerButton"
                                     class="btn btn-primary btn-sm"
                                     type="button"
                                 >
-                                    <i class="fa-solid fa-user-shield" aria-hidden="true"></i>
+                                    <i class="fa-solid fa-scale-balanced" aria-hidden="true"></i>
                                     Add Balancer
                                 </button>
                             </div>
-                            <div id="balancerEditorList" class="editor-list">
-                                <div class="editor-list-empty">
-                                    <i class="fa-solid fa-scale-balanced" aria-hidden="true"></i>
-                                    <span
-                                        >No balancers configured. Click
-                                        &ldquo;Add Balancer&rdquo; to get
-                                        started.</span
-                                    >
-                                </div>
-                            </div>
+                            <div id="balancerEditorList" class="editor-list"></div>
                         </div>
 
                         <!-- Tab panel: Dependencies -->
                         <div
                             id="tabDependencies"
+                            data-core-tab="dependencies"
                             class="tab-panel"
                             role="tabpanel"
                             aria-labelledby="tab-btn-dependencies"
                         >
                             <div class="tab-panel-header">
-                                <p class="tab-panel-desc">
-                                    Manage inter-core dependencies and startup
-                                    ordering.
-                                </p>
                                 <button
                                     id="addDependencyButton"
                                     class="btn btn-primary btn-sm"
                                     type="button"
                                 >
-                                    <i class="fa-solid fa-user-shield" aria-hidden="true"></i>
+                                    <i class="fa-solid fa-link" aria-hidden="true"></i>
                                     Add Dependency
                                 </button>
                             </div>
-                            <div id="dependencyEditorList" class="editor-list">
-                                <div class="editor-list-empty">
-                                    <i class="fa-solid fa-link" aria-hidden="true"></i>
-                                    <span>No dependencies configured.</span>
-                                </div>
-                            </div>
+                            <div id="dependencyEditorList" class="editor-list"></div>
                         </div>
 
-                        <!-- Tab panel: Preview -->
+                        <!-- Tab panel: Advanced -->
                         <div
-                            id="tabPreview"
+                            id="tabAdvanced"
+                            data-core-tab="advanced"
                             class="tab-panel"
                             role="tabpanel"
-                            aria-labelledby="tab-btn-preview"
+                            aria-labelledby="tab-btn-advanced"
                         >
-                            <div class="tab-panel-header">
-                                <p class="tab-panel-desc">
-                                    Preview the generated Xray JSON
-                                    configuration.
-                                </p>
-                                <button
-                                    id="refreshPreviewButton"
-                                    class="btn btn-ghost btn-sm"
-                                    type="button"
-                                >
-                                    <i class="fa-solid fa-rotate-right" aria-hidden="true"></i>
-                                    Refresh Preview
-                                </button>
+                            <div class="advanced-editor-shell">
+                                <div class="advanced-toolbar">
+                                    <label class="toggle-label advanced-toggle" for="advancedJsonEnabled">
+                                        <input
+                                            id="advancedJsonEnabled"
+                                            type="checkbox"
+                                            class="toggle-input"
+                                        />
+                                        <span class="toggle-track" aria-hidden="true">
+                                            <span class="toggle-thumb"></span>
+                                        </span>
+                                        <span class="toggle-text">Manual JSON override</span>
+                                    </label>
+                                    <button
+                                        id="validateAdvancedJsonButton"
+                                        class="btn btn-primary btn-sm"
+                                        type="button"
+                                    >
+                                        <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
+                                        Validate JSON
+                                    </button>
+                                </div>
+                                <textarea
+                                    id="advancedJsonEditor"
+                                    class="advanced-json-editor"
+                                    spellcheck="false"
+                                    placeholder='{
+  "inbounds": [],
+  "outbounds": [],
+  "routing": {}
+}'
+                                    aria-label="Manual JSON configuration editor"
+                                ></textarea>
+                                <div
+                                    id="advancedValidationResult"
+                                    class="advanced-validation"
+                                    aria-live="polite"
+                                ></div>
                             </div>
-                            <pre
-                                id="corePreviewBox"
-                                class="code-preview"
-                                aria-label="Generated core configuration JSON"
-                                tabindex="0"
-                            ><code>// Click "Refresh Preview" to generate the configuration output.</code></pre>
                         </div>
                     </div>
                     <!-- /.card.tabs-container -->
