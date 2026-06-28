@@ -2,12 +2,8 @@ from __future__ import annotations
 
 import logging
 import os
-from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any, Iterable
-
-_DEFAULT_MAX_BYTES = 5 * 1024 * 1024
-_DEFAULT_ROTATED_FILES = 5
 
 _TRUE_VALUES = {"1", "true", "yes", "on", "debug", "enabled"}
 _SENSITIVE_KEYS = {
@@ -148,7 +144,7 @@ def setup_panel_logging() -> Path:
     for handler in root.handlers:
         if getattr(handler, '_doctor_dev_log_file', None) == marker:
             return path
-    handler = RotatingFileHandler(path, maxBytes=int(os.getenv('DOCTOR_DEV_LOG_MAX_BYTES', str(_DEFAULT_MAX_BYTES))), **{'back' + 'upCount': int(os.getenv('DOCTOR_DEV_LOG_ROTATED_FILES', str(_DEFAULT_ROTATED_FILES)))}, encoding='utf-8')
+    handler = logging.FileHandler(path, encoding='utf-8')
     handler.setFormatter(logging.Formatter('%(asctime)sZ | %(levelname)s | %(name)s | %(message)s', '%Y-%m-%dT%H:%M:%S'))
     handler._doctor_dev_log_file = marker  # type: ignore[attr-defined]
     root.addHandler(handler)
