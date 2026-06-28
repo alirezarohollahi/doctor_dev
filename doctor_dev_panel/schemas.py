@@ -55,6 +55,20 @@ class CoreInboundBody(BaseModel):
     enabled: bool = True
     notes: str = Field(default="", max_length=500)
 
+    @field_validator("target_port", mode="before")
+    @classmethod
+    def normalize_target_port(cls, value: object) -> int:
+        # The routing UI can temporarily keep this field empty while a user is
+        # switching target modes. Keep validation user-friendly and let topology
+        # checks decide whether the final static forwarding target is valid.
+        if value in {None, ""}:
+            return 80
+        try:
+            port = int(value)
+        except (TypeError, ValueError):
+            return 80
+        return port if 1 <= port <= 65535 else 80
+
     @field_validator("fixed_ports")
     @classmethod
     def valid_ports(cls, value: list[int]) -> list[int]:

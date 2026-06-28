@@ -111,7 +111,7 @@ class ForwarderRuntime:
                     if not isinstance(inbound, dict) or inbound.get("enabled") is False:
                         continue
                     ports = self._ports_for(inbound)
-                    for requested_port in ports:
+                    for port_index, requested_port in enumerate(ports):
                         bind_ip = str(inbound.get("bind_ip") or "0.0.0.0").strip() or "0.0.0.0"
                         preflight_error = self._preflight_inbound_target(core, inbound, bind_ip, requested_port)
                         if preflight_error:
@@ -128,7 +128,7 @@ class ForwarderRuntime:
                             logger.warning("listener rejected before start: %s:%s core=%s inbound=%s error=%s", bind_ip, requested_port, core.get("name"), inbound.get("name"), preflight_error)
                             continue
 
-                        key = f"{core.get('id') or core.get('name')}::{inbound.get('name')}::{bind_ip}:{requested_port}"
+                        key_seed = f"{core.get('id') or core.get('name')}::{inbound.get('name')}::{bind_ip}:{requested_port}:{port_index}"
                         try:
                             server = await asyncio.start_server(
                                 lambda r, w, c=core, ib=inbound: self._handle_client(c, ib, r, w),
@@ -141,6 +141,13 @@ class ForwarderRuntime:
                             sock = server.sockets[0] if server.sockets else None
                             actual_port = int(sock.getsockname()[1]) if sock else requested_port
                             self._tune_server_socket(sock)
+                            # Random listen ports are requested as 0. Multiple random listeners
+                            # for the same inbound would otherwise overwrite each other in the
+                            # server registry, leaving only the last one stoppable. Store the
+                            # actual assigned port in the key when it is known.
+                            key = f"{core.get('id') or core.get('name')}::{inbound.get('name')}::{bind_ip}:{actual_port}"
+                            if key in self.servers:
+                                key = key_seed
                             self.servers[key] = server
                             self.listeners.append({
                                 "core_id": core.get("id"),
@@ -149,6 +156,7 @@ class ForwarderRuntime:
                                 "bind_ip": bind_ip,
                                 "requested_port": requested_port,
                                 "port": actual_port,
+                                "port_mode": inbound.get("port_mode"),
                                 "target_type": inbound.get("target_type"),
                                 "target_balancer": inbound.get("target_balancer"),
                                 "status": "listening",
@@ -270,13 +278,17 @@ class ForwarderRuntime:
         return result
 
     def _preflight_inbound_target(self, core: dict[str, Any], inbound: dict[str, Any], bind_ip: str, listen_port: int) -> str:
-        if listen_port <= 0:
-            return "Inbound must have at least one fixed listen port for simple forwarding."
+        is_random_listener = str(inbound.get("port_mode") or "fixed") == "random" and listen_port == 0
+        if listen_port <= 0 and not is_random_listener:
+            return "Inbound must have at least one valid listen port for simple forwarding."
         if str(inbound.get("target_type") or "static") == "static":
             target = self._static_target(inbound)
             if not target:
                 return "Static target host/port is invalid."
-            if self._is_direct_self_loop(target, bind_ip, listen_port, inbound):
+            # With random mode the OS chooses an available ephemeral listen port,
+            # so it cannot collide with an already-listening local upstream port.
+            # Self-loop detection is still enforced for fixed ports.
+            if not is_random_listener and self._is_direct_self_loop(target, bind_ip, listen_port, inbound):
                 return (
                     f"Invalid forwarding loop: inbound {bind_ip}:{listen_port} points back to "
                     f"{target.host}:{target.port}. Set Target Host/Port to the real upstream service."
@@ -329,6 +341,30 @@ class ForwarderRuntime:
         logger.debug("resolved balancer targets: core=%s inbound=%s alias=%s strategy=%s targets=%s", core.get("name"), inbound.get("name"), alias, strategy, [t.key for t in targets])
         return targets
 
+    def _listener_host_for_target(self, bind_ip: str) -> str:
+        host = str(bind_ip or "").strip()
+        if host in {"", "0.0.0.0", "*"}:
+            return "127.0.0.1"
+        if host in {"::", "[::]"}:
+            return "::1"
+        return host
+
+    def _target_from_active_listener(self, core_id: str, inbound_name: str) -> Target | None:
+        for listener in self.listeners:
+            if listener.get("status") != "listening":
+                continue
+            if core_id and str(listener.get("core_id") or "") != core_id:
+                continue
+            if inbound_name and str(listener.get("inbound_name") or "") != inbound_name:
+                continue
+            try:
+                port = int(listener.get("port") or listener.get("requested_port") or 0)
+            except (TypeError, ValueError):
+                port = 0
+            if 1 <= port <= 65535:
+                return Target(self._listener_host_for_target(str(listener.get("bind_ip") or "127.0.0.1")), port, "node-inbound-listener")
+        return None
+
     def _target_from_endpoint(self, endpoint: dict[str, Any]) -> Target | None:
         etype = str(endpoint.get("type") or "static")
         if etype == "static":
@@ -349,6 +385,9 @@ class ForwarderRuntime:
         core_id = str(endpoint.get("core_id") or "")
         inbound_name = str(endpoint.get("inbound_name") or "")
         if inbound_name or core_id:
+            active = self._target_from_active_listener(core_id, inbound_name)
+            if active:
+                return active
             for core in self.config.get("cores", []) if isinstance(self.config.get("cores"), list) else []:
                 if core_id and str(core.get("id")) != core_id:
                     continue

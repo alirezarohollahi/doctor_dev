@@ -311,7 +311,9 @@ def inbound_catalog(node_id: str | None = None) -> list[dict[str, Any]]:
         if node_id and core.get("node_id") != node_id:
             continue
         for inbound in core.get("inbounds", []):
-            ports = inbound.get("fixed_ports", []) if inbound.get("port_mode") == "fixed" else []
+            is_random = inbound.get("port_mode") == "random"
+            ports = inbound.get("fixed_ports", []) if not is_random else []
+            random_count = inbound.get("random_count") or 1
             catalog.append(
                 {
                     "core_id": core.get("id"),
@@ -322,7 +324,8 @@ def inbound_catalog(node_id: str | None = None) -> list[dict[str, Any]]:
                     "public_host": inbound.get("public_host"),
                     "port_mode": inbound.get("port_mode"),
                     "ports": ports,
-                    "random_count": inbound.get("random_count"),
+                    "random_count": random_count,
+                    "ports_summary": f"random ×{random_count}" if is_random else ",".join(str(p) for p in ports),
                     "enabled": bool(core.get("enabled")) and bool(inbound.get("enabled")),
                     "certificate": inbound.get("certificate", ""),
                 }
@@ -393,18 +396,28 @@ def _enrich_node_inbound_endpoints(config_node_id: str, cores: list[dict[str, An
                     endpoint["resolve_error"] = "Selected node inbound was not found."
                     continue
                 port = _first_fixed_port(target_inbound)
-                if not port:
-                    endpoint["resolve_error"] = "Selected node inbound has no fixed port."
-                    continue
                 endpoint["core_id"] = str(target_core.get("id") or core_id or "") if target_core else core_id
                 endpoint["inbound_name"] = str(target_inbound.get("name") or inbound_name)
-                endpoint["port"] = port
-                if target_node_id == config_node_id:
+                if port:
+                    endpoint["port"] = port
+                    if target_node_id == config_node_id:
+                        endpoint["host"] = "127.0.0.1"
+                    else:
+                        target_node = node_map.get(target_node_id, {})
+                        endpoint["host"] = str(target_inbound.get("public_host") or _address_host(target_node.get("address")))
+                    endpoint["resolved_from"] = "node_inbound"
+                    continue
+
+                if target_inbound.get("port_mode") == "random" and target_node_id == config_node_id:
+                    # Same-node random inbounds are resolved by the node runtime
+                    # from the active listener table after port allocation. Do
+                    # not reject them at panel-build time with a fixed-port error.
                     endpoint["host"] = "127.0.0.1"
-                else:
-                    target_node = node_map.get(target_node_id, {})
-                    endpoint["host"] = str(target_inbound.get("public_host") or _address_host(target_node.get("address")))
-                endpoint["resolved_from"] = "node_inbound"
+                    endpoint["port"] = 80
+                    endpoint["resolved_from"] = "node_inbound_random_runtime"
+                    continue
+
+                endpoint["resolve_error"] = "Selected node inbound has no fixed port."
     return cores
 
 

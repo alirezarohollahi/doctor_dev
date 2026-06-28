@@ -1991,7 +1991,14 @@ function endpointSubTitle(ep) {
 function inboundOptionLabel(item) {
   var name = item.inbound_name || item.name || "Unnamed inbound";
   var coreName = item.core_name || (state.editingCore && state.editingCore.name) || "Current core";
-  var ports = Array.isArray(item.ports) && item.ports.length ? " · " + item.ports.join(",") : "";
+  var ports = "";
+  if (Array.isArray(item.ports) && item.ports.length) {
+    ports = " · " + item.ports.join(",");
+  } else if (item.port_mode === "random") {
+    ports = " · random ×" + (Number(item.random_count) || 1);
+  } else if (item.ports_summary) {
+    ports = " · " + item.ports_summary;
+  }
   return coreName + " / " + name + ports;
 }
 
@@ -2025,6 +2032,8 @@ function endpointInboundOptions(nodeId) {
         node_id: nodeId,
         inbound_name: ib.name,
         ports: ib.port_mode === "fixed" ? (ib.fixed_ports || []) : [],
+        port_mode: ib.port_mode || "fixed",
+        random_count: ib.random_count || 1,
         public_host: ib.public_host || "",
         bind_ip: ib.bind_ip || "",
       });
@@ -2612,6 +2621,21 @@ async function validateAdvancedConfig(options) {
 
 function sanitizeCorePayload(payload) {
   payload = payload || {};
+  (payload.inbounds || []).forEach(function (ib) {
+    ib.port_mode = ib.port_mode === "random" ? "random" : "fixed";
+    ib.random_count = Math.max(1, Math.min(4096, Number(ib.random_count) || 1));
+    if (!Array.isArray(ib.fixed_ports)) ib.fixed_ports = [];
+    ib.fixed_ports = ib.fixed_ports
+      .map(function (p) { return parseInt(p, 10); })
+      .filter(function (p, idx, arr) { return p >= 1 && p <= 65535 && arr.indexOf(p) === idx; });
+    if (ib.target_type === "static") {
+      ib.target_host = String(ib.target_host || "127.0.0.1").trim() || "127.0.0.1";
+      ib.target_port = Math.max(1, Math.min(65535, Number(ib.target_port) || 80));
+    } else {
+      ib.target_balancer = String(ib.target_balancer || "");
+      ib.target_port = Math.max(1, Math.min(65535, Number(ib.target_port) || 80));
+    }
+  });
   (payload.balancers || []).forEach(function (bal) {
     if (!Array.isArray(bal.endpoints)) bal.endpoints = [];
     bal.endpoints.forEach(function (ep) {
