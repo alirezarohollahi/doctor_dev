@@ -8,7 +8,7 @@ import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import uvicorn
 from fastapi import FastAPI, Header, HTTPException
@@ -37,7 +37,7 @@ def api_key() -> str:
     return os.getenv("API_KEY", "")
 
 
-def check_auth(authorization: str | None) -> None:
+def check_auth(authorization: Optional[str]) -> None:
     key = api_key()
     if not key:
         return
@@ -175,7 +175,7 @@ async def debug_request_logging(request: FastAPIRequest, call_next):
 class ApplyConfigBody(BaseModel):
     version: int = 1
     node_id: str = ""
-    generated_at: str | None = None
+    generated_at: Optional[str] = None
     cores: list[dict[str, Any]] = []
 
 
@@ -199,7 +199,7 @@ async def health() -> dict:
 
 
 @app.get("/status")
-async def status(authorization: str | None = Header(default=None)) -> dict:
+async def status(authorization: Optional[str] = Header(default=None)) -> dict:
     check_auth(authorization)
     logger.info("status requested")
     if is_debug_enabled():
@@ -220,14 +220,14 @@ async def status(authorization: str | None = Header(default=None)) -> dict:
 
 
 @app.get("/config")
-async def get_config(authorization: str | None = Header(default=None)) -> dict:
+async def get_config(authorization: Optional[str] = Header(default=None)) -> dict:
     check_auth(authorization)
     logger.info("config requested")
     return {"ok": True, "config": read_routing_config(), "summary": runtime_summary()}
 
 
 @app.get("/logs")
-async def logs(limit: int = 300, level: str = "all", q: str = "", authorization: str | None = Header(default=None)) -> dict:
+async def logs(limit: int = 300, level: str = "all", q: str = "", authorization: Optional[str] = Header(default=None)) -> dict:
     check_auth(authorization)
     path = node_log_file()
     lines = filter_lines(tail_file(path, limit=max(limit, 1)), level=level, query=q)
@@ -235,7 +235,7 @@ async def logs(limit: int = 300, level: str = "all", q: str = "", authorization:
 
 
 @app.post("/config/apply")
-async def apply_config(body: ApplyConfigBody, authorization: str | None = Header(default=None)) -> dict:
+async def apply_config(body: ApplyConfigBody, authorization: Optional[str] = Header(default=None)) -> dict:
     check_auth(authorization)
     data = body.model_dump()
     if is_debug_enabled():

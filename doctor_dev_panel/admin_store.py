@@ -5,7 +5,7 @@ import os
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from .security import create_password_hash, verify_password
 
@@ -32,7 +32,7 @@ def _empty_store() -> dict[str, Any]:
     return {"version": 1, "admins": []}
 
 
-def _env_admin() -> dict[str, Any] | None:
+def _env_admin() -> Optional[dict[str, Any]]:
     username = os.getenv("ADMIN_USERNAME", "").strip()
     password_hash = os.getenv("ADMIN_PASSWORD_HASH", "").strip()
     if username and password_hash:
@@ -102,7 +102,7 @@ def list_admins() -> list[dict[str, Any]]:
     ]
 
 
-def _find_admin(data: dict[str, Any], username: str) -> dict[str, Any] | None:
+def _find_admin(data: dict[str, Any], username: str) -> Optional[dict[str, Any]]:
     for item in data.get("admins", []):
         if str(item.get("username", "")) == username:
             return item

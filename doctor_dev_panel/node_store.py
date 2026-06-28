@@ -6,7 +6,7 @@ import secrets
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from .id_utils import is_valid_node_id
 
@@ -81,7 +81,7 @@ def save_store(data: dict[str, Any]) -> None:
                 pass
 
 
-def normalize_node(payload: dict[str, Any], existing: dict[str, Any] | None = None) -> dict[str, Any]:
+def normalize_node(payload: dict[str, Any], existing: Optional[dict[str, Any]] = None) -> dict[str, Any]:
     now = _now()
     base = dict(existing or {})
     base.update(payload)
@@ -119,7 +119,7 @@ def list_nodes() -> list[dict[str, Any]]:
     return cleaned
 
 
-def get_node(node_id: str) -> dict[str, Any] | None:
+def get_node(node_id: str) -> Optional[dict[str, Any]]:
     if not is_valid_node_id(node_id):
         return None
     for node in list_nodes():
@@ -137,7 +137,7 @@ def create_node(payload: dict[str, Any]) -> dict[str, Any]:
     return node
 
 
-def update_node(node_id: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+def update_node(node_id: str, payload: dict[str, Any]) -> Optional[dict[str, Any]]:
     if not is_valid_node_id(node_id):
         return None
     data = load_store()
@@ -153,7 +153,7 @@ def update_node(node_id: str, payload: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
-def set_node_check_result(node_id: str, *, ok: bool, error: str = "", details: dict[str, Any] | None = None) -> dict[str, Any] | None:
+def set_node_check_result(node_id: str, *, ok: bool, error: str = "", details: Optional[dict[str, Any]] = None) -> Optional[dict[str, Any]]:
     if not is_valid_node_id(node_id):
         return None
     data = load_store()

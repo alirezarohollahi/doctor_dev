@@ -6,7 +6,7 @@ import os
 import random
 import socket
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Optional
 
 logger = logging.getLogger("doctor_dev_node.runtime")
 
@@ -295,7 +295,7 @@ class ForwarderRuntime:
                 )
         return ""
 
-    def _static_target(self, inbound: dict[str, Any]) -> Target | None:
+    def _static_target(self, inbound: dict[str, Any]) -> Optional[Target]:
         host = str(inbound.get("target_host") or "").strip()
         try:
             port = int(inbound.get("target_port") or 0)
@@ -349,7 +349,7 @@ class ForwarderRuntime:
             return "::1"
         return host
 
-    def _target_from_active_listener(self, core_id: str, inbound_name: str) -> Target | None:
+    def _target_from_active_listener(self, core_id: str, inbound_name: str) -> Optional[Target]:
         for listener in self.listeners:
             if listener.get("status") != "listening":
                 continue
@@ -365,7 +365,7 @@ class ForwarderRuntime:
                 return Target(self._listener_host_for_target(str(listener.get("bind_ip") or "127.0.0.1")), port, "node-inbound-listener")
         return None
 
-    def _target_from_endpoint(self, endpoint: dict[str, Any]) -> Target | None:
+    def _target_from_endpoint(self, endpoint: dict[str, Any]) -> Optional[Target]:
         etype = str(endpoint.get("type") or "static")
         if etype == "static":
             host = str(endpoint.get("host") or "").strip()
@@ -437,7 +437,7 @@ class ForwarderRuntime:
                 return True
         return False
 
-    async def _connect_target(self, targets: list[Target], inbound: dict[str, Any]) -> tuple[Target, asyncio.StreamReader, asyncio.StreamWriter] | None:
+    async def _connect_target(self, targets: list[Target], inbound: dict[str, Any]) -> Optional[tuple[Target, asyncio.StreamReader, asyncio.StreamWriter]]:
         last_error = ""
         for target in targets:
             if self._is_runtime_self_loop(target, inbound):
@@ -460,8 +460,8 @@ class ForwarderRuntime:
         self.connection_count += 1
         self.active_connections += 1
         peer = client_writer.get_extra_info("peername")
-        target_writer: asyncio.StreamWriter | None = None
-        target: Target | None = None
+        target_writer: Optional[asyncio.StreamWriter] = None
+        target: Optional[Target] = None
         self._tune_stream_writer(client_writer)
         try:
             targets = self._resolve_targets(core, inbound)
@@ -531,7 +531,7 @@ class ForwarderRuntime:
         except Exception:
             pass
 
-    def _tune_server_socket(self, sock: socket.socket | None) -> None:
+    def _tune_server_socket(self, sock: Optional[socket.socket]) -> None:
         if sock is None:
             return
         self._tune_socket(sock)

@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Union
 
 _TRUE_VALUES = {"1", "true", "yes", "on", "debug", "enabled"}
 _SENSITIVE_KEYS = {
@@ -152,7 +152,7 @@ def setup_node_logging() -> Path:
     return path
 
 
-def tail_file(path: str | os.PathLike[str], limit: int = 200) -> list[str]:
+def tail_file(path: Union[str, os.PathLike[str]], limit: int = 200) -> list[str]:
     limit = max(1, min(int(limit or 200), 5000))
     file_path = Path(path).expanduser()
     if not file_path.exists() or not file_path.is_file():

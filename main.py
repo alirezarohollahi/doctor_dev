@@ -4,7 +4,7 @@ from __future__ import annotations
 import argparse
 import os
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Optional
 
 import uvicorn
 
@@ -40,7 +40,7 @@ def _env_flag(*names: str, default: bool = False) -> bool:
     return value.lower() in _TRUE_VALUES
 
 
-def _normalize_mode(value: str | None) -> str | None:
+def _normalize_mode(value: Optional[str]) -> Optional[str]:
     if value is None:
         return None
     normalized = value.strip().lower().replace("_", "-")
@@ -56,7 +56,7 @@ def _normalize_mode(value: str | None) -> str | None:
     )
 
 
-def _first_existing_path(paths: Iterable[str | None]) -> Path | None:
+def _first_existing_path(paths: Iterable[Optional[str]]) -> Optional[Path]:
     for raw in paths:
         if not raw:
             continue
@@ -66,7 +66,7 @@ def _first_existing_path(paths: Iterable[str | None]) -> Path | None:
     return None
 
 
-def _mode_hint() -> str | None:
+def _mode_hint() -> Optional[str]:
     for name in _MODE_ENV_NAMES:
         mode = _normalize_mode(os.getenv(name))
         if mode:
@@ -74,7 +74,7 @@ def _mode_hint() -> str | None:
     return None
 
 
-def _load_environment(args: argparse.Namespace) -> Path | None:
+def _load_environment(args: argparse.Namespace) -> Optional[Path]:
     # The installer/service still passes --env for the panel. That remains the
     # strongest source, so doctor_dev.sh and existing systemd units keep working.
     if args.env:
@@ -119,7 +119,7 @@ def _load_environment(args: argparse.Namespace) -> Path | None:
     return env_path
 
 
-def _current_mode(cli_mode: str | None) -> str:
+def _current_mode(cli_mode: Optional[str]) -> str:
     cli = _normalize_mode(cli_mode)
     if cli:
         return cli
@@ -144,7 +144,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def run_panel(args: argparse.Namespace, env_path: Path | None) -> None:
+def run_panel(args: argparse.Namespace, env_path: Optional[Path]) -> None:
     from doctor_dev_panel.logging_utils import is_debug_enabled, setup_panel_logging
 
     host = args.host or os.getenv("HOST", "0.0.0.0")
@@ -171,7 +171,7 @@ def run_panel(args: argparse.Namespace, env_path: Path | None) -> None:
     )
 
 
-def run_node(args: argparse.Namespace, env_path: Path | None) -> None:
+def run_node(args: argparse.Namespace, env_path: Optional[Path]) -> None:
     from doctor_dev_node.logging_utils import is_debug_enabled, setup_node_logging
 
     host = args.host or os.getenv("NODE_HOST") or os.getenv("HOST", "127.0.0.1")

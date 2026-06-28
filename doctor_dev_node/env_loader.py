@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Union
 
 
-def load_env_file(path: str | os.PathLike[str]) -> None:
+def load_env_file(path: Union[str, os.PathLike[str]]) -> None:
     env_path = Path(path).expanduser()
     if not env_path.exists():
         return

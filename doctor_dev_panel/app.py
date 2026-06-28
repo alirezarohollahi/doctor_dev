@@ -11,6 +11,7 @@ from http.client import RemoteDisconnected
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
+from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi import Request as FastAPIRequest
@@ -181,7 +182,7 @@ assets_dir = WEB_DIR / "assets"
 app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
 
 
-def _node_host(address: str) -> tuple[str, str | None]:
+def _node_host(address: str) -> tuple[str, Optional[str]]:
     raw = (address or "").strip()
     if not raw:
         raise ValueError("Node address is empty.")

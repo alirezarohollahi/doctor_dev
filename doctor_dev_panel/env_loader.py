@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Optional, Union
 
 
-def load_env_file(path: str | os.PathLike[str] | None) -> None:
+def load_env_file(path: Optional[Union[str, os.PathLike[str]]]) -> None:
     """Load simple KEY=VALUE lines into os.environ without overriding existing values."""
     if not path:
         return

@@ -5,6 +5,7 @@ import getpass
 import json
 import os
 import sys
+from typing import Optional
 
 from .env_loader import load_env_file
 
@@ -30,7 +31,7 @@ def _prompt_password() -> str:
         return password
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(prog="doctor-dev admin", description="Manage Doctor Dev Panel admins")
     sub = parser.add_subparsers(dest="command", required=True)
 

@@ -6,7 +6,7 @@ import secrets
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 from urllib.parse import urlparse
 
 from .id_utils import is_valid_core_id, is_valid_node_id
@@ -217,7 +217,7 @@ def normalize_advanced_config(payload: Any) -> dict[str, Any]:
     }
 
 
-def normalize_core(payload: dict[str, Any], existing: dict[str, Any] | None = None) -> dict[str, Any]:
+def normalize_core(payload: dict[str, Any], existing: Optional[dict[str, Any]] = None) -> dict[str, Any]:
     now = _now()
     base = dict(existing or {})
     base.update(payload)
@@ -257,7 +257,7 @@ def list_cores() -> list[dict[str, Any]]:
     return cleaned
 
 
-def get_core(core_id: str) -> dict[str, Any] | None:
+def get_core(core_id: str) -> Optional[dict[str, Any]]:
     if not is_valid_core_id(core_id):
         return None
     for core in list_cores():
@@ -275,7 +275,7 @@ def create_core(payload: dict[str, Any]) -> dict[str, Any]:
     return core
 
 
-def update_core(core_id: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+def update_core(core_id: str, payload: dict[str, Any]) -> Optional[dict[str, Any]]:
     if not is_valid_core_id(core_id):
         return None
     data = load_store()
@@ -305,7 +305,7 @@ def remove_core(core_id: str) -> bool:
     return True
 
 
-def inbound_catalog(node_id: str | None = None) -> list[dict[str, Any]]:
+def inbound_catalog(node_id: Optional[str] = None) -> list[dict[str, Any]]:
     catalog: list[dict[str, Any]] = []
     for core in list_cores():
         if node_id and core.get("node_id") != node_id:
@@ -342,7 +342,7 @@ def _address_host(address: Any) -> str:
     return host.strip() or "127.0.0.1"
 
 
-def _first_fixed_port(inbound: dict[str, Any]) -> int | None:
+def _first_fixed_port(inbound: dict[str, Any]) -> Optional[int]:
     for item in inbound.get("fixed_ports") or []:
         try:
             port = int(item)
@@ -370,7 +370,7 @@ def _enrich_node_inbound_endpoints(config_node_id: str, cores: list[dict[str, An
     all_cores = list_cores()
     node_map = {str(node.get("id")): node for node in list_nodes() if isinstance(node, dict)}
 
-    def find_inbound(target_node_id: str, core_id: str, inbound_name: str) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    def find_inbound(target_node_id: str, core_id: str, inbound_name: str) -> tuple[Optional[dict[str, Any]], Optional[dict[str, Any]]]:
         for core in all_cores:
             if target_node_id and str(core.get("node_id") or "") != target_node_id:
                 continue
@@ -450,7 +450,7 @@ def build_node_config(node_id: str) -> dict[str, Any]:
     }
 
 
-def set_core_apply_result(core_id: str, *, ok: bool, error: str = "") -> dict[str, Any] | None:
+def set_core_apply_result(core_id: str, *, ok: bool, error: str = "") -> Optional[dict[str, Any]]:
     if not is_valid_core_id(core_id):
         return None
     data = load_store()

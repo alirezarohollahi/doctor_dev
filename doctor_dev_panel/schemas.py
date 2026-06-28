@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -25,7 +25,7 @@ class NodeBody(BaseModel):
     connection_type: str = Field(default="grpc", pattern="^grpc$")
     keep_alive_value: int = Field(default=60, ge=1)
     keep_alive_unit: str = Field(default="seconds", pattern="^(seconds|minutes|hours)$")
-    data_limit_gb: float | None = Field(default=None, ge=0)
+    data_limit_gb: Optional[float] = Field(default=None, ge=0)
     default_timeout: int = Field(default=10, ge=1)
     internal_timeout: int = Field(default=15, ge=1)
     proxy_url: str = Field(default="", max_length=500)
