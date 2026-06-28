@@ -93,6 +93,10 @@ def normalize_node(payload: dict[str, Any], existing: dict[str, Any] | None = No
     # Core Configuration is intentionally not part of Create Node anymore.
     base.pop("core_configuration", None)
 
+    # Current node agent supports gRPC only. Normalize legacy UI values so the
+    # stored data stays in sync with the panel and future edits never emit direct/proxy.
+    base["connection_type"] = "grpc"
+
     # New nodes are enabled by default. Existing disabled nodes remain disabled unless edited.
     base["enabled"] = bool(base.get("enabled", True))
     if not base["enabled"]:

@@ -69,7 +69,7 @@ usage(){
   cecho "  sudo bash doctor_dev.sh ${GREEN}install-panel${RESET} [--admin-user USER] [--admin-password PASS] [--panel-port PORT] [--public-host HOST] [--yes]"
   cecho "  sudo bash doctor_dev.sh ${GREEN}update-panel${RESET} [--yes]"
   cecho "  sudo bash doctor_dev.sh ${GREEN}uninstall-panel${RESET} [--purge] [--yes]"
-  cecho "  sudo bash doctor_dev.sh ${GREEN}install-node${RESET} [--node-cli-name doctor-node] [--api-port PORT] [--service-port PORT] [--yes]"
+  cecho "  sudo bash doctor_dev.sh ${GREEN}install-node${RESET} [--node-cli-name doctor-node] [--api-port PORT] [--service-port PORT] [--yes]  ${DIM}# gRPC only${RESET}"
   cecho "  sudo bash doctor_dev.sh ${GREEN}update-node${RESET} [--node-cli-name doctor-node]"
   cecho "  sudo bash doctor_dev.sh ${GREEN}uninstall-node${RESET} [--node-cli-name doctor-node] [--purge] [--yes]"
   echo
@@ -216,9 +216,11 @@ port_pids(){
 }
 
 pid_is_doctor_dev(){
-  local pid="$1" args
+  local pid="$1" args cwd exe
   args="$(ps -p "$pid" -o args= 2>/dev/null || true)"
-  [[ "$args" == *doctor-dev-panel* || "$args" == *doctor_dev_panel* || "$args" == *doctor-dev-node* || "$args" == *doctor_dev_node* || "$args" == *docter-node* || "$args" == *doctor-node* ]]
+  cwd="$(readlink "/proc/$pid/cwd" 2>/dev/null || true)"
+  exe="$(readlink "/proc/$pid/exe" 2>/dev/null || true)"
+  [[ "$args $cwd $exe" =~ doctor[-_]dev[-_]panel|doctor_dev_panel|doctor[-_]dev[-_]node|doctor_dev_node|doctor-node|docter-node|/opt/doctor-dev-node|/opt/docter-node|/etc/doctor-dev-node|/etc/docter-node ]]
 }
 
 port_usage_details(){
@@ -346,9 +348,9 @@ stop_disable_service(){
 collect_doctor_process_items(){
   local kind="$1" pattern pid args
   if [[ "$kind" == "panel" ]]; then
-    pattern='doctor-dev-panel|doctor_dev_panel|/opt/doctor-dev-panel|/etc/doctor-dev-panel/panel.env'
+    pattern='doctor-dev-panel|doctor_dev_panel|/opt/doctor-dev-panel|/etc/doctor-dev-panel/panel.env|Doctor Dev Panel'
   else
-    pattern='doctor-dev-node|doctor_dev_node|doctor-node|docter-node|/opt/doctor-node|/opt/docter-node'
+    pattern='doctor-dev-node|doctor_dev_node|doctor_dev_node.server|doctor-node|docter-node|/opt/doctor-node|/opt/docter-node|/opt/doctor-dev-node|/etc/doctor-node|/etc/docter-node|/etc/doctor-dev-node|Doctor Dev Node'
   fi
   while IFS= read -r line; do
     pid="${line%% *}"
@@ -357,6 +359,39 @@ collect_doctor_process_items(){
     [[ "$args" == *grep* ]] && continue
     printf 'process:%s\n' "$pid"
   done < <(ps -eo pid=,args= | awk '{$1=$1; print}' | grep -E "$pattern" || true)
+}
+
+collect_doctor_service_items(){
+  local kind="$1" pattern unit name content
+  if ! systemctl_exists; then return 0; fi
+  if [[ "$kind" == "panel" ]]; then
+    pattern='doctor-dev-panel|doctor_dev_panel|/opt/doctor-dev-panel|/etc/doctor-dev-panel|Doctor Dev Panel'
+  else
+    pattern='doctor-dev-node|doctor_dev_node|doctor_dev_node.server|doctor-node|docter-node|/opt/doctor-node|/opt/docter-node|/opt/doctor-dev-node|/etc/doctor-node|/etc/docter-node|/etc/doctor-dev-node|Doctor Dev Node'
+  fi
+  {
+    systemctl list-unit-files --type=service --no-legend 2>/dev/null | awk '{print $1}'
+    systemctl list-units --all --type=service --no-legend 2>/dev/null | awk '{gsub(/^●/,"",$1); print $1}'
+    find /etc/systemd/system /lib/systemd/system /usr/lib/systemd/system -maxdepth 1 -type f -name '*.service' -printf '%f\n' 2>/dev/null
+  } | awk 'NF && !seen[$0]++' | while IFS= read -r unit; do
+    [[ -n "$unit" ]] || continue
+    name="${unit%.service}"
+    if [[ "$unit $name" =~ $pattern ]]; then
+      printf 'systemd:%s\n' "$name"
+      continue
+    fi
+    content="$(systemctl cat "$unit" 2>/dev/null | head -c 20000 || true)"
+    [[ "$content" =~ $pattern ]] && printf 'systemd:%s\n' "$name"
+  done
+}
+
+collect_node_dynamic_paths(){
+  local root
+  for root in /opt /etc /var/lib /var/log; do
+    [[ -d "$root" ]] || continue
+    find "$root" -maxdepth 1 \( -iname '*doctor*node*' -o -iname '*docter*node*' \) -print 2>/dev/null
+  done
+  find /usr/local/bin -maxdepth 1 \( -iname '*doctor*node*' -o -iname '*docter*node*' \) -print 2>/dev/null || true
 }
 
 collect_existing_paths(){
@@ -381,7 +416,9 @@ collect_existing_paths(){
       service_known "$name" && found+=("systemd:${name}")
     done
     while IFS= read -r svc; do [[ -n "$svc" ]] && found+=("systemd:${svc%.service}"); done < <(find /etc/systemd/system -maxdepth 1 -type f -name 'doctor-dev-node*.service' -printf '%f\n' 2>/dev/null || true)
+    while IFS= read -r path; do [[ -n "$path" ]] && found+=("$path"); done < <(collect_node_dynamic_paths)
   fi
+  while IFS= read -r svc_item; do [[ -n "$svc_item" ]] && found+=("$svc_item"); done < <(collect_doctor_service_items "$kind")
   while IFS= read -r proc_item; do [[ -n "$proc_item" ]] && found+=("$proc_item"); done < <(collect_doctor_process_items "$kind")
   printf '%s\n' "${found[@]}" | awk 'NF && !seen[$0]++'
 }
@@ -431,6 +468,8 @@ remove_found_items(){
 clean_existing_or_fail(){
   local kind="$1"; shift
   local -a items=()
+  step "Deep ${kind} scan"
+  subtle "Scanning services, processes, app dirs, config dirs, data dirs, log dirs and old CLI names..."
   mapfile -t items < <(collect_existing_paths "$kind" "$@")
   if [[ ${#items[@]} -eq 0 ]]; then ok "No previous ${kind} installation was found."; return; fi
   show_found_items "Previous ${kind} installation items found:" "${items[@]}"
@@ -763,7 +802,11 @@ install_node(){
   else
     api_port="$(ask_port_named "API_PORT / control-plane port" "62051" "$node_host")"
   fi
-  service_protocol="${ARG_SERVICE_PROTOCOL:-$(ask "SERVICE_PROTOCOL" "grpc")}"; service_protocol="${service_protocol,,}"; [[ "$service_protocol" == "grpc" || "$service_protocol" == "rest" ]] || fail "SERVICE_PROTOCOL must be grpc or rest."
+  service_protocol="grpc"
+  if [[ -n "$ARG_SERVICE_PROTOCOL" && "${ARG_SERVICE_PROTOCOL,,}" != "grpc" ]]; then
+    warn "Only gRPC is supported by this node installer. Ignoring requested protocol: $ARG_SERVICE_PROTOCOL"
+  fi
+  ok "Connection protocol: gRPC"
   cert_file=""; key_file=""
   tls_choice="${ARG_TLS_MODE:-}"
   if [[ -z "$tls_choice" ]]; then cecho "${BOLD}SSL/TLS Configuration${RESET}"; cecho "  1) No SSL/TLS now"; cecho "  2) I already have certificate/key paths"; tls_choice="$(ask "Choose SSL/TLS mode" "1")"; fi

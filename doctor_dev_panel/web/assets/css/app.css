@@ -3294,3 +3294,124 @@ textarea:hover {
   max-width: 1em;
   max-height: 1em;
 }
+
+/* ========================================================================== 
+   PHASE 2 HOTFIX — Node modal alignment + local Font Awesome icon cleanup
+   ========================================================================== */
+
+/* The status strip has a left status group and right actions. Do not size the
+   wrapper like a tiny dot; only the inner .status-dot is the dot. */
+.status-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.status-strip-indicator {
+  width: auto !important;
+  height: auto !important;
+  min-width: 0;
+  display: inline-flex !important;
+  align-items: center;
+  gap: 8px;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--text);
+  font-weight: 800;
+  line-height: 1;
+}
+
+.status-strip-indicator .status-dot {
+  width: 8px;
+  height: 8px;
+  box-shadow: 0 0 0 4px rgba(148, 163, 184, 0.12);
+}
+
+.status-strip-indicator .status-text {
+  display: inline-block;
+  min-width: max-content;
+  white-space: nowrap;
+}
+
+.status-strip-controls {
+  margin-left: auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.toggle-label--inline,
+.status-strip-controls .toggle-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: max-content;
+  white-space: nowrap;
+}
+
+.toggle-text {
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.form-hint {
+  margin: 6px 0 0;
+}
+
+/* Earlier text rules targeted every span inside feature cards. Keep the icon
+   container flex and apply text styling only to the copy span. */
+.brand-feature-item > .brand-feature-icon,
+.feature-item > .feature-icon {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  width: 42px !important;
+  height: 42px !important;
+  min-width: 42px !important;
+  flex: 0 0 42px !important;
+}
+
+.brand-feature-item > div > span,
+.feature-item > div > span {
+  display: block;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+
+.brand-feature-icon .fa,
+.feature-icon .fa,
+.login-card-logo .fa,
+.brand-logo .fa {
+  transform: none !important;
+}
+
+.login-card-logo .fa {
+  font-size: 1.15rem !important;
+}
+
+/* Node modal: keep labels away from the status/toggle row on compact widths. */
+.node-form-grid {
+  margin-top: 2px;
+}
+
+@media (max-width: 720px) {
+  .status-strip {
+    align-items: stretch;
+  }
+
+  .status-strip-indicator,
+  .status-strip-controls,
+  .status-strip-controls .btn {
+    width: 100%;
+  }
+
+  .status-strip-controls {
+    margin-left: 0;
+    justify-content: stretch;
+  }
+}

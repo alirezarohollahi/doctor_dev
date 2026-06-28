@@ -22,13 +22,22 @@ class NodeBody(BaseModel):
     # Node installer/runtime settings. The panel stores them now and uses api_port
     # for management; node_port is reserved for data-plane/listener traffic.
     usage_ratio: float = Field(default=1, ge=0)
-    connection_type: str = Field(default="grpc", pattern="^(grpc|rest)$")
+    connection_type: str = Field(default="grpc", pattern="^grpc$")
     keep_alive_value: int = Field(default=60, ge=1)
     keep_alive_unit: str = Field(default="seconds", pattern="^(seconds|minutes|hours)$")
     data_limit_gb: float | None = Field(default=None, ge=0)
     default_timeout: int = Field(default=10, ge=1)
     internal_timeout: int = Field(default=15, ge=1)
     proxy_url: str = Field(default="", max_length=500)
+
+    @field_validator("connection_type", mode="before")
+    @classmethod
+    def normalize_connection_type(cls, value: object) -> str:
+        # The current node agent supports gRPC control-plane communication only.
+        # Older UI builds used values like direct/proxy; normalize them so edits
+        # of old records do not fail with a raw Pydantic pattern error.
+        value_text = str(value or "grpc").strip().lower()
+        return "grpc" if value_text in {"", "grpc", "direct", "proxy", "rest"} else value_text
 
 
 class CoreInboundBody(BaseModel):

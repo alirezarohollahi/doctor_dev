@@ -751,7 +751,7 @@ function openNodeModal(node) {
     setVal("#nodeName", node.name);
     setVal("#nodeAddress", node.address);
     setVal("#apiPort", node.api_port);
-    setVal("#connectionType", node.connection_type);
+    setVal("#connectionType", "grpc");
     setVal("#apiKey", node.api_key);
 
     var tlsEl = null; // TLS is managed via certificate field
@@ -793,7 +793,7 @@ function nodePayload() {
     name: get("#nodeName"),
     address: get("#nodeAddress"),
     api_port: parseInt(get("#apiPort"), 10) || 62051,
-    connection_type: get("#connectionType") || "grpc",
+    connection_type: "grpc",
     api_key: get("#apiKey"),
     enabled: getChecked("#nodeEnabled"),
   };
