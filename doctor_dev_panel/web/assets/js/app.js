@@ -139,6 +139,8 @@ const state = {
   logSources: [],
   currentLogSource: "panel",
   logAutoRefreshTimer: null,
+  logRefreshIntervalSeconds: 10,
+  logsLoading: false,
   rawLogLines: [],
 };
 
@@ -370,12 +372,7 @@ function showLogin() {
 
 function switchPage(page) {
   if (state.page === "logs" && page !== "logs") {
-    if (state.logAutoRefreshTimer) {
-      clearInterval(state.logAutoRefreshTimer);
-      state.logAutoRefreshTimer = null;
-      var cb = $("#logAutoRefresh");
-      if (cb) cb.checked = false;
-    }
+    stopLogAutoRefresh(true);
   }
 
   state.page = page;
@@ -2466,7 +2463,64 @@ function colorizeLogLine(line) {
   return span;
 }
 
-async function loadLogs() {
+function clampLogRefreshInterval(value) {
+  var num = Number(value);
+  if (!Number.isFinite(num)) num = 10;
+  num = Math.round(num);
+  return Math.max(1, Math.min(num, 3600));
+}
+
+function getLogRefreshIntervalSeconds() {
+  var input = $("#logRefreshIntervalInput");
+  var seconds = clampLogRefreshInterval(input ? input.value : state.logRefreshIntervalSeconds);
+  state.logRefreshIntervalSeconds = seconds;
+  if (input && String(input.value) !== String(seconds)) input.value = String(seconds);
+  try {
+    localStorage.setItem("doctorDev.logRefreshIntervalSeconds", String(seconds));
+  } catch (_) {}
+  return seconds;
+}
+
+function updateLogAutoRefreshLabel(active) {
+  var lastUpdEl = $("#logsLastUpdated");
+  if (!lastUpdEl) return;
+  if (active) {
+    lastUpdEl.textContent =
+      "Live refresh: every " + getLogRefreshIntervalSeconds() + " second" +
+      (getLogRefreshIntervalSeconds() === 1 ? "" : "s");
+  }
+}
+
+function stopLogAutoRefresh(uncheck) {
+  if (state.logAutoRefreshTimer) {
+    clearInterval(state.logAutoRefreshTimer);
+    state.logAutoRefreshTimer = null;
+  }
+  if (uncheck) {
+    var cb = $("#logAutoRefresh");
+    if (cb) cb.checked = false;
+  }
+}
+
+function startLogAutoRefresh() {
+  stopLogAutoRefresh(false);
+  var seconds = getLogRefreshIntervalSeconds();
+  state.logAutoRefreshTimer = setInterval(function () {
+    if (state.page === "logs") loadLogs({ silent: true });
+  }, seconds * 1000);
+  updateLogAutoRefreshLabel(true);
+}
+
+function syncLogAutoRefresh() {
+  var cb = $("#logAutoRefresh");
+  if (cb && cb.checked) startLogAutoRefresh();
+  else stopLogAutoRefresh(false);
+}
+
+async function loadLogs(options) {
+  options = options || {};
+  if (state.logsLoading) return;
+  state.logsLoading = true;
   var sourceEl = $("#logSourceSelect");
   var limitEl = $("#logLimitSelect");
   var levelEl = $("#logLevelSelect");
@@ -2498,9 +2552,12 @@ async function loadLogs() {
       lastUpdEl.textContent = "Updated: " + new Date().toLocaleTimeString();
   } catch (err) {
     renderLogs(null);
-    showToast(err.message || "Failed to load logs.", "error");
+    if (!options.silent) showToast(err.message || "Failed to load logs.", "error");
   } finally {
     if (refreshBtn) refreshBtn.disabled = false;
+    state.logsLoading = false;
+    var autoCb = $("#logAutoRefresh");
+    if (autoCb && autoCb.checked) updateLogAutoRefreshLabel(true);
   }
 }
 
@@ -2748,18 +2805,27 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 
+  var logRefreshIntervalInput = $("#logRefreshIntervalInput");
+  if (logRefreshIntervalInput) {
+    try {
+      var savedInterval = localStorage.getItem("doctorDev.logRefreshIntervalSeconds");
+      if (savedInterval) logRefreshIntervalInput.value = String(clampLogRefreshInterval(savedInterval));
+    } catch (_) {}
+    state.logRefreshIntervalSeconds = clampLogRefreshInterval(logRefreshIntervalInput.value);
+    logRefreshIntervalInput.addEventListener("change", syncLogAutoRefresh);
+    logRefreshIntervalInput.addEventListener("input", function () {
+      state.logRefreshIntervalSeconds = clampLogRefreshInterval(logRefreshIntervalInput.value);
+    });
+  }
+
   var logAutoRefresh = $("#logAutoRefresh");
   if (logAutoRefresh) {
     logAutoRefresh.addEventListener("change", function () {
       if (logAutoRefresh.checked) {
-        if (!state.logAutoRefreshTimer) {
-          state.logAutoRefreshTimer = setInterval(loadLogs, 10000);
-        }
+        loadLogs({ silent: true });
+        startLogAutoRefresh();
       } else {
-        if (state.logAutoRefreshTimer) {
-          clearInterval(state.logAutoRefreshTimer);
-          state.logAutoRefreshTimer = null;
-        }
+        stopLogAutoRefresh(false);
       }
     });
   }

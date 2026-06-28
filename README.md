@@ -56,3 +56,7 @@ curl -fsSL https://github.com/alirezarohollahi/doctor_dev/raw/refs/heads/master/
 ```
 
 Hard refresh the browser after update: `Ctrl + F5`.
+
+## Phase 2 log interval hotfix
+
+The Logs page now lets the admin choose the auto-refresh interval in seconds. The same control applies to panel logs and every node log source. The UI clamps the interval to 1-3600 seconds, persists the value in browser storage, and avoids overlapping requests when a node is slow to answer.

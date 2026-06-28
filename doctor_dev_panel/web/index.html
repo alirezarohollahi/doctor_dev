@@ -814,23 +814,39 @@
                             <!-- /.logs-toolbar-main -->
 
                             <div class="logs-toolbar-actions">
-                                <label
-                                    class="toggle-label toggle-label--inline"
-                                    for="logAutoRefresh"
-                                >
-                                    <input
-                                        id="logAutoRefresh"
-                                        type="checkbox"
-                                        class="toggle-input"
-                                    />
-                                    <span
-                                        class="toggle-track"
-                                        aria-hidden="true"
+                                <div class="log-refresh-control" aria-label="Log refresh interval">
+                                    <label class="log-refresh-interval" for="logRefreshIntervalInput">
+                                        <span class="log-refresh-label">Every</span>
+                                        <input
+                                            id="logRefreshIntervalInput"
+                                            type="number"
+                                            min="1"
+                                            max="3600"
+                                            step="1"
+                                            value="10"
+                                            class="input log-refresh-input"
+                                            aria-label="Refresh interval in seconds"
+                                        />
+                                        <span class="log-refresh-unit">sec</span>
+                                    </label>
+                                    <label
+                                        class="toggle-label toggle-label--inline log-auto-toggle"
+                                        for="logAutoRefresh"
                                     >
-                                        <span class="toggle-thumb"></span>
-                                    </span>
-                                    <span class="toggle-text">Auto</span>
-                                </label>
+                                        <input
+                                            id="logAutoRefresh"
+                                            type="checkbox"
+                                            class="toggle-input"
+                                        />
+                                        <span
+                                            class="toggle-track"
+                                            aria-hidden="true"
+                                        >
+                                            <span class="toggle-thumb"></span>
+                                        </span>
+                                        <span class="toggle-text">Auto refresh</span>
+                                    </label>
+                                </div>
 
                                 <button
                                     id="copyLogsBtn"
