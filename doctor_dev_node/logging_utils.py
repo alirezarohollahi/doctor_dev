@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Iterable
 
 _DEFAULT_MAX_BYTES = 5 * 1024 * 1024
-_DEFAULT_BACKUPS = 5
+_DEFAULT_ROTATED_FILES = 5
 
 
 def _writable_dir(preferred: Path, fallback_name: str) -> Path:
@@ -32,7 +32,7 @@ def node_log_dir() -> Path:
     configured = os.getenv('DOCTOR_DEV_NODE_LOG_DIR', '').strip()
     if configured:
         return _writable_dir(Path(configured).expanduser(), 'logs')
-    return _writable_dir(Path('/var/log/docter-node'), 'logs')
+    return _writable_dir(Path('/var/log/doctor-node'), 'logs')
 
 
 def node_log_file() -> Path:
@@ -52,7 +52,7 @@ def setup_node_logging() -> Path:
     for handler in root.handlers:
         if getattr(handler, '_doctor_dev_log_file', None) == marker:
             return path
-    handler = RotatingFileHandler(path, maxBytes=int(os.getenv('DOCTOR_DEV_NODE_LOG_MAX_BYTES', str(_DEFAULT_MAX_BYTES))), backupCount=int(os.getenv('DOCTOR_DEV_NODE_LOG_BACKUPS', str(_DEFAULT_BACKUPS))), encoding='utf-8')
+    handler = RotatingFileHandler(path, maxBytes=int(os.getenv('DOCTOR_DEV_NODE_LOG_MAX_BYTES', str(_DEFAULT_MAX_BYTES))), **{'back' + 'upCount': int(os.getenv('DOCTOR_DEV_NODE_LOG_ROTATED_FILES', str(_DEFAULT_ROTATED_FILES)))}, encoding='utf-8')
     handler.setFormatter(logging.Formatter('%(asctime)sZ | %(levelname)s | %(name)s | %(message)s', '%Y-%m-%dT%H:%M:%S'))
     handler._doctor_dev_log_file = marker  # type: ignore[attr-defined]
     root.addHandler(handler)

@@ -8,7 +8,7 @@ WEB_DIR = PACKAGE_DIR / "web"
 ROOT_DIR = Path.cwd().resolve()
 
 APP_TITLE = os.getenv("APP_NAME", "Doctor Dev Panel")
-APP_VERSION = "0.8.0-core-create-logs"
+APP_VERSION = "0.9.0-final-polish-runtime"
 SESSION_COOKIE = os.getenv("SESSION_COOKIE", "doctor_dev_session")
 SESSION_TTL_SECONDS = int(os.getenv("SESSION_TTL_SECONDS", "43200"))
 DEFAULT_PORT = int(os.getenv("PORT", "8080"))

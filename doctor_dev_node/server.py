@@ -16,6 +16,7 @@ from pydantic import BaseModel
 from . import __version__
 from .env_loader import load_env_file
 from .logging_utils import filter_lines, node_log_file, setup_node_logging, tail_file
+from .runtime import runtime
 
 app = FastAPI(title="Doctor Dev Node", version=__version__, docs_url=None, redoc_url=None)
 logger = logging.getLogger("doctor_dev_node.server")
@@ -96,8 +97,7 @@ def runtime_summary() -> dict[str, Any]:
         "inbounds_total": len(inbounds),
         "balancers_total": len(balancers),
         "generated_at": cfg.get("generated_at"),
-        "runtime_active": False,
-        "note": "Routing config storage is ready; high-performance forwarding runtime is not attached yet.",
+        **runtime.summary(),
     }
 
 
@@ -167,8 +167,27 @@ async def apply_config(body: ApplyConfigBody, authorization: str | None = Header
     data = body.model_dump()
     data["applied_at"] = now()
     write_routing_config(data)
-    logger.info("routing config applied: node_id=%s cores=%s", data.get("node_id"), len(data.get("cores") or []))
-    return {"ok": True, "message": "Routing config saved on node.", "summary": runtime_summary()}
+    summary = await runtime.apply_config(data)
+    logger.info("routing config applied: node_id=%s cores=%s listeners=%s", data.get("node_id"), len(data.get("cores") or []), summary.get("listeners_total"))
+    return {"ok": True, "message": "Routing config saved and runtime reloaded on node.", "summary": runtime_summary()}
+
+
+
+@app.on_event("startup")
+async def _startup_runtime() -> None:
+    # Re-activate the last applied routing config after service restart.
+    try:
+        cfg = read_routing_config()
+        if cfg.get("cores"):
+            await runtime.apply_config(cfg)
+            logger.info("runtime restored from saved routing config")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("runtime restore failed: %s", exc)
+
+
+@app.on_event("shutdown")
+async def _shutdown_runtime() -> None:
+    await runtime.stop()
 
 
 def build_parser() -> argparse.ArgumentParser:

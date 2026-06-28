@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import __version__
 from .admin_store import list_admins
+from .api_errors import api_error
 from .auth import authenticate, make_session, require_admin
 from .config import APP_TITLE, SECURITY_HEADERS, SESSION_COOKIE, WEB_DIR
 from .core_store import (
@@ -27,7 +28,12 @@ from .core_store import (
     list_cores,
     remove_core,
     update_core,
+    set_core_apply_result,
+    set_node_cores_apply_result,
+    disable_cores_for_node,
 )
+from .id_utils import is_valid_core_id, is_valid_node_id
+from .integrity import inspect_integrity, repair_integrity
 from .logging_utils import filter_lines, panel_log_file, setup_panel_logging, tail_file
 from .node_store import (
     create_node,
@@ -42,6 +48,24 @@ from .schemas import CoreBody, LoginBody, NodeBody
 
 setup_panel_logging()
 logger = logging.getLogger("doctor_dev_panel.app")
+
+
+def require_node_id(node_id: str) -> str:
+    if not is_valid_node_id(node_id):
+        raise api_error(400, "INVALID_NODE_ID", "Invalid node identifier. Refresh the page and try again.")
+    return node_id
+
+
+def require_core_id(core_id: str) -> str:
+    if not is_valid_core_id(core_id):
+        raise api_error(400, "INVALID_CORE_ID", "Invalid core identifier. Refresh the page and try again.")
+    return core_id
+
+
+class NodeAPIError(RuntimeError):
+    """Expected/clean node API failure shown to the UI without a traceback."""
+
+
 app = FastAPI(title=APP_TITLE, version=__version__, docs_url=None, redoc_url=None)
 
 assets_dir = WEB_DIR / "assets"
@@ -153,15 +177,59 @@ def _node_api_url(node: dict, path: str) -> tuple[str, str, str]:
 
 def _read_node_api(node: dict, path: str, *, timeout: float = 5.0) -> dict:
     url, scheme, certificate = _node_api_url(node, path)
-    status_code, data = _read_url(
-        url,
-        str(node.get("api_key") or ""),
-        certificate=certificate if scheme == "https" else "",
-        timeout=timeout,
-    )
+    try:
+        status_code, data = _read_url(
+            url,
+            str(node.get("api_key") or ""),
+            certificate=certificate if scheme == "https" else "",
+            timeout=timeout,
+        )
+    except HTTPError as exc:
+        if exc.code == 404 and path.startswith("/logs"):
+            raise NodeAPIError(
+                "Node logs endpoint was not found. Run update-node on this node, then restart it."
+            ) from exc
+        raise NodeAPIError(f"Node API returned HTTP {exc.code} for {path}.") from exc
+    except (URLError, TimeoutError, OSError, ssl.SSLError, ValueError) as exc:
+        raise NodeAPIError(f"Node API is unreachable for {path}: {exc}") from exc
     if not (200 <= status_code < 300):
-        raise RuntimeError(f"{url} returned HTTP {status_code}")
+        raise NodeAPIError(f"Node API returned HTTP {status_code} for {path}.")
     return data
+
+
+def _post_node_api(node: dict, path: str, payload: dict, *, timeout: float = 8.0) -> dict:
+    url, scheme, certificate = _node_api_url(node, path)
+    body = json.dumps(payload).encode("utf-8")
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "User-Agent": "DoctorDevPanel/NodeApply",
+    }
+    api_key = str(node.get("api_key") or "")
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    context = None
+    if scheme == "https":
+        if certificate.strip():
+            context = ssl.create_default_context(cadata=certificate)
+        else:
+            context = ssl._create_unverified_context()  # noqa: SLF001
+    req = Request(url, data=body, headers=headers, method="POST")
+    try:
+        with urlopen(req, timeout=timeout, context=context) as response:  # noqa: S310
+            raw = response.read(1024 * 256).decode("utf-8", errors="replace")
+            data = json.loads(raw) if raw else {}
+            if not (200 <= int(response.status) < 300):
+                raise NodeAPIError(f"Node API returned HTTP {response.status} for {path}.")
+            return data
+    except HTTPError as exc:
+        if exc.code == 404 and path == "/config/apply":
+            raise NodeAPIError(
+                "Node apply endpoint was not found. Run update-node on this node, then restart it."
+            ) from exc
+        raise NodeAPIError(f"Node API returned HTTP {exc.code} for {path}.") from exc
+    except (URLError, TimeoutError, OSError, ssl.SSLError, ValueError, json.JSONDecodeError) as exc:
+        raise NodeAPIError(f"Node API apply request failed for {path}: {exc}") from exc
 
 
 @app.middleware("http")
@@ -285,6 +353,18 @@ async def panel_stats(user: str = Depends(require_admin)) -> dict:
     }
 
 
+@app.get("/api/panel/integrity")
+async def panel_integrity(user: str = Depends(require_admin)) -> dict:
+    return inspect_integrity()
+
+
+@app.post("/api/panel/repair")
+async def panel_repair(user: str = Depends(require_admin)) -> dict:
+    result = repair_integrity()
+    logger.warning("data integrity repair executed by=%s changes=%s", user, result.get("changes"))
+    return result
+
+
 @app.get("/api/admins")
 async def admins(user: str = Depends(require_admin)) -> dict:
     return {"ok": True, "admins": list_admins()}
@@ -305,17 +385,24 @@ async def api_create_node(body: NodeBody, user: str = Depends(require_admin)) ->
 async def api_update_node(
     node_id: str, body: NodeBody, user: str = Depends(require_admin)
 ) -> dict:
+    node_id = require_node_id(node_id)
     node = update_node(node_id, body.model_dump())
     if not node:
-        raise HTTPException(status_code=404, detail="Node not found.")
+        raise api_error(404, "NODE_NOT_FOUND", "The selected node no longer exists. Refresh the page.")
     return {"ok": True, "node": node}
 
 
 @app.delete("/api/nodes/{node_id}")
 async def api_delete_node(node_id: str, user: str = Depends(require_admin)) -> dict:
+    node_id = require_node_id(node_id)
     if not remove_node(node_id):
-        raise HTTPException(status_code=404, detail="Node not found.")
-    return {"ok": True}
+        raise api_error(404, "NODE_NOT_FOUND", "The selected node no longer exists. Refresh the page.")
+    disabled_cores = disable_cores_for_node(
+        node_id,
+        error="This core was disabled because its linked node was deleted.",
+    )
+    logger.warning("node deleted: node_id=%s by=%s disabled_cores=%s", node_id, user, len(disabled_cores))
+    return {"ok": True, "disabled_cores": disabled_cores}
 
 
 @app.post("/api/nodes/api-key")
@@ -335,9 +422,10 @@ async def api_check_unsaved_node(
 async def api_check_saved_node(
     node_id: str, user: str = Depends(require_admin)
 ) -> dict:
+    node_id = require_node_id(node_id)
     node = get_node(node_id)
     if not node:
-        raise HTTPException(status_code=404, detail="Node not found.")
+        raise api_error(404, "NODE_NOT_FOUND", "The selected node no longer exists. Refresh the page.")
     result = await check_node_payload(node)
     updated = set_node_check_result(
         node_id,
@@ -355,8 +443,10 @@ async def api_list_cores(user: str = Depends(require_admin)) -> dict:
 
 @app.post("/api/cores")
 async def api_create_core(body: CoreBody, user: str = Depends(require_admin)) -> dict:
+    if not is_valid_node_id(body.node_id):
+        raise api_error(400, "INVALID_NODE_ID", "Select a valid node before creating a core.")
     if not get_node(body.node_id):
-        raise HTTPException(status_code=400, detail="Selected node does not exist.")
+        raise api_error(400, "NODE_NOT_FOUND", "The selected node no longer exists. Refresh the page.")
     core = create_core(body.model_dump())
     logger.info(
         "core created: id=%s name=%s node_id=%s by=%s",
@@ -372,11 +462,14 @@ async def api_create_core(body: CoreBody, user: str = Depends(require_admin)) ->
 async def api_update_core(
     core_id: str, body: CoreBody, user: str = Depends(require_admin)
 ) -> dict:
+    core_id = require_core_id(core_id)
+    if not is_valid_node_id(body.node_id):
+        raise api_error(400, "INVALID_NODE_ID", "Select a valid node before saving this core.")
     if not get_node(body.node_id):
-        raise HTTPException(status_code=400, detail="Selected node does not exist.")
+        raise api_error(400, "NODE_NOT_FOUND", "The selected node no longer exists. Refresh the page.")
     core = update_core(core_id, body.model_dump())
     if not core:
-        raise HTTPException(status_code=404, detail="Core not found.")
+        raise api_error(404, "CORE_NOT_FOUND", "The selected core no longer exists. Refresh the page.")
     logger.info(
         "core updated: id=%s name=%s node_id=%s by=%s",
         core.get("id"),
@@ -389,17 +482,19 @@ async def api_update_core(
 
 @app.delete("/api/cores/{core_id}")
 async def api_delete_core(core_id: str, user: str = Depends(require_admin)) -> dict:
+    core_id = require_core_id(core_id)
     if not remove_core(core_id):
-        raise HTTPException(status_code=404, detail="Core not found.")
+        raise api_error(404, "CORE_NOT_FOUND", "The selected core no longer exists. Refresh the page.")
     logger.info("core deleted: id=%s by=%s", core_id, user)
     return {"ok": True}
 
 
 @app.get("/api/cores/{core_id}/preview")
 async def api_core_preview(core_id: str, user: str = Depends(require_admin)) -> dict:
+    core_id = require_core_id(core_id)
     core = get_core(core_id)
     if not core:
-        raise HTTPException(status_code=404, detail="Core not found.")
+        raise api_error(404, "CORE_NOT_FOUND", "The selected core no longer exists. Refresh the page.")
     return {
         "ok": True,
         "core": core,
@@ -409,8 +504,9 @@ async def api_core_preview(core_id: str, user: str = Depends(require_admin)) -> 
 
 @app.get("/api/nodes/{node_id}/inbounds")
 async def api_node_inbounds(node_id: str, user: str = Depends(require_admin)) -> dict:
+    node_id = require_node_id(node_id)
     if not get_node(node_id):
-        raise HTTPException(status_code=404, detail="Node not found.")
+        raise api_error(404, "NODE_NOT_FOUND", "The selected node no longer exists. Refresh the page.")
     return {"ok": True, "inbounds": inbound_catalog(node_id)}
 
 
@@ -418,9 +514,57 @@ async def api_node_inbounds(node_id: str, user: str = Depends(require_admin)) ->
 async def api_node_config_preview(
     node_id: str, user: str = Depends(require_admin)
 ) -> dict:
+    node_id = require_node_id(node_id)
     if not get_node(node_id):
-        raise HTTPException(status_code=404, detail="Node not found.")
+        raise api_error(404, "NODE_NOT_FOUND", "The selected node no longer exists. Refresh the page.")
     return {"ok": True, "config": build_node_config(node_id)}
+
+
+
+@app.post("/api/nodes/{node_id}/apply-config")
+async def api_apply_node_config(node_id: str, user: str = Depends(require_admin)) -> dict:
+    node_id = require_node_id(node_id)
+    node = get_node(node_id)
+    if not node:
+        raise api_error(404, "NODE_NOT_FOUND", "The selected node no longer exists. Refresh the page.")
+    payload = build_node_config(node_id)
+    try:
+        data = await asyncio.to_thread(_post_node_api, node, "/config/apply", payload)
+        changed = set_node_cores_apply_result(node_id, ok=True)
+        logger.info("node config applied: node_id=%s cores=%s by=%s", node_id, len(payload.get("cores", [])), user)
+        return {
+            "ok": True,
+            "message": f"Applied {len(payload.get('cores', []))} core(s) to {node.get('name') or node.get('address')}.",
+            "node_response": data,
+            "updated_cores": changed,
+        }
+    except NodeAPIError as exc:
+        set_node_cores_apply_result(node_id, ok=False, error=str(exc))
+        logger.warning("node config apply failed: node_id=%s error=%s", node_id, exc)
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.post("/api/cores/{core_id}/apply")
+async def api_apply_core(core_id: str, user: str = Depends(require_admin)) -> dict:
+    core_id = require_core_id(core_id)
+    core = get_core(core_id)
+    if not core:
+        raise api_error(404, "CORE_NOT_FOUND", "The selected core no longer exists. Refresh the page.")
+    node_id = str(core.get("node_id") or "")
+    node = get_node(node_id)
+    if not node:
+        set_core_apply_result(core_id, ok=False, error="Selected node does not exist.")
+        raise api_error(400, "NODE_NOT_FOUND", "The node linked to this core no longer exists. Run Repair Data or select another node.")
+    payload = build_node_config(node_id)
+    try:
+        data = await asyncio.to_thread(_post_node_api, node, "/config/apply", payload)
+        updated = set_core_apply_result(core_id, ok=True)
+        logger.info("core applied: core_id=%s node_id=%s by=%s", core_id, node_id, user)
+        return {"ok": True, "message": "Core config applied to node.", "core": updated, "node_response": data}
+    except NodeAPIError as exc:
+        updated = set_core_apply_result(core_id, ok=False, error=str(exc))
+        logger.warning("core apply failed: core_id=%s node_id=%s error=%s", core_id, node_id, exc)
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @app.get("/api/logs/sources")
@@ -471,9 +615,10 @@ async def api_logs(
         }
     if source.startswith("node:"):
         node_id = source.split(":", 1)[1]
+        node_id = require_node_id(node_id)
         node = get_node(node_id)
         if not node:
-            raise HTTPException(status_code=404, detail="Node not found.")
+            raise api_error(404, "NODE_NOT_FOUND", "The selected node no longer exists. Refresh the page.")
         try:
             qs = "?" + urlencode({"limit": limit, "level": level, "q": q})
             data = await asyncio.to_thread(_read_node_api, node, f"/logs{qs}")
@@ -486,14 +631,23 @@ async def api_logs(
                 "level": level,
                 "query": q,
             }
-        except Exception as exc:  # noqa: BLE001
-            logger.exception("cannot read node logs: node_id=%s", node_id)
+        except NodeAPIError as exc:
+            logger.warning("cannot read node logs: node_id=%s error=%s", node_id, exc)
             return {
                 "ok": False,
                 "source": source,
                 "node": node,
                 "lines": [],
                 "error": str(exc),
+            }
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("cannot read node logs: node_id=%s unexpected=%s", node_id, exc)
+            return {
+                "ok": False,
+                "source": source,
+                "node": node,
+                "lines": [],
+                "error": "Unexpected node log error. Check panel logs for details.",
             }
     raise HTTPException(status_code=400, detail="Unknown log source.")
 

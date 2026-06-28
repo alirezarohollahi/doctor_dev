@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .id_utils import is_valid_node_id
+
 VALID_STATUSES = {"disabled", "pending", "running", "error"}
 
 
@@ -83,7 +85,8 @@ def normalize_node(payload: dict[str, Any], existing: dict[str, Any] | None = No
     now = _now()
     base = dict(existing or {})
     base.update(payload)
-    base.setdefault("id", generate_node_id())
+    if not is_valid_node_id(base.get("id")):
+        base["id"] = generate_node_id()
     base.setdefault("created_at", now)
     base["updated_at"] = now
 
@@ -104,10 +107,17 @@ def normalize_node(payload: dict[str, Any], existing: dict[str, Any] | None = No
 
 def list_nodes() -> list[dict[str, Any]]:
     nodes = load_store().get("nodes", [])
-    return [normalize_node(node, existing=node) for node in nodes]
+    cleaned: list[dict[str, Any]] = []
+    for node in nodes:
+        if not isinstance(node, dict) or not is_valid_node_id(node.get("id")):
+            continue
+        cleaned.append(normalize_node(node, existing=node))
+    return cleaned
 
 
 def get_node(node_id: str) -> dict[str, Any] | None:
+    if not is_valid_node_id(node_id):
+        return None
     for node in list_nodes():
         if node.get("id") == node_id:
             return node
@@ -124,6 +134,8 @@ def create_node(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def update_node(node_id: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+    if not is_valid_node_id(node_id):
+        return None
     data = load_store()
     nodes = data.setdefault("nodes", [])
     for index, node in enumerate(nodes):
@@ -138,6 +150,8 @@ def update_node(node_id: str, payload: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def set_node_check_result(node_id: str, *, ok: bool, error: str = "", details: dict[str, Any] | None = None) -> dict[str, Any] | None:
+    if not is_valid_node_id(node_id):
+        return None
     data = load_store()
     nodes = data.setdefault("nodes", [])
     for index, node in enumerate(nodes):
@@ -159,6 +173,8 @@ def set_node_check_result(node_id: str, *, ok: bool, error: str = "", details: d
 
 
 def remove_node(node_id: str) -> bool:
+    if not is_valid_node_id(node_id):
+        return False
     data = load_store()
     nodes = data.setdefault("nodes", [])
     next_nodes = [node for node in nodes if node.get("id") != node_id]

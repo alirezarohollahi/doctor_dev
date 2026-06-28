@@ -1,3 +1,3 @@
 """Doctor Dev Node package."""
 
-__version__ = "0.4.0-node-logs"
+__version__ = "0.9.0-final-polish-runtime"

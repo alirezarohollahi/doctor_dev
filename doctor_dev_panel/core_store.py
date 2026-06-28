@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .id_utils import is_valid_core_id, is_valid_node_id
+
 VALID_CORE_STATUSES = {"draft", "ready", "applied", "error", "disabled"}
 VALID_BALANCER_STRATEGIES = {"round_robin", "random", "failover", "least_connections"}
 VALID_TARGET_TYPES = {"static", "balancer"}
@@ -201,7 +203,8 @@ def normalize_core(payload: dict[str, Any], existing: dict[str, Any] | None = No
     now = _now()
     base = dict(existing or {})
     base.update(payload)
-    base.setdefault("id", generate_core_id())
+    if not is_valid_core_id(base.get("id")):
+        base["id"] = generate_core_id()
     base.setdefault("created_at", now)
     base["updated_at"] = now
     base["name"] = _clean_name(base.get("name"), "core")
@@ -227,10 +230,17 @@ def normalize_core(payload: dict[str, Any], existing: dict[str, Any] | None = No
 
 
 def list_cores() -> list[dict[str, Any]]:
-    return [normalize_core(core, existing=core) for core in load_store().get("cores", [])]
+    cleaned: list[dict[str, Any]] = []
+    for core in load_store().get("cores", []):
+        if not isinstance(core, dict) or not is_valid_core_id(core.get("id")):
+            continue
+        cleaned.append(normalize_core(core, existing=core))
+    return cleaned
 
 
 def get_core(core_id: str) -> dict[str, Any] | None:
+    if not is_valid_core_id(core_id):
+        return None
     for core in list_cores():
         if core.get("id") == core_id:
             return core
@@ -247,6 +257,8 @@ def create_core(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def update_core(core_id: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+    if not is_valid_core_id(core_id):
+        return None
     data = load_store()
     cores = data.setdefault("cores", [])
     for index, core in enumerate(cores):
@@ -261,6 +273,8 @@ def update_core(core_id: str, payload: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def remove_core(core_id: str) -> bool:
+    if not is_valid_core_id(core_id):
+        return False
     data = load_store()
     cores = data.setdefault("cores", [])
     next_cores = [core for core in cores if core.get("id") != core_id]
@@ -303,10 +317,76 @@ def build_node_config(node_id: str) -> dict[str, Any]:
     This is intentionally a lightweight data-plane config. The high-performance
     forwarding runtime will consume this shape in the next implementation step.
     """
-    cores = [core for core in list_cores() if core.get("node_id") == node_id]
+    if not is_valid_node_id(node_id):
+        cores = []
+    else:
+        cores = [core for core in list_cores() if core.get("node_id") == node_id]
     return {
         "version": 1,
         "node_id": node_id,
         "generated_at": _now(),
         "cores": cores,
     }
+
+
+def set_core_apply_result(core_id: str, *, ok: bool, error: str = "") -> dict[str, Any] | None:
+    if not is_valid_core_id(core_id):
+        return None
+    data = load_store()
+    cores = data.setdefault("cores", [])
+    for index, core in enumerate(cores):
+        if core.get("id") == core_id:
+            updated = normalize_core(core, existing=core)
+            updated["status"] = "applied" if ok and updated.get("enabled", True) else ("error" if not ok else "disabled")
+            updated["last_applied_at"] = _now() if ok else updated.get("last_applied_at")
+            updated["last_error"] = "" if ok else str(error or "Unknown apply error")[:500]
+            cores[index] = updated
+            data["version"] = 1
+            save_store(data)
+            return updated
+    return None
+
+
+def set_node_cores_apply_result(node_id: str, *, ok: bool, error: str = "") -> list[dict[str, Any]]:
+    if not is_valid_node_id(node_id):
+        return []
+    data = load_store()
+    cores = data.setdefault("cores", [])
+    changed: list[dict[str, Any]] = []
+    now = _now()
+    for index, core in enumerate(cores):
+        if core.get("node_id") == node_id:
+            updated = normalize_core(core, existing=core)
+            updated["status"] = "applied" if ok and updated.get("enabled", True) else ("error" if not ok else "disabled")
+            if ok:
+                updated["last_applied_at"] = now
+                updated["last_error"] = ""
+            else:
+                updated["last_error"] = str(error or "Unknown apply error")[:500]
+            cores[index] = updated
+            changed.append(updated)
+    if changed:
+        data["version"] = 1
+        save_store(data)
+    return changed
+
+
+def disable_cores_for_node(node_id: str, *, error: str = "Linked node was removed.") -> list[dict[str, Any]]:
+    if not is_valid_node_id(node_id):
+        return []
+    data = load_store()
+    cores = data.setdefault("cores", [])
+    changed: list[dict[str, Any]] = []
+    for index, core in enumerate(cores):
+        if isinstance(core, dict) and core.get("node_id") == node_id and is_valid_core_id(core.get("id")):
+            updated = normalize_core(core, existing=core)
+            updated["enabled"] = False
+            updated["status"] = "disabled"
+            updated["last_error"] = error[:500]
+            updated["updated_at"] = _now()
+            cores[index] = updated
+            changed.append(updated)
+    if changed:
+        data["version"] = 1
+        save_store(data)
+    return changed

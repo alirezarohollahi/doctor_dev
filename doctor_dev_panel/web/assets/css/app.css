@@ -2459,3 +2459,173 @@ form#loginForm {
 ::-webkit-scrollbar-thumb:hover {
     background: rgba(255, 255, 255, 0.2);
 }
+
+/* ==========================================================================
+   V9 POLISH FIXES
+   ========================================================================== */
+/* Keep raw inline SVGs from exploding when a parent style changes. */
+svg {
+    max-width: 100%;
+    max-height: 100%;
+    flex: 0 0 auto;
+}
+.btn svg,
+.nav-item svg,
+.sidebar svg,
+.toast-icon svg,
+.input-icon svg,
+.tiny-icon svg,
+.icon-sm svg,
+.actions-cell svg,
+.dashboard-node-actions svg {
+    width: 16px !important;
+    height: 16px !important;
+    stroke-width: 2;
+}
+.btn-xs svg { width: 13px !important; height: 13px !important; }
+.btn-sm svg { width: 15px !important; height: 15px !important; }
+.brand-logo svg,
+.stat-card-icon svg { width: 26px !important; height: 26px !important; }
+
+.btn,
+.btn-sm,
+.btn-xs,
+#refreshDashboardBtn,
+#refreshCoresBtn,
+#refreshNodesBtn,
+#refreshLogsBtn,
+#checkAllNodesBtn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    vertical-align: middle;
+    line-height: 1;
+}
+
+.core-card-v2 {
+    padding: 16px;
+    border-radius: 20px;
+    background:
+        radial-gradient(circle at 0% 0%, rgba(94, 147, 255, 0.12), transparent 32%),
+        linear-gradient(180deg, rgba(17, 24, 39, 0.86), rgba(12, 16, 24, 0.82));
+    border: 1px solid rgba(124, 157, 255, 0.18);
+    box-shadow: 0 18px 60px rgba(0, 0, 0, 0.24);
+    gap: 14px;
+}
+.core-card-v2:hover {
+    transform: translateY(-2px);
+    border-color: rgba(124, 157, 255, 0.48);
+    box-shadow: 0 22px 70px rgba(0, 0, 0, 0.34);
+}
+.core-card-topline,
+.core-card-footer-v2 {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+.core-card-main {
+    display: grid;
+    gap: 7px;
+}
+.core-card-node-line {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    color: var(--text-2);
+    font-size: 12px;
+    font-weight: 650;
+}
+.core-card-node-line span:last-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.tiny-icon {
+    width: 16px;
+    height: 16px;
+    display: inline-grid;
+    place-items: center;
+    color: var(--blue);
+}
+.core-health {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 800;
+    color: var(--text-muted);
+}
+.status-dot-mini {
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    background: var(--text-muted);
+    box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.1);
+}
+.core-health-ok .status-dot-mini { background: var(--green); box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.12); }
+.core-health-bad .status-dot-mini { background: var(--red); box-shadow: 0 0 0 3px rgba(244, 63, 94, 0.12); }
+.core-health-warn .status-dot-mini { background: var(--yellow); box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.12); }
+.core-metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 9px;
+}
+.core-metric {
+    padding: 10px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid rgba(255, 255, 255, 0.075);
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+}
+.core-metric strong {
+    font-size: 20px;
+    line-height: 1;
+    letter-spacing: -0.04em;
+}
+.core-metric span {
+    font-size: 11px;
+    color: var(--text-2);
+    font-weight: 800;
+}
+.core-metric small {
+    font-size: 10px;
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.core-time-stack {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+    color: var(--text-muted);
+    font-size: 11px;
+    line-height: 1.35;
+}
+.core-error-inline {
+    color: var(--red);
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.core-card-v2 .core-card-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 7px;
+    justify-content: flex-end;
+}
+.logs-error {
+    border: 1px solid rgba(244, 63, 94, 0.35);
+    background: rgba(244, 63, 94, 0.08);
+    color: #fecdd3;
+    border-radius: 14px;
+    padding: 12px 14px;
+    line-height: 1.55;
+}

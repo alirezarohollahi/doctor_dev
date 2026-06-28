@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+# Doctor Dev installer / updater / remover.
+# Remote usage:
+#   curl -fsSL https://github.com/alirezarohollahi/doctor_dev/raw/refs/heads/master/scripts/doctor_dev.sh -o /tmp/doctor_dev.sh \
+#     && sudo bash /tmp/doctor_dev.sh install-panel --admin-user admin --panel-port 8080
+
 PANEL_APP_DIR="${DOCTOR_DEV_APP_DIR:-/opt/doctor-dev-panel}"
 PANEL_SERVICE_NAME="${DOCTOR_DEV_SERVICE_NAME:-doctor-dev-panel}"
 REPO_URL="${DOCTOR_DEV_REPO_URL:-https://github.com/alirezarohollahi/doctor_dev.git}"
@@ -13,6 +18,25 @@ PANEL_ENV_FILE="${DOCTOR_DEV_ENV_FILE:-$PANEL_CONFIG_DIR/panel.env}"
 ADMIN_STORE_PATH="${ADMIN_STORE_PATH:-$PANEL_CONFIG_DIR/admins.json}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 
+FLAG_YES=0
+FLAG_PURGE=0
+FLAG_CLEAN_EXISTING=0
+ARG_TARGET=""
+ARG_BIND_HOST=""
+ARG_PUBLIC_HOST=""
+ARG_PANEL_PORT=""
+ARG_ADMIN_USER=""
+ARG_ADMIN_PASSWORD=""
+ARG_TLS_MODE=""
+ARG_CERT_PATH=""
+ARG_KEY_PATH=""
+ARG_NODE_CLI_NAME=""
+ARG_API_KEY=""
+ARG_NODE_HOST=""
+ARG_SERVICE_PORT=""
+ARG_API_PORT=""
+ARG_SERVICE_PROTOCOL=""
+
 BOLD="\033[1m"; DIM="\033[2m"; RED="\033[31m"; GREEN="\033[32m"; YELLOW="\033[33m"; BLUE="\033[34m"; MAGENTA="\033[35m"; CYAN="\033[36m"; RESET="\033[0m"
 cecho(){ printf "%b\n" "$1"; }
 info(){ cecho "${BLUE}➜${RESET} $1"; }
@@ -20,10 +44,10 @@ ok(){ cecho "${GREEN}✓${RESET} $1"; }
 warn(){ cecho "${YELLOW}⚠${RESET} $1"; }
 fail(){ cecho "${RED}✗${RESET} $1"; exit 1; }
 
-need_root(){ [[ "${EUID}" -eq 0 ]] || fail "Please run with sudo/root."; }
+need_root(){ [[ "${EUID}" -eq 0 ]] || fail "Please run this script with sudo/root."; }
 
 header(){
-  local title="${1:-Doctor Dev Installer}" subtitle="${2:-Panel and node foundation}"
+  local title="${1:-Doctor Dev}" subtitle="${2:-Installer}"
   clear || true
   cecho "${CYAN}${BOLD}============================================================${RESET}"
   cecho "${CYAN}${BOLD}                 ${title}${RESET}"
@@ -33,15 +57,46 @@ header(){
 }
 
 usage(){
-  header "Doctor Dev Installer" "Use one script for panel and node install/update"
+  header "Doctor Dev Installer" "Panel / node install, update, remove"
   cecho "${BOLD}Usage:${RESET}"
-  cecho "  sudo bash doctor_dev.sh ${GREEN}install-panel${RESET}"
-  cecho "  sudo bash doctor_dev.sh ${GREEN}update-panel${RESET}"
-  cecho "  sudo bash doctor_dev.sh ${GREEN}install-node${RESET}"
-  cecho "  sudo bash doctor_dev.sh ${GREEN}update-node${RESET}"
+  cecho "  sudo bash doctor_dev.sh ${GREEN}install-panel${RESET} [--admin-user USER] [--admin-password PASS] [--panel-port PORT] [--public-host HOST] [--yes]"
+  cecho "  sudo bash doctor_dev.sh ${GREEN}update-panel${RESET} [--yes]"
+  cecho "  sudo bash doctor_dev.sh ${GREEN}uninstall-panel${RESET} [--purge] [--yes]"
+  cecho "  sudo bash doctor_dev.sh ${GREEN}install-node${RESET} [--node-cli-name doctor-node] [--api-port PORT] [--service-port PORT] [--yes]"
+  cecho "  sudo bash doctor_dev.sh ${GREEN}update-node${RESET} [--node-cli-name doctor-node]"
+  cecho "  sudo bash doctor_dev.sh ${GREEN}uninstall-node${RESET} [--node-cli-name doctor-node] [--purge] [--yes]"
   echo
   cecho "${BOLD}Remote usage:${RESET}"
-  cecho "  curl -fsSL $RAW_INSTALLER_URL -o /tmp/doctor_dev.sh \\\n    && sudo bash /tmp/doctor_dev.sh install-panel"
+  cecho "  curl -fsSL $RAW_INSTALLER_URL -o /tmp/doctor_dev.sh \\\n    && sudo bash /tmp/doctor_dev.sh install-panel --admin-user admin --panel-port 8080"
+}
+
+need_arg(){ [[ $# -ge 2 && -n "${2:-}" ]] || fail "Missing value for $1"; }
+
+parse_common_args(){
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --yes|-y) FLAG_YES=1; shift ;;
+      --purge) FLAG_PURGE=1; shift ;;
+      --clean-existing) FLAG_CLEAN_EXISTING=1; shift ;;
+      --target) need_arg "$@"; ARG_TARGET="$2"; shift 2 ;;
+      --bind-host|--host) need_arg "$@"; ARG_BIND_HOST="$2"; shift 2 ;;
+      --public-host|--domain|--ip) need_arg "$@"; ARG_PUBLIC_HOST="$2"; shift 2 ;;
+      --panel-port|--port) need_arg "$@"; ARG_PANEL_PORT="$2"; shift 2 ;;
+      --admin-user|--admin-username) need_arg "$@"; ARG_ADMIN_USER="$2"; shift 2 ;;
+      --admin-password|--password) need_arg "$@"; ARG_ADMIN_PASSWORD="$2"; shift 2 ;;
+      --tls|--tls-mode) need_arg "$@"; ARG_TLS_MODE="$2"; shift 2 ;;
+      --cert-path|--ssl-cert-path) need_arg "$@"; ARG_CERT_PATH="$2"; shift 2 ;;
+      --key-path|--ssl-key-path) need_arg "$@"; ARG_KEY_PATH="$2"; shift 2 ;;
+      --node-cli-name|--cli-name) need_arg "$@"; ARG_NODE_CLI_NAME="$2"; shift 2 ;;
+      --api-key) need_arg "$@"; ARG_API_KEY="$2"; shift 2 ;;
+      --node-host) need_arg "$@"; ARG_NODE_HOST="$2"; shift 2 ;;
+      --service-port|--node-port) need_arg "$@"; ARG_SERVICE_PORT="$2"; shift 2 ;;
+      --api-port) need_arg "$@"; ARG_API_PORT="$2"; shift 2 ;;
+      --service-protocol|--protocol) need_arg "$@"; ARG_SERVICE_PROTOCOL="$2"; shift 2 ;;
+      --help|-h) usage; exit 0 ;;
+      *) fail "Unknown parameter: $1" ;;
+    esac
+  done
 }
 
 ask(){
@@ -57,6 +112,7 @@ ask(){
 
 ask_yes_no(){
   local prompt="$1" default="${2:-y}" answer
+  if [[ "$FLAG_YES" == "1" ]]; then return 0; fi
   while true; do
     read -r -p "$(printf "%b" "${CYAN}?${RESET} ${prompt} ${DIM}[${default}]${RESET}: ")" answer || true
     answer="${answer:-$default}"
@@ -73,17 +129,13 @@ ask_non_empty(){
   done
 }
 
-ask_port_named(){
-  local label="$1" default="$2" value
-  while true; do
-    value="$(ask "$label" "$default")"
-    if [[ "$value" =~ ^[0-9]+$ ]] && (( value >= 1 && value <= 65535 )); then echo "$value"; return; fi
-    warn "Invalid port. Use a number between 1 and 65535."
-  done
-}
-
 ask_password(){
   local pass1 pass2
+  if [[ -n "$ARG_ADMIN_PASSWORD" ]]; then
+    [[ ${#ARG_ADMIN_PASSWORD} -ge 8 ]] || fail "--admin-password must be at least 8 characters."
+    echo "$ARG_ADMIN_PASSWORD"
+    return
+  fi
   while true; do
     read -r -s -p "$(printf "%b" "${CYAN}?${RESET} Admin password: ")" pass1 || true; echo
     [[ ${#pass1} -ge 8 ]] || { warn "Password must be at least 8 characters."; continue; }
@@ -94,6 +146,40 @@ ask_password(){
 }
 
 valid_cli_name(){ [[ "$1" =~ ^[a-zA-Z0-9._-]+$ ]]; }
+valid_hostname(){ [[ -n "$1" && "$1" != *"/"* && "$1" != *" "* ]]; }
+valid_port(){ [[ "$1" =~ ^[0-9]+$ ]] && (( "$1" >= 1 && "$1" <= 65535 )); }
+
+port_available(){
+  local host="$1" port="$2"
+  "$PYTHON_BIN" - "$host" "$port" <<'PY' >/dev/null 2>&1
+import socket, sys
+host = sys.argv[1]
+port = int(sys.argv[2])
+probe_host = "0.0.0.0" if host in {"", "0.0.0.0", "::"} else host
+families = [socket.AF_INET]
+for family in families:
+    s = socket.socket(family, socket.SOCK_STREAM)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        s.bind((probe_host, port))
+    except OSError:
+        sys.exit(1)
+    finally:
+        s.close()
+PY
+}
+
+ask_port_named(){
+  local label="$1" default="$2" bind_host="${3:-0.0.0.0}" value
+  while true; do
+    value="$(ask "$label" "$default")"
+    if ! valid_port "$value"; then warn "Invalid port. Use a number between 1 and 65535."; continue; fi
+    if ! port_available "$bind_host" "$value"; then warn "Port $value is already used on $bind_host. Choose another port."; continue; fi
+    echo "$value"; return
+  done
+}
+
+require_file_readable(){ [[ -r "$1" ]] || fail "File is not readable: $1"; }
 
 generate_uuid(){ "$PYTHON_BIN" - <<'PY'
 import uuid
@@ -107,15 +193,82 @@ install_packages(){
     apt-get update -y
     DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-venv python3-pip git curl ca-certificates openssl nano rsync
   else
-    warn "apt-get not found. Please make sure python3, venv, pip, git, curl, rsync and openssl are installed."
+    warn "apt-get not found. Make sure python3, venv, pip, git, curl, rsync and openssl are installed."
   fi
 }
 
-stop_service(){
+systemctl_exists(){ command -v systemctl >/dev/null 2>&1; }
+service_known(){ systemctl_exists && { systemctl list-unit-files --type=service 2>/dev/null; systemctl list-units --all --type=service 2>/dev/null; } | grep -q "^$1.service"; }
+stop_disable_service(){
   local service="$1"
-  if command -v systemctl >/dev/null 2>&1 && systemctl list-units --all --type=service | grep -q "^${service}.service"; then
-    info "Stopping existing service: $service"
+  if systemctl_exists; then
     systemctl stop "$service" 2>/dev/null || true
+    systemctl disable "$service" 2>/dev/null || true
+    rm -f "/etc/systemd/system/${service}.service"
+    systemctl daemon-reload 2>/dev/null || true
+  fi
+}
+
+collect_existing_paths(){
+  local kind="$1"; shift
+  local -a names=("$@")
+  local -a found=()
+  local name path service
+  if [[ "$kind" == "panel" ]]; then
+    for path in "$PANEL_APP_DIR" "$PANEL_CONFIG_DIR" "$PANEL_DATA_DIR" "$PANEL_LOG_DIR" "/opt/doctor-dev" "/etc/doctor-dev" "/var/lib/doctor-dev" "/var/log/doctor-dev" "/usr/local/bin/doctor-dev"; do
+      [[ -e "$path" || -L "$path" ]] && found+=("$path")
+    done
+    for service in "$PANEL_SERVICE_NAME" "doctor-dev" "doctor-dev-panel"; do
+      [[ -e "/etc/systemd/system/${service}.service" ]] && found+=("/etc/systemd/system/${service}.service")
+      service_known "$service" && found+=("systemd:${service}")
+    done
+  else
+    for name in "${names[@]}" "doctor-node" "docter-node" "doctor-dev-node"; do
+      for path in "/opt/${name}" "/etc/${name}" "/var/lib/${name}" "/var/log/${name}" "/usr/local/bin/${name}"; do
+        [[ -e "$path" || -L "$path" ]] && found+=("$path")
+      done
+      [[ -e "/etc/systemd/system/${name}.service" ]] && found+=("/etc/systemd/system/${name}.service")
+      service_known "$name" && found+=("systemd:${name}")
+    done
+    while IFS= read -r svc; do [[ -n "$svc" ]] && found+=("systemd:${svc%.service}"); done < <(find /etc/systemd/system -maxdepth 1 -type f -name 'doctor-dev-node*.service' -printf '%f\n' 2>/dev/null || true)
+  fi
+  printf '%s\n' "${found[@]}" | awk 'NF && !seen[$0]++'
+}
+
+show_found_items(){
+  local title="$1"; shift
+  local -a items=("$@")
+  [[ ${#items[@]} -eq 0 ]] && return 0
+  cecho "${MAGENTA}${BOLD}${title}${RESET}"
+  local item
+  for item in "${items[@]}"; do cecho "  - ${item}"; done
+}
+
+remove_found_items(){
+  local item svc
+  for item in "$@"; do
+    if [[ "$item" == systemd:* ]]; then
+      svc="${item#systemd:}"
+      info "Removing service: $svc"
+      stop_disable_service "$svc"
+    else
+      info "Removing: $item"
+      rm -rf --one-file-system "$item" 2>/dev/null || rm -rf "$item"
+    fi
+  done
+}
+
+clean_existing_or_fail(){
+  local kind="$1"; shift
+  local -a items=()
+  mapfile -t items < <(collect_existing_paths "$kind" "$@")
+  if [[ ${#items[@]} -eq 0 ]]; then ok "No previous ${kind} installation was found."; return; fi
+  show_found_items "Previous ${kind} installation items found:" "${items[@]}"
+  if [[ "$FLAG_CLEAN_EXISTING" == "1" ]] || ask_yes_no "Remove these items before installation?" "y"; then
+    remove_found_items "${items[@]}"
+    ok "Previous ${kind} items removed."
+  else
+    fail "Installation stopped. Re-run after cleanup or use --clean-existing."
   fi
 }
 
@@ -133,29 +286,17 @@ copy_from_current_tree(){
   return 1
 }
 
-backup_path(){
-  local path="$1"
-  if [[ -e "$path" ]]; then
-    local backup="${path}.backup.$(date +%Y%m%d-%H%M%S)"
-    mv "$path" "$backup"
-    ok "Backup saved: $backup"
-  fi
-}
-
 clone_or_update_repo(){
   local target_dir="$1" mode="${2:-update}"
   if copy_from_current_tree "$target_dir"; then return; fi
-  if [[ "$mode" == "clean" && -e "$target_dir" ]]; then
-    warn "Cleaning app directory: $target_dir"
-    backup_path "$target_dir"
-  fi
+  if [[ "$mode" == "clean" && -e "$target_dir" ]]; then rm -rf --one-file-system "$target_dir" 2>/dev/null || rm -rf "$target_dir"; fi
   if [[ -d "$target_dir/.git" ]]; then
     info "Updating repository in $target_dir"
     git -C "$target_dir" fetch origin "$BRANCH" --prune
     git -C "$target_dir" checkout "$BRANCH"
     git -C "$target_dir" reset --hard "origin/$BRANCH"
   else
-    [[ -e "$target_dir" ]] && backup_path "$target_dir"
+    [[ -e "$target_dir" ]] && rm -rf --one-file-system "$target_dir" 2>/dev/null || true
     info "Cloning $REPO_URL#$BRANCH into $target_dir"
     git clone --branch "$BRANCH" "$REPO_URL" "$target_dir"
   fi
@@ -188,12 +329,17 @@ create_admin_store(){
   info "Creating admin store: $ADMIN_STORE_PATH"
   ADMIN_STORE_PATH="$ADMIN_STORE_PATH" DOCTOR_DEV_BOOTSTRAP_ADMIN="$username" DOCTOR_DEV_BOOTSTRAP_PASSWORD="$password" \
     PYTHONPATH="$PANEL_APP_DIR" "$PANEL_APP_DIR/.venv/bin/python" - <<'PY'
-import os
-from doctor_dev_panel.admin_store import set_password
-set_password(os.environ["DOCTOR_DEV_BOOTSTRAP_ADMIN"], os.environ["DOCTOR_DEV_BOOTSTRAP_PASSWORD"])
+import os, sys
+from doctor_dev_panel.admin_store import authenticate_admin, set_password, store_path
+username = os.environ["DOCTOR_DEV_BOOTSTRAP_ADMIN"].strip()
+password = os.environ["DOCTOR_DEV_BOOTSTRAP_PASSWORD"]
+set_password(username, password)
+if not authenticate_admin(username, password):
+    raise SystemExit(f"admin verification failed for {username} at {store_path()}")
+print(f"admin verification ok: {username} -> {store_path()}")
 PY
   chmod 600 "$ADMIN_STORE_PATH" || true
-  ok "Admin user saved."
+  ok "Admin user saved and verified."
 }
 
 write_panel_env(){
@@ -260,56 +406,67 @@ SERVICE
   ok "Service file is ready."
 }
 
-install_panel_service(){ write_panel_service; systemctl enable "$PANEL_SERVICE_NAME"; systemctl restart "$PANEL_SERVICE_NAME"; ok "Panel service started."; }
+install_panel_service(){ write_panel_service; systemctl enable "$PANEL_SERVICE_NAME" >/dev/null; systemctl restart "$PANEL_SERVICE_NAME"; ok "Panel service started."; }
 
 configure_panel_tls(){
   local install_target="$1" domain="$2" tls_choice cert_path key_path use_tls public_scheme
   use_tls="0"; public_scheme="http"; cert_path=""; key_path=""
-  { echo; cecho "${BOLD}TLS / Certificate mode${RESET}"; cecho "  1) No TLS now; use http or add Nginx/Caddy later"; cecho "  2) I already have certificate/key paths"; cecho "  3) Issue certificate here with certbot standalone"; } >&2
-  tls_choice="$(ask "Choose TLS mode" "1")"
-  case "$tls_choice" in
-    2) cert_path="$(ask_non_empty "Fullchain/cert path")"; key_path="$(ask_non_empty "Private key path")"; [[ -r "$cert_path" ]] || fail "Certificate is not readable: $cert_path"; [[ -r "$key_path" ]] || fail "Private key is not readable: $key_path"; use_tls="1"; public_scheme="https" ;;
-    3) [[ "$install_target" == "domain" ]] || fail "Certbot mode requires domain install target."; command -v apt-get >/dev/null 2>&1 && DEBIAN_FRONTEND=noninteractive apt-get install -y certbot; command -v certbot >/dev/null 2>&1 || fail "certbot is not installed."; warn "Make sure DNS points to this server and port 80 is open." >&2; certbot certonly --standalone -d "$domain" >&2; cert_path="/etc/letsencrypt/live/$domain/fullchain.pem"; key_path="/etc/letsencrypt/live/$domain/privkey.pem"; use_tls="1"; public_scheme="https" ;;
+  tls_choice="${ARG_TLS_MODE:-}"
+  if [[ -z "$tls_choice" ]]; then
+    { echo; cecho "${BOLD}TLS / Certificate mode${RESET}"; cecho "  1) No TLS now; use http or add reverse proxy later"; cecho "  2) I already have certificate/key paths"; cecho "  3) Issue certificate here with certbot standalone"; } >&2
+    tls_choice="$(ask "Choose TLS mode" "1")"
+  fi
+  case "${tls_choice,,}" in
+    2|manual|cert|certificate)
+      cert_path="${ARG_CERT_PATH:-$(ask_non_empty "Fullchain/cert path")}"; key_path="${ARG_KEY_PATH:-$(ask_non_empty "Private key path")}"; require_file_readable "$cert_path"; require_file_readable "$key_path"; use_tls="1"; public_scheme="https" ;;
+    3|certbot|letsencrypt)
+      [[ "$install_target" == "domain" ]] || fail "Certbot mode requires domain install target."
+      command -v apt-get >/dev/null 2>&1 && DEBIAN_FRONTEND=noninteractive apt-get install -y certbot
+      command -v certbot >/dev/null 2>&1 || fail "certbot is not installed."
+      warn "Make sure DNS points to this server and port 80 is open." >&2
+      certbot certonly --standalone -d "$domain" >&2
+      cert_path="/etc/letsencrypt/live/$domain/fullchain.pem"; key_path="/etc/letsencrypt/live/$domain/privkey.pem"; use_tls="1"; public_scheme="https" ;;
     *) use_tls="0"; public_scheme="http" ;;
   esac
   echo "$use_tls|$public_scheme|$cert_path|$key_path"
 }
 
 install_panel(){
-  header "Doctor Dev Panel Installer" "Clean panel install with node inventory UI"
-  need_root; stop_service "$PANEL_SERVICE_NAME"; install_packages; clone_or_update_repo "$PANEL_APP_DIR" "update"; validate_project_tree "$PANEL_APP_DIR"; setup_venv "$PANEL_APP_DIR"
-  cecho "${BOLD}Install target${RESET}"; cecho "  1) Install on IP"; cecho "  2) Install on domain"; cecho "  3) Localhost only"
+  header "Doctor Dev Panel Installer" "Clean install with verified admin and data integrity safeguards"
+  need_root
+  clean_existing_or_fail panel
+  install_packages
+  clone_or_update_repo "$PANEL_APP_DIR" "clean"
+  validate_project_tree "$PANEL_APP_DIR"
+  setup_venv "$PANEL_APP_DIR"
+
   local target_choice install_target public_host bind_host port admin_user admin_pass tls_result use_tls public_scheme cert_path key_path
-  target_choice="$(ask "Choose target" "1")"
-  case "$target_choice" in
-    2) install_target="domain"; public_host="$(ask_non_empty "Domain" "panel.example.com")"; bind_host="0.0.0.0" ;;
-    3) install_target="localhost"; public_host="127.0.0.1"; bind_host="127.0.0.1" ;;
-    *) install_target="ip"; public_host="$(ask_non_empty "Server IP or public host" "$(hostname -I 2>/dev/null | awk '{print $1}' || echo 127.0.0.1)")"; bind_host="0.0.0.0" ;;
+  target_choice="${ARG_TARGET:-}"
+  if [[ -z "$target_choice" ]]; then
+    cecho "${BOLD}Install target${RESET}"; cecho "  1) Install on IP"; cecho "  2) Install on domain"; cecho "  3) Localhost only"
+    target_choice="$(ask "Choose target" "1")"
+  fi
+  case "${target_choice,,}" in
+    2|domain) install_target="domain"; public_host="${ARG_PUBLIC_HOST:-$(ask_non_empty "Domain" "panel.example.com")}"; bind_host="0.0.0.0" ;;
+    3|local|localhost) install_target="localhost"; public_host="127.0.0.1"; bind_host="127.0.0.1" ;;
+    *) install_target="ip"; public_host="${ARG_PUBLIC_HOST:-$(hostname -I 2>/dev/null | awk '{print $1}' || echo 127.0.0.1)}"; public_host="$(valid_hostname "$public_host" && echo "$public_host" || ask_non_empty "Server IP or public host" "127.0.0.1")"; bind_host="0.0.0.0" ;;
   esac
-  bind_host="$(ask "Bind host" "$bind_host")"; port="$(ask_port_named "Panel port" "8080")"; admin_user="$(ask_non_empty "Admin username" "admin")"; admin_pass="$(ask_password)"
+  bind_host="${ARG_BIND_HOST:-$(ask "Bind host" "$bind_host")}"; valid_hostname "$bind_host" || fail "Invalid bind host: $bind_host"
+  port="${ARG_PANEL_PORT:-$(ask_port_named "Panel port" "8080" "$bind_host")}"; valid_port "$port" || fail "Invalid panel port: $port"; port_available "$bind_host" "$port" || fail "Panel port $port is already used."
+  admin_user="${ARG_ADMIN_USER:-$(ask_non_empty "Admin username" "admin")}"; [[ -n "$admin_user" ]] || fail "Admin username cannot be empty."
+  admin_pass="$(ask_password)"
   tls_result="$(configure_panel_tls "$install_target" "$public_host")"; IFS='|' read -r use_tls public_scheme cert_path key_path <<< "$tls_result"
-  write_panel_env "$bind_host" "$port" "$public_host" "$public_scheme" "$use_tls" "$cert_path" "$key_path"; create_admin_store "$admin_user" "$admin_pass"; install_panel_cli
+  write_panel_env "$bind_host" "$port" "$public_host" "$public_scheme" "$use_tls" "$cert_path" "$key_path"
+  create_admin_store "$admin_user" "$admin_pass"
+  install_panel_cli
   if ask_yes_no "Install and start systemd service now?" "y"; then install_panel_service; else write_panel_service; warn "Service was not started. Start later with: doctor-dev start"; fi
   echo; ok "Doctor Dev Panel installation finished."; cecho "${BOLD}Panel:${RESET} ${GREEN}${public_scheme}://${public_host}:${port}${RESET}"; cecho "${BOLD}CLI:${RESET}   ${GREEN}doctor-dev help${RESET}"
 }
 
 update_panel(){
   header "Doctor Dev Panel Updater" "Pull latest code, keep config, reinstall service, restart"
-  need_root
-  stop_service "$PANEL_SERVICE_NAME"
-  install_packages
-  clone_or_update_repo "$PANEL_APP_DIR" "update"
-  validate_project_tree "$PANEL_APP_DIR"
-  setup_venv "$PANEL_APP_DIR"
-  install_panel_cli
-
-  if [[ ! -f "$PANEL_ENV_FILE" && -f "$PANEL_APP_DIR/.env" && ! -L "$PANEL_APP_DIR/.env" ]]; then
-    warn "Migrating legacy env file from $PANEL_APP_DIR/.env to $PANEL_ENV_FILE"
-    prepare_panel_dirs
-    cp "$PANEL_APP_DIR/.env" "$PANEL_ENV_FILE"
-    chmod 600 "$PANEL_ENV_FILE" || true
-  fi
-
+  need_root; stop_disable_service "$PANEL_SERVICE_NAME"; install_packages
+  clone_or_update_repo "$PANEL_APP_DIR" "update"; validate_project_tree "$PANEL_APP_DIR"; setup_venv "$PANEL_APP_DIR"; install_panel_cli
   if [[ -f "$PANEL_ENV_FILE" ]]; then
     ln -sfn "$PANEL_ENV_FILE" "$PANEL_APP_DIR/.env" 2>/dev/null || true
     write_panel_service
@@ -317,14 +474,25 @@ update_panel(){
     systemctl restart "$PANEL_SERVICE_NAME"
     ok "Panel service installed/enabled/restarted: $PANEL_SERVICE_NAME"
   else
-    warn "No panel environment file found at $PANEL_ENV_FILE."
-    warn "Code was updated, but the service cannot start until install-panel creates the env."
+    warn "No panel environment file found at $PANEL_ENV_FILE. Run install-panel first."
   fi
   ok "Panel update finished."
 }
 
+uninstall_panel(){
+  header "Doctor Dev Panel Remover" "Stop service and remove panel files"
+  need_root
+  local -a items=()
+  mapfile -t items < <(collect_existing_paths panel)
+  if [[ ${#items[@]} -eq 0 ]]; then ok "No panel installation was found."; return; fi
+  show_found_items "Panel items to remove:" "${items[@]}"
+  ask_yes_no "Remove these panel items?" "n" || fail "Canceled."
+  remove_found_items "${items[@]}"
+  if [[ "$FLAG_PURGE" == "1" ]]; then ok "Panel purge completed."; else ok "Panel service/app/config/data/log items removed."; fi
+}
+
 node_vars(){
-  NODE_CLI_NAME="${DOCTOR_DEV_NODE_CLI_NAME:-docter-node}"
+  NODE_CLI_NAME="${DOCTOR_DEV_NODE_CLI_NAME:-doctor-node}"
   [[ -n "${1:-}" ]] && NODE_CLI_NAME="$1"
   valid_cli_name "$NODE_CLI_NAME" || fail "Invalid CLI name: $NODE_CLI_NAME. Use letters, numbers, dot, dash or underscore."
   NODE_APP_DIR="${DOCTOR_DEV_NODE_APP_DIR:-/opt/${NODE_CLI_NAME}}"
@@ -335,23 +503,12 @@ node_vars(){
   NODE_ENV_FILE="${DOCTOR_DEV_NODE_ENV_FILE:-$NODE_CONFIG_DIR/node.env}"
 }
 
-clean_node_name(){
-  node_vars "$1"
-  warn "Cleaning previous node installation for name: $NODE_CLI_NAME"
-  stop_service "$NODE_SERVICE_NAME"
-  if command -v systemctl >/dev/null 2>&1; then systemctl disable "$NODE_SERVICE_NAME" 2>/dev/null || true; rm -f "/etc/systemd/system/${NODE_SERVICE_NAME}.service"; systemctl daemon-reload || true; fi
-  rm -f "/usr/local/bin/${NODE_CLI_NAME}"
-  [[ -e "$NODE_APP_DIR" ]] && backup_path "$NODE_APP_DIR"
-  [[ -e "$NODE_CONFIG_DIR" ]] && backup_path "$NODE_CONFIG_DIR"
-  mkdir -p "$NODE_CONFIG_DIR" "$NODE_DATA_DIR" "$NODE_LOG_DIR"
-  chmod 700 "$NODE_CONFIG_DIR" || true
-}
-
+prepare_node_dirs(){ mkdir -p "$NODE_CONFIG_DIR" "$NODE_DATA_DIR" "$NODE_LOG_DIR"; chmod 700 "$NODE_CONFIG_DIR" || true; chmod 755 "$NODE_DATA_DIR" "$NODE_LOG_DIR" || true; }
 install_node_cli(){ info "Installing node CLI: /usr/local/bin/$NODE_CLI_NAME"; install -m 0755 "$NODE_APP_DIR/scripts/doctor-node" "/usr/local/bin/$NODE_CLI_NAME"; ok "Node CLI installed. Try: $NODE_CLI_NAME help"; }
 
 write_node_env(){
   local api_key="$1" node_host="$2" service_port="$3" api_port="$4" service_protocol="$5" cert_file="$6" key_file="$7"
-  mkdir -p "$NODE_CONFIG_DIR" "$NODE_DATA_DIR" "$NODE_LOG_DIR"
+  prepare_node_dirs
   info "Writing $NODE_ENV_FILE"
   cat > "$NODE_ENV_FILE" <<ENV
 API_KEY=$api_key
@@ -399,50 +556,38 @@ SERVICE
   systemctl daemon-reload
   ok "Node service file is ready."
 }
-
-install_node_service(){ write_node_service; systemctl enable "$NODE_SERVICE_NAME"; systemctl restart "$NODE_SERVICE_NAME"; ok "Node service started."; }
+install_node_service(){ write_node_service; systemctl enable "$NODE_SERVICE_NAME" >/dev/null; systemctl restart "$NODE_SERVICE_NAME"; ok "Node service started."; }
 
 install_node(){
-  header "Doctor Dev Node Installer" "Control-plane API plus routing-config foundation"
+  header "Doctor Dev Node Installer" "Clean node install with validated ports and names"
   need_root; install_packages
   local cli_name api_default api_key node_host service_port api_port service_protocol tls_choice cert_file key_file
-  cli_name="$(ask "Node CLI name" "docter-node")"; valid_cli_name "$cli_name" || fail "Invalid CLI name."
-  clean_node_name "$cli_name"
+  cli_name="${ARG_NODE_CLI_NAME:-${DOCTOR_DEV_NODE_CLI_NAME:-doctor-node}}"; valid_cli_name "$cli_name" || fail "Invalid CLI name."
+  node_vars "$cli_name"
+  clean_existing_or_fail node "$cli_name"
   clone_or_update_repo "$NODE_APP_DIR" "clean"; validate_project_tree "$NODE_APP_DIR"; setup_venv "$NODE_APP_DIR"
-  api_default="$(generate_uuid)"; api_key="$(ask "API_KEY" "$api_default")"; [[ -n "$api_key" ]] || fail "API_KEY cannot be empty."
-  node_host="$(ask "NODE_HOST" "127.0.0.1")"; service_port="$(ask_port_named "SERVICE_PORT / data-plane port" "62050")"
-  api_port="$(ask_port_named "API_PORT / control-plane port" "62051")"
-  while true; do service_protocol="$(ask "SERVICE_PROTOCOL" "grpc")"; service_protocol="${service_protocol,,}"; [[ "$service_protocol" == "grpc" || "$service_protocol" == "rest" ]] && break; warn "SERVICE_PROTOCOL must be grpc or rest."; done
+  api_default="$(generate_uuid)"; api_key="${ARG_API_KEY:-$(ask "API_KEY" "$api_default")}"; [[ -n "$api_key" ]] || fail "API_KEY cannot be empty."
+  node_host="${ARG_NODE_HOST:-$(ask "NODE_HOST" "127.0.0.1")}"; valid_hostname "$node_host" || fail "Invalid NODE_HOST: $node_host"
+  service_port="${ARG_SERVICE_PORT:-$(ask_port_named "SERVICE_PORT / data-plane port" "62050" "$node_host")}"; valid_port "$service_port" || fail "Invalid service port: $service_port"; port_available "$node_host" "$service_port" || fail "Service port $service_port is already used."
+  api_port="${ARG_API_PORT:-$(ask_port_named "API_PORT / control-plane port" "62051" "$node_host")}"; valid_port "$api_port" || fail "Invalid API port: $api_port"; port_available "$node_host" "$api_port" || fail "API port $api_port is already used."
+  service_protocol="${ARG_SERVICE_PROTOCOL:-$(ask "SERVICE_PROTOCOL" "grpc")}"; service_protocol="${service_protocol,,}"; [[ "$service_protocol" == "grpc" || "$service_protocol" == "rest" ]] || fail "SERVICE_PROTOCOL must be grpc or rest."
   cert_file=""; key_file=""
-  cecho "${BOLD}SSL/TLS Configuration${RESET}"; cecho "  1) No SSL/TLS now"; cecho "  2) I already have certificate/key paths"
-  tls_choice="$(ask "Choose SSL/TLS mode" "1")"
-  if [[ "$tls_choice" == "2" ]]; then cert_file="$(ask_non_empty "SSL_CERT_FILE")"; key_file="$(ask_non_empty "SSL_KEY_FILE")"; [[ -r "$cert_file" ]] || fail "Certificate is not readable: $cert_file"; [[ -r "$key_file" ]] || fail "Private key is not readable: $key_file"; fi
-  write_node_env "$api_key" "$node_host" "$service_port" "$api_port" "$service_protocol" "$cert_file" "$key_file"; install_node_cli
+  tls_choice="${ARG_TLS_MODE:-}"
+  if [[ -z "$tls_choice" ]]; then cecho "${BOLD}SSL/TLS Configuration${RESET}"; cecho "  1) No SSL/TLS now"; cecho "  2) I already have certificate/key paths"; tls_choice="$(ask "Choose SSL/TLS mode" "1")"; fi
+  if [[ "$tls_choice" == "2" || "${tls_choice,,}" == "manual" ]]; then cert_file="${ARG_CERT_PATH:-$(ask_non_empty "SSL_CERT_FILE")}"; key_file="${ARG_KEY_PATH:-$(ask_non_empty "SSL_KEY_FILE")}"; require_file_readable "$cert_file"; require_file_readable "$key_file"; fi
+  write_node_env "$api_key" "$node_host" "$service_port" "$api_port" "$service_protocol" "$cert_file" "$key_file"
+  install_node_cli
   if ask_yes_no "Install and start node systemd service now?" "y"; then install_node_service; else write_node_service; warn "Node service was not started. Start later with: $NODE_CLI_NAME start"; fi
   echo; ok "Doctor Dev Node installation finished."; cecho "${BOLD}CLI:${RESET}   ${GREEN}$NODE_CLI_NAME help${RESET}"; cecho "${BOLD}Health:${RESET} ${GREEN}http://127.0.0.1:${api_port}/health${RESET}"
 }
 
 update_node(){
   header "Doctor Dev Node Updater" "Pull latest code, keep node config, reinstall service, restart"
-  need_root
-  install_packages
+  need_root; install_packages
   local cli_name
-  cli_name="${DOCTOR_DEV_NODE_CLI_NAME:-}"
-  [[ -z "$cli_name" ]] && cli_name="$(ask "Node CLI name" "docter-node")"
-  node_vars "$cli_name"
-  stop_service "$NODE_SERVICE_NAME"
-  clone_or_update_repo "$NODE_APP_DIR" "update"
-  validate_project_tree "$NODE_APP_DIR"
-  setup_venv "$NODE_APP_DIR"
-  install_node_cli
-
-  if [[ ! -f "$NODE_ENV_FILE" && -f "$NODE_APP_DIR/.env" && ! -L "$NODE_APP_DIR/.env" ]]; then
-    warn "Migrating legacy env file from $NODE_APP_DIR/.env to $NODE_ENV_FILE"
-    mkdir -p "$NODE_CONFIG_DIR"
-    cp "$NODE_APP_DIR/.env" "$NODE_ENV_FILE"
-    chmod 600 "$NODE_ENV_FILE" || true
-  fi
-
+  cli_name="${ARG_NODE_CLI_NAME:-${DOCTOR_DEV_NODE_CLI_NAME:-doctor-node}}"; node_vars "$cli_name"
+  stop_disable_service "$NODE_SERVICE_NAME"
+  clone_or_update_repo "$NODE_APP_DIR" "update"; validate_project_tree "$NODE_APP_DIR"; setup_venv "$NODE_APP_DIR"; install_node_cli
   if [[ -f "$NODE_ENV_FILE" ]]; then
     ln -sfn "$NODE_ENV_FILE" "$NODE_APP_DIR/.env" 2>/dev/null || true
     write_node_service
@@ -450,19 +595,36 @@ update_node(){
     systemctl restart "$NODE_SERVICE_NAME"
     ok "Node service installed/enabled/restarted: $NODE_SERVICE_NAME"
   else
-    warn "No node environment file found at $NODE_ENV_FILE."
-    warn "Code was updated, but the service cannot start until install-node creates the env."
+    warn "No node environment file found at $NODE_ENV_FILE. Run install-node first."
   fi
   ok "Node update finished."
 }
 
+uninstall_node(){
+  header "Doctor Dev Node Remover" "Stop service and remove node files"
+  need_root
+  local cli_name
+  cli_name="${ARG_NODE_CLI_NAME:-${DOCTOR_DEV_NODE_CLI_NAME:-doctor-node}}"; node_vars "$cli_name"
+  local -a items=()
+  mapfile -t items < <(collect_existing_paths node "$cli_name")
+  if [[ ${#items[@]} -eq 0 ]]; then ok "No node installation was found."; return; fi
+  show_found_items "Node items to remove:" "${items[@]}"
+  ask_yes_no "Remove these node items?" "n" || fail "Canceled."
+  remove_found_items "${items[@]}"
+  ok "Node removal completed."
+}
+
 main(){
   local command="${1:-}"
+  [[ $# -gt 0 ]] && shift || true
+  parse_common_args "$@"
   case "$command" in
     install-panel) install_panel ;;
     update-panel) update_panel ;;
+    uninstall-panel|remove-panel) uninstall_panel ;;
     install-node) install_node ;;
     update-node) update_node ;;
+    uninstall-node|remove-node) uninstall_node ;;
     -h|--help|help|"") usage ;;
     *) usage; fail "Unknown command: $command" ;;
   esac

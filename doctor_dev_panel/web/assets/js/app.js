@@ -20,11 +20,25 @@ function escapeHtml(v) {
 function deepCopy(v) {
   return JSON.parse(JSON.stringify(v ?? {}));
 }
+function isValidNodeId(id) {
+  return /^node_[A-Za-z0-9_-]{6,96}$/.test(String(id || "").trim());
+}
+function isValidCoreId(id) {
+  return /^core_[A-Za-z0-9_-]{6,96}$/.test(String(id || "").trim());
+}
 function nodeById(id) {
-  return state.nodes.find((n) => n.id === id) || null;
+  if (!isValidNodeId(id)) return null;
+  return state.nodes.find((n) => String(n.id) === String(id)) || null;
 }
 function coreById(id) {
-  return state.cores.find((c) => c.id === id) || null;
+  if (!isValidCoreId(id)) return null;
+  return state.cores.find((c) => String(c.id) === String(id)) || null;
+}
+function warnInvalidIdentifier(kind) {
+  showToast(
+    "This " + kind + " has invalid data. Refresh the page or run Repair Data.",
+    "warning",
+  );
 }
 function nodeName(id) {
   const n = nodeById(id);
@@ -54,6 +68,9 @@ function formatApiError(data, fallback) {
   fallback = fallback || "Request failed.";
   if (!data || typeof data !== "object") return fallback;
   if (typeof data.detail === "string") return data.detail;
+  if (data.detail && typeof data.detail === "object" && !Array.isArray(data.detail)) {
+    return data.detail.message || data.detail.error || fallback;
+  }
   if (Array.isArray(data.detail) && data.detail.length) {
     var first = data.detail[0];
     var loc = Array.isArray(first.loc) ? first.loc.slice(1).join(" > ") : "";
@@ -348,7 +365,7 @@ function switchPage(page) {
 }
 
 function openCoreEditorPage(core) {
-  if (!core) return;
+  if (!core || !isValidCoreId(core.id)) { warnInvalidIdentifier("core"); return; }
   state.editingCore = core;
   state.editorDraft = deepCopy(core);
 
@@ -387,6 +404,27 @@ async function refreshAll() {
   if (state.page === "dashboard") await loadStats();
 }
 
+async function repairPanelData() {
+  var confirmed = await showConfirm(
+    "Repair invalid nodes and cores? Invalid records will be removed and cores linked to missing nodes will be disabled.",
+    "Repair Data",
+    "Repair",
+    "warning",
+  );
+  if (!confirmed) return;
+  try {
+    var data = await api("/api/panel/repair", { method: "POST" });
+    var summary = data.integrity && data.integrity.summary ? data.integrity.summary : {};
+    showToast(
+      "Data repair completed. Remaining active issues: " + String(summary.problems_total || 0),
+      summary.problems_total ? "warning" : "success",
+    );
+    await refreshAll();
+  } catch (err) {
+    showToast(err.message || "Data repair failed.", "error");
+  }
+}
+
 async function loadStats() {
   try {
     var data = await api("/api/panel/stats");
@@ -403,7 +441,7 @@ async function loadNodes() {
   try {
     var data = await api("/api/nodes");
     if (data.ok) {
-      state.nodes = data.nodes || [];
+      state.nodes = (data.nodes || []).filter(function (node) { return isValidNodeId(node && node.id); });
       renderNodes();
       updateNodesBadge();
     }
@@ -416,7 +454,7 @@ async function loadCores() {
   try {
     var data = await api("/api/cores");
     if (data.ok) {
-      state.cores = data.cores || [];
+      state.cores = (data.cores || []).filter(function (core) { return isValidCoreId(core && core.id); });
       state.inboundCatalog = data.inbound_catalog || [];
       renderCores();
       updateCoresBadge();
@@ -561,12 +599,12 @@ function renderDashboard() {
         "</div>" +
         '<div class="dashboard-node-actions">' +
         '<button class="btn btn-xs btn-ghost" data-action="check" data-id="' +
-        node.id +
+        escapeHtml(String(node.id || "")) +
         '" title="Check node">' +
         '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>' +
         "</button>" +
         '<button class="btn btn-xs btn-ghost" data-action="edit" data-id="' +
-        node.id +
+        escapeHtml(String(node.id || "")) +
         '" title="Edit node">' +
         '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>' +
         "</button>" +
@@ -579,7 +617,8 @@ function renderDashboard() {
   nodeList.querySelectorAll("[data-action]").forEach(function (btn) {
     btn.addEventListener("click", function (e) {
       e.stopPropagation();
-      var id = parseInt(btn.dataset.id, 10);
+      var id = btn.dataset.id;
+      if (!isValidNodeId(id)) { warnInvalidIdentifier("node"); return; }
       if (btn.dataset.action === "edit") openNodeModal(nodeById(id));
       if (btn.dataset.action === "check") checkSavedNode(id, btn);
     });
@@ -635,7 +674,7 @@ function renderNodes() {
         escapeHtml(node.connection_type || "\u2014") +
         "</td>" +
         "<td>" +
-        (node.tls ? "Yes" : "No") +
+        (node.certificate ? "Yes" : "No") +
         "</td>" +
         '<td><span class="badge ' +
         (node.enabled ? "badge-running" : "badge-disabled") +
@@ -647,15 +686,15 @@ function renderNodes() {
         "</td>" +
         '<td class="actions-cell">' +
         '<button class="btn btn-xs btn-ghost" data-node-action="check" data-id="' +
-        node.id +
+        escapeHtml(String(node.id || "")) +
         '" title="Check">' +
         '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>' +
         "</button>" +
         '<button class="btn btn-xs btn-secondary" data-node-action="edit"   data-id="' +
-        node.id +
+        escapeHtml(String(node.id || "")) +
         '">Edit</button>' +
         '<button class="btn btn-xs btn-danger"    data-node-action="delete" data-id="' +
-        node.id +
+        escapeHtml(String(node.id || "")) +
         '">Delete</button>' +
         "</td>" +
         "</tr>"
@@ -665,8 +704,9 @@ function renderNodes() {
 
   tbody.querySelectorAll("[data-node-action]").forEach(function (btn) {
     btn.addEventListener("click", function () {
-      var id = parseInt(btn.dataset.id, 10);
+      var id = btn.dataset.id;
       var action = btn.dataset.nodeAction;
+      if (!isValidNodeId(id)) { warnInvalidIdentifier("node"); return; }
       if (action === "check") checkSavedNode(id, btn);
       if (action === "edit") openNodeModal(nodeById(id));
       if (action === "delete") deleteNode(id);
@@ -783,7 +823,8 @@ async function saveNode(e) {
 
   try {
     if (state.editingNode) {
-      await api("/api/nodes/" + state.editingNode.id, {
+      if (!isValidNodeId(state.editingNode.id)) { warnInvalidIdentifier("node"); await refreshAll(); return; }
+      await api("/api/nodes/" + encodeURIComponent(state.editingNode.id), {
         method: "PUT",
         body: JSON.stringify(payload),
       });
@@ -808,6 +849,7 @@ async function saveNode(e) {
 }
 
 async function deleteNode(id) {
+  if (!isValidNodeId(id)) { warnInvalidIdentifier("node"); await refreshAll(); return; }
   var node = nodeById(id);
   var name = node ? node.name || node.address : "Node #" + id;
   var confirmed = await showConfirm(
@@ -819,21 +861,28 @@ async function deleteNode(id) {
   if (!confirmed) return;
 
   try {
-    await api("/api/nodes/" + id, { method: "DELETE" });
+    await api("/api/nodes/" + encodeURIComponent(id), { method: "DELETE" });
     showToast("Node deleted.", "success");
     closeNodeModal();
     await refreshAll();
   } catch (err) {
+    if ((err.message || "").toLowerCase().includes("node not found")) {
+      showToast("Node was already removed. The list was refreshed.", "warning");
+      closeNodeModal();
+      await refreshAll();
+      return;
+    }
     showToast(err.message || "Failed to delete node.", "error");
   }
 }
 
 async function checkSavedNode(id, button) {
+  if (!isValidNodeId(id)) { warnInvalidIdentifier("node"); await refreshAll(); return; }
   var origHTML = button ? button.innerHTML : "";
   if (button) button.disabled = true;
 
   try {
-    var data = await api("/api/nodes/" + id + "/check", { method: "POST" });
+    var data = await api("/api/nodes/" + encodeURIComponent(id) + "/check", { method: "POST" });
     var status = data.status || "unknown";
     var msg = data.message || statusLabel(status);
     showToast(
@@ -861,12 +910,13 @@ async function checkFormNode() {
 
   try {
     if (state.editingNode) {
+      if (!isValidNodeId(state.editingNode.id)) { warnInvalidIdentifier("node"); await refreshAll(); return; }
       var payload = nodePayload();
-      await api("/api/nodes/" + state.editingNode.id, {
+      await api("/api/nodes/" + encodeURIComponent(state.editingNode.id), {
         method: "PUT",
         body: JSON.stringify(payload),
       });
-      var data = await api("/api/nodes/" + state.editingNode.id + "/check", {
+      var data = await api("/api/nodes/" + encodeURIComponent(state.editingNode.id) + "/check", {
         method: "POST",
       });
       state.lastFormCheck = {
@@ -923,6 +973,7 @@ function fillNodeSelect(select, value) {
   select.innerHTML =
     '<option value="">— Select Node —</option>' +
     state.nodes
+      .filter(function (n) { return isValidNodeId(n && n.id); })
       .map(function (n) {
         var v = String(n.id);
         var sel = v === String(value) ? " selected" : "";
@@ -958,61 +1009,54 @@ function renderCores() {
     .map(function (core) {
       var st = statusFor(core);
       var inCnt = Array.isArray(core.inbounds) ? core.inbounds.length : 0;
-      var blCnt = Array.isArray(core.balancers) ? core.balancers.length : 0;
-      var dpCnt = Array.isArray(core.dependencies)
-        ? core.dependencies.length
+      var enabledInbounds = Array.isArray(core.inbounds)
+        ? core.inbounds.filter(function (ib) { return ib.enabled !== false; }).length
         : 0;
+      var blCnt = Array.isArray(core.balancers) ? core.balancers.length : 0;
+      var dpCnt = Array.isArray(core.dependencies) ? core.dependencies.length : 0;
       var upd = core.updated_at ? timeAgo(core.updated_at) : "unknown";
-      var nName = nodeName(core.node_id);
+      var applied = core.last_applied_at ? timeAgo(core.last_applied_at) : "Not applied";
+      var coreIdOk = isValidCoreId(core.id);
+      var node = nodeById(core.node_id);
+      var nodeMissing = !node;
+      var nName = nodeMissing ? "Missing linked node" : nodeName(core.node_id);
+      var nodeStatus = nodeMissing ? "error" : statusFor(node);
+      var healthClass = nodeStatus === "running" ? "ok" : nodeStatus === "error" ? "bad" : "warn";
+      var actionDisabled = !coreIdOk || nodeMissing;
+      var disabledAttr = actionDisabled ? ' disabled title="This core has invalid or missing linked data. Run Repair Data."' : "";
       return (
-        '<div class="core-card" data-id="' +
-        escapeHtml(String(core.id)) +
-        '">' +
-        '<div class="core-card-header">' +
-        '<span class="badge badge-' +
-        escapeHtml(st) +
-        '">' +
-        escapeHtml(statusLabel(st)) +
-        "</span>" +
-        '<h3 class="core-card-name">' +
-        escapeHtml(core.name || "Unnamed Core") +
-        "</h3>" +
-        "</div>" +
-        '<div class="core-card-meta">' +
-        '<span class="core-meta-item">' +
-        '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>' +
-        escapeHtml(nName) +
-        "</span>" +
-        '<span class="core-meta-item">' +
-        inCnt +
-        " inbound" +
-        (inCnt !== 1 ? "s" : "") +
-        "</span>" +
-        '<span class="core-meta-item">' +
-        blCnt +
-        " balancer" +
-        (blCnt !== 1 ? "s" : "") +
-        "</span>" +
-        '<span class="core-meta-item">' +
-        dpCnt +
-        " dep" +
-        (dpCnt !== 1 ? "s" : "") +
-        "</span>" +
-        "</div>" +
-        '<div class="core-card-footer">' +
-        '<span class="core-updated">Updated ' +
-        escapeHtml(upd) +
-        "</span>" +
-        '<div class="core-card-actions">' +
-        '<button class="btn btn-sm btn-primary" data-core-action="open"   data-id="' +
-        escapeHtml(String(core.id)) +
-        '">Open</button>' +
-        '<button class="btn btn-sm btn-danger"  data-core-action="delete" data-id="' +
-        escapeHtml(String(core.id)) +
-        '">Delete</button>' +
-        "</div>" +
-        "</div>" +
-        "</div>"
+        '<article class="core-card core-card-v2" data-id="' + escapeHtml(String(core.id)) + '">' +
+          '<div class="core-card-topline">' +
+            '<span class="badge badge-' + escapeHtml(st) + '">' + escapeHtml(statusLabel(st)) + '</span>' +
+            '<span class="core-health core-health-' + healthClass + '">' +
+              '<span class="status-dot-mini"></span>' + escapeHtml(nodeMissing ? "Broken link" : nodeStatus === "running" ? "Node online" : nodeStatus === "error" ? "Node issue" : "Pending node") +
+            '</span>' +
+          '</div>' +
+          '<div class="core-card-main">' +
+            '<h3 class="core-card-name">' + escapeHtml(core.name || "Unnamed Core") + '</h3>' +
+            '<div class="core-card-node-line">' +
+              '<span class="tiny-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></span>' +
+              '<span>' + escapeHtml(nName) + '</span>' +
+            '</div>' +
+          '</div>' +
+          '<div class="core-metrics-grid">' +
+            '<div class="core-metric"><strong>' + inCnt + '</strong><span>Inbounds</span><small>' + enabledInbounds + ' enabled</small></div>' +
+            '<div class="core-metric"><strong>' + blCnt + '</strong><span>Balancers</span><small>routing groups</small></div>' +
+            '<div class="core-metric"><strong>' + dpCnt + '</strong><span>Deps</span><small>apply order</small></div>' +
+          '</div>' +
+          '<div class="core-card-footer core-card-footer-v2">' +
+            '<div class="core-time-stack">' +
+              '<span>Updated ' + escapeHtml(upd) + '</span>' +
+              '<span>Applied: ' + escapeHtml(applied) + '</span>' +
+              (core.last_error ? '<span class="core-error-inline">' + escapeHtml(core.last_error) + '</span>' : '') +
+            '</div>' +
+            '<div class="core-card-actions">' +
+              '<button class="btn btn-sm btn-ghost" data-core-action="open" data-id="' + escapeHtml(String(core.id || "")) + '"' + (coreIdOk ? "" : disabledAttr) + '>Open</button>' +
+              '<button class="btn btn-sm btn-primary" data-core-action="apply" data-id="' + escapeHtml(String(core.id || "")) + '"' + disabledAttr + '>Apply</button>' +
+              '<button class="btn btn-sm btn-danger" data-core-action="delete" data-id="' + escapeHtml(String(core.id || "")) + '"' + (coreIdOk ? "" : disabledAttr) + '>Delete</button>' +
+            '</div>' +
+          '</div>' +
+        '</article>'
       );
     })
     .join("");
@@ -1020,18 +1064,46 @@ function renderCores() {
   grid.querySelectorAll("[data-core-action]").forEach(function (btn) {
     btn.addEventListener("click", function (e) {
       e.stopPropagation();
-      var id = parseInt(btn.dataset.id, 10);
+      var id = btn.dataset.id;
+      if (!isValidCoreId(id)) { warnInvalidIdentifier("core"); return; }
+      if (btn.disabled) { warnInvalidIdentifier("core"); return; }
       if (btn.dataset.coreAction === "open") openCoreEditorPage(coreById(id));
+      if (btn.dataset.coreAction === "apply") applyCore(id, btn);
       if (btn.dataset.coreAction === "delete") deleteCore(id);
     });
   });
 
   grid.querySelectorAll(".core-card").forEach(function (card) {
     card.addEventListener("dblclick", function () {
-      var id = parseInt(card.dataset.id, 10);
+      var id = card.dataset.id;
+      if (!isValidCoreId(id)) { warnInvalidIdentifier("core"); return; }
       openCoreEditorPage(coreById(id));
     });
   });
+}
+
+async function applyCore(id, button) {
+  if (!isValidCoreId(id)) { warnInvalidIdentifier("core"); await refreshAll(); return; }
+  var core = coreById(id);
+  if (core && !nodeById(core.node_id)) { warnInvalidIdentifier("core"); await refreshAll(); return; }
+  var orig = button ? button.textContent : "";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Applying…";
+  }
+  try {
+    var data = await api("/api/cores/" + encodeURIComponent(id) + "/apply", { method: "POST" });
+    showToast(data.message || "Core applied to node.", "success");
+    await refreshAll();
+  } catch (err) {
+    showToast(err.message || "Failed to apply core.", "error");
+    await refreshAll();
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = orig;
+    }
+  }
 }
 
 async function openCoreCreateModal() {
@@ -1065,14 +1137,14 @@ async function createCore(e) {
   var submitBtn = e.target.querySelector('[type="submit"]');
 
   var name = nameEl ? nameEl.value.trim() : "";
-  var node_id = nodeEl ? parseInt(nodeEl.value, 10) : 0;
+  var node_id = nodeEl ? nodeEl.value : "";
 
   if (!name) {
     showToast("Core name is required.", "warning");
     return;
   }
-  if (!node_id) {
-    showToast("Please select a node.", "warning");
+  if (!node_id || !isValidNodeId(node_id)) {
+    showToast("Please select a valid node.", "warning");
     return;
   }
 
@@ -1085,7 +1157,7 @@ async function createCore(e) {
   try {
     var data = await api("/api/cores", {
       method: "POST",
-      body: JSON.stringify({ name: name, node_id: node_id }),
+      body: JSON.stringify({ name: name, node_id: node_id, enabled: true }),
     });
     if (data.ok) {
       closeCoreCreateModal();
@@ -1104,6 +1176,7 @@ async function createCore(e) {
 }
 
 async function deleteCore(id) {
+  if (!isValidCoreId(id)) { warnInvalidIdentifier("core"); await refreshAll(); return; }
   var core = coreById(id);
   var name = core ? core.name : "Core #" + id;
   var confirmed = await showConfirm(
@@ -1115,11 +1188,16 @@ async function deleteCore(id) {
   if (!confirmed) return;
 
   try {
-    await api("/api/cores/" + id, { method: "DELETE" });
+    await api("/api/cores/" + encodeURIComponent(id), { method: "DELETE" });
     showToast("Core deleted.", "success");
     if (state.editingCore && state.editingCore.id === id) switchPage("cores");
     await refreshAll();
   } catch (err) {
+    if ((err.message || "").toLowerCase().includes("core not found")) {
+      showToast("Core was already removed. The list was refreshed.", "warning");
+      await refreshAll();
+      return;
+    }
     showToast(err.message || "Failed to delete core.", "error");
   }
 }
@@ -1145,7 +1223,7 @@ function syncEditorHeaderToDraft() {
   var nodeEl = $("#editorCoreNode");
   var enabledEl = $("#editorCoreEnabled");
   if (nameEl) state.editorDraft.name = nameEl.value.trim();
-  if (nodeEl) state.editorDraft.node_id = parseInt(nodeEl.value, 10) || null;
+  if (nodeEl) state.editorDraft.node_id = nodeEl.value || "";
   if (enabledEl) state.editorDraft.enabled = enabledEl.checked;
 }
 
@@ -1885,6 +1963,7 @@ function fillEndpointNodeSelect(select, value) {
   select.innerHTML =
     '<option value="">— Select Node —</option>' +
     state.nodes
+      .filter(function (n) { return isValidNodeId(n && n.id); })
       .map(function (n) {
         return (
           '<option value="' +
@@ -2085,7 +2164,8 @@ async function refreshPreviewFromServer() {
     btn.textContent = "Loading\u2026";
   }
   try {
-    var data = await api("/api/cores/" + state.editingCore.id + "/preview");
+    if (!state.editingCore || !isValidCoreId(state.editingCore.id)) { warnInvalidIdentifier("core"); return; }
+    var data = await api("/api/cores/" + encodeURIComponent(state.editingCore.id) + "/preview");
     if (data.ok && box)
       box.textContent = JSON.stringify(data.node_config_preview, null, 2);
   } catch (err) {
@@ -2112,8 +2192,10 @@ function collectEditorPayload() {
 }
 
 async function saveCoreEditor() {
-  if (!state.editingCore) return;
+  if (!state.editingCore) return false;
+  if (!isValidCoreId(state.editingCore.id)) { warnInvalidIdentifier("core"); await refreshAll(); return false; }
   var payload = collectEditorPayload();
+  if (!isValidNodeId(payload.node_id)) { showToast("Select a valid node before saving this core.", "warning"); return false; }
   var saveBtns = $$("#saveCoreBtn, #saveCoreEditorBottom");
   saveBtns.forEach(function (b) {
     b.disabled = true;
@@ -2121,7 +2203,7 @@ async function saveCoreEditor() {
   });
 
   try {
-    var data = await api("/api/cores/" + state.editingCore.id, {
+    var data = await api("/api/cores/" + encodeURIComponent(state.editingCore.id), {
       method: "PUT",
       body: JSON.stringify(payload),
     });
@@ -2138,15 +2220,25 @@ async function saveCoreEditor() {
       await refreshAll();
       bindCoreEditorHeader();
       updateTabBadges();
+      return true;
     }
+    return false;
   } catch (err) {
     showToast(err.message || "Failed to save core.", "error");
+    return false;
   } finally {
     saveBtns.forEach(function (b) {
       b.disabled = false;
       b.textContent = "Save Core";
     });
   }
+}
+
+async function saveAndApplyCoreEditor() {
+  if (!state.editingCore) return;
+  var ok = await saveCoreEditor();
+  if (!ok || !state.editingCore) return;
+  await applyCore(state.editingCore.id, null);
 }
 
 // ============================================================
@@ -2349,6 +2441,8 @@ document.addEventListener("DOMContentLoaded", function () {
   // --- Refresh ---
   var refreshBtn = $("#refreshButton");
   if (refreshBtn) refreshBtn.addEventListener("click", refreshAll);
+  var repairDataBtn = $("#repairDataButton");
+  if (repairDataBtn) repairDataBtn.addEventListener("click", repairPanelData);
 
   // --- Nodes ---
   var createNodeBtn = $("#createNodeBtn");
@@ -2380,7 +2474,8 @@ document.addEventListener("DOMContentLoaded", function () {
   var deleteNodeBtn = $("#deleteNodeButton");
   if (deleteNodeBtn)
     deleteNodeBtn.addEventListener("click", function () {
-      if (state.editingNode) deleteNode(state.editingNode.id);
+      if (state.editingNode && isValidNodeId(state.editingNode.id)) deleteNode(state.editingNode.id);
+      else warnInvalidIdentifier("node");
     });
 
   var nodeEnabled = $("#nodeEnabled");
@@ -2451,6 +2546,9 @@ document.addEventListener("DOMContentLoaded", function () {
 
   $$("#saveCoreBtn, #saveCoreEditorBottom").forEach(function (el) {
     el.addEventListener("click", saveCoreEditor);
+  });
+  $$("#applyCoreBtn, #applyCoreEditorBottom").forEach(function (el) {
+    el.addEventListener("click", saveAndApplyCoreEditor);
   });
 
   // --- Core Editor tabs ---
