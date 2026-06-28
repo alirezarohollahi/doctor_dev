@@ -39,6 +39,10 @@ def generate_api_key() -> str:
     return str(__import__("uuid").uuid4())
 
 
+def generate_secret_token() -> str:
+    return secrets.token_urlsafe(32)
+
+
 def empty_store() -> dict[str, Any]:
     return {"version": 3, "nodes": []}
 
@@ -92,6 +96,12 @@ def normalize_node(payload: dict[str, Any], existing: Optional[dict[str, Any]] =
 
     # Core Configuration is intentionally not part of Create Node anymore.
     base.pop("core_configuration", None)
+
+    # Shared secret used by other Doctor Dev nodes to pull this node's
+    # live runtime/inbound state. It is intentionally separate from api_key;
+    # api_key remains the panel/control-plane credential.
+    if not str(base.get("secret_token") or "").strip():
+        base["secret_token"] = generate_secret_token()
 
     # Current node agent supports gRPC only. Normalize legacy UI values so the
     # stored data stays in sync with the panel and future edits never emit direct/proxy.

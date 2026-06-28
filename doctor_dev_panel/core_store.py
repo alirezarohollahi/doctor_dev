@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Any, Optional
 from urllib.parse import urlparse
 
+from .node_runtime_cache import find_live_inbound_ports
+
 from .id_utils import is_valid_core_id, is_valid_node_id
 
 VALID_CORE_STATUSES = {"draft", "ready", "applied", "error", "disabled"}
@@ -342,6 +344,43 @@ def _address_host(address: Any) -> str:
     return host.strip() or "127.0.0.1"
 
 
+
+
+def _node_sync_urls(node: dict[str, Any]) -> list[str]:
+    raw = str(node.get("address") or "").strip()
+    if not raw:
+        return []
+    parsed = urlparse(raw if "://" in raw else f"//{raw}")
+    host = parsed.netloc or parsed.path
+    host = host.split("/", 1)[0].strip()
+    if not host:
+        return []
+    if ":" in host and not host.startswith("[") and host.count(":") == 1:
+        host = host.split(":", 1)[0]
+    try:
+        api_port = int(node.get("api_port") or 62051)
+    except (TypeError, ValueError):
+        api_port = 62051
+    if "://" in raw and parsed.scheme:
+        schemes = [parsed.scheme]
+    else:
+        schemes = ["https", "http"] if str(node.get("certificate") or "").strip() else ["http", "https"]
+    urls: list[str] = []
+    for scheme in schemes:
+        url = f"{scheme}://{host}:{api_port}/config/export"
+        if url not in urls:
+            urls.append(url)
+    return urls
+
+
+def _attach_peer_sync_fields(endpoint: dict[str, Any], target_node: dict[str, Any], target_node_id: str, target_core_id: str, inbound_name: str) -> None:
+    endpoint["remote_node_id"] = target_node_id
+    endpoint["remote_core_id"] = target_core_id
+    endpoint["remote_inbound_name"] = inbound_name
+    endpoint["sync_urls"] = _node_sync_urls(target_node)
+    endpoint["secret_token"] = str(target_node.get("secret_token") or "")
+    endpoint["api_port"] = int(target_node.get("api_port") or 62051)
+
 def _first_fixed_port(inbound: dict[str, Any]) -> Optional[int]:
     for item in inbound.get("fixed_ports") or []:
         try:
@@ -395,29 +434,39 @@ def _enrich_node_inbound_endpoints(config_node_id: str, cores: list[dict[str, An
                 if not target_inbound:
                     endpoint["resolve_error"] = "Selected node inbound was not found."
                     continue
-                port = _first_fixed_port(target_inbound)
-                endpoint["core_id"] = str(target_core.get("id") or core_id or "") if target_core else core_id
+                target_core_id = str(target_core.get("id") or core_id or "") if target_core else core_id
+                endpoint["core_id"] = target_core_id
                 endpoint["inbound_name"] = str(target_inbound.get("name") or inbound_name)
+                target_node = node_map.get(target_node_id, {})
+                _attach_peer_sync_fields(endpoint, target_node, target_node_id, target_core_id, str(endpoint.get("inbound_name") or ""))
+
+                live_ports = find_live_inbound_ports(target_node_id, target_core_id, str(endpoint.get("inbound_name") or ""))
+                if live_ports:
+                    endpoint["port"] = live_ports[0]
+                    endpoint["host"] = "127.0.0.1" if target_node_id == config_node_id else str(target_inbound.get("public_host") or _address_host(target_node.get("address")))
+                    endpoint["resolved_from"] = "node_inbound_live_cache"
+                    endpoint["live_ports"] = live_ports[:32]
+                    continue
+
+                port = _first_fixed_port(target_inbound)
                 if port:
                     endpoint["port"] = port
                     if target_node_id == config_node_id:
                         endpoint["host"] = "127.0.0.1"
                     else:
-                        target_node = node_map.get(target_node_id, {})
                         endpoint["host"] = str(target_inbound.get("public_host") or _address_host(target_node.get("address")))
-                    endpoint["resolved_from"] = "node_inbound"
+                    endpoint["resolved_from"] = "node_inbound_fixed"
                     continue
 
-                if target_inbound.get("port_mode") == "random" and target_node_id == config_node_id:
-                    # Same-node random inbounds are resolved by the node runtime
-                    # from the active listener table after port allocation. Do
-                    # not reject them at panel-build time with a fixed-port error.
-                    endpoint["host"] = "127.0.0.1"
+                if target_inbound.get("port_mode") == "random":
+                    # Same-node random inbounds are resolved directly from the active listener table.
+                    # Remote random inbounds are resolved by node-side peer sync using sync_urls + secret_token.
+                    endpoint["host"] = "127.0.0.1" if target_node_id == config_node_id else str(target_inbound.get("public_host") or _address_host(target_node.get("address")))
                     endpoint["port"] = 80
-                    endpoint["resolved_from"] = "node_inbound_random_runtime"
+                    endpoint["resolved_from"] = "node_inbound_random_peer_sync" if target_node_id != config_node_id else "node_inbound_random_runtime"
                     continue
 
-                endpoint["resolve_error"] = "Selected node inbound has no fixed port."
+                endpoint["resolve_error"] = "Selected node inbound has no fixed or live port."
     return cores
 
 

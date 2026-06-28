@@ -50,12 +50,14 @@ from .logging_utils import (
 from .node_store import (
     create_node,
     generate_api_key,
+    generate_secret_token,
     get_node,
     list_nodes,
     remove_node,
     set_node_check_result,
     update_node,
 )
+from .node_runtime_cache import update_node_runtime
 from .schemas import AdvancedConfigValidateBody, CoreBody, LoginBody, NodeBody
 
 setup_panel_logging()
@@ -182,6 +184,22 @@ assets_dir = WEB_DIR / "assets"
 app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
 
 
+@app.on_event("startup")
+async def start_node_runtime_sync() -> None:
+    if os.getenv("DOCTOR_DEV_PANEL_NODE_SYNC", "true").lower() in {"0", "false", "no", "off"}:
+        return
+    app.state.node_runtime_sync_task = asyncio.create_task(_node_runtime_sync_loop())
+
+
+@app.on_event("shutdown")
+async def stop_node_runtime_sync() -> None:
+    task = getattr(app.state, "node_runtime_sync_task", None)
+    if task:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+
+
 def _node_host(address: str) -> tuple[str, Optional[str]]:
     raw = (address or "").strip()
     if not raw:
@@ -238,6 +256,52 @@ def _format_attempts(attempts: list[str]) -> str:
     if not cleaned:
         return "No connection attempt was completed."
     return " | ".join(cleaned[-4:])
+
+def _read_node_export(node: dict) -> dict:
+    host, schemes = _node_scheme_candidates(str(node.get("address", "")), str(node.get("certificate") or ""))
+    port = int(node.get("api_port") or 62051)
+    api_key = str(node.get("api_key") or "")
+    attempts: list[str] = []
+    for scheme in schemes:
+        url = f"{scheme}://{host}:{port}/config/export"
+        try:
+            _, data = _read_url(url, api_key=api_key, certificate=str(node.get("certificate") or ""), timeout=float(os.getenv("DOCTOR_DEV_PANEL_NODE_SYNC_TIMEOUT", "3")))
+            if isinstance(data, dict):
+                return data
+        except Exception as exc:  # noqa: BLE001
+            attempts.append(f"{url}: {exc}")
+    raise NodeAPIError(_format_attempts(attempts))
+
+
+async def _sync_node_runtime_once(node: dict) -> None:
+    node_id = str(node.get("id") or "")
+    if not node_id or not node.get("enabled", True):
+        return
+    try:
+        data = await asyncio.to_thread(_read_node_export, node)
+        update_node_runtime(node_id, data, source="panel-periodic-sync")
+        set_node_check_result(node_id, ok=True, details={"runtime_synced": True, "exported_at": data.get("exported_at")})
+        logger.debug("node runtime synced: node_id=%s", node_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("node runtime sync failed: node_id=%s error=%s", node_id, exc)
+
+
+async def _node_runtime_sync_loop() -> None:
+    interval = max(0.0, float(os.getenv("DOCTOR_DEV_PANEL_NODE_SYNC_INTERVAL", "10")))
+    if interval <= 0:
+        logger.info("panel node runtime sync disabled")
+        return
+    logger.info("panel node runtime sync enabled: interval=%ss", interval)
+    while True:
+        try:
+            nodes = list_nodes()
+            await asyncio.gather(*(_sync_node_runtime_once(node) for node in nodes), return_exceptions=True)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("panel node runtime sync loop failed: %s", exc)
+        await asyncio.sleep(interval)
+
 
 
 def _check_node_sync(payload: dict) -> dict:
@@ -608,6 +672,18 @@ async def api_delete_node(node_id: str, user: str = Depends(require_admin)) -> d
 @app.post("/api/nodes/api-key")
 async def api_generate_node_key(user: str = Depends(require_admin)) -> dict:
     return {"ok": True, "api_key": generate_api_key()}
+
+
+@app.post("/api/nodes/secret-token")
+async def api_generate_node_secret_token(user: str = Depends(require_admin)) -> dict:
+    return {"ok": True, "secret_token": generate_secret_token()}
+
+
+@app.post("/api/nodes/sync-runtime")
+async def api_sync_all_node_runtime(user: str = Depends(require_admin)) -> dict:
+    nodes = list_nodes()
+    await asyncio.gather(*(_sync_node_runtime_once(node) for node in nodes), return_exceptions=True)
+    return {"ok": True, "message": "Node runtime cache sync finished.", "nodes": len(nodes)}
 
 
 @app.post("/api/nodes/check")

@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import json
 import os
 import random
 import socket
+import ssl
+import time
+from urllib.request import Request, urlopen
 from dataclasses import dataclass
 from typing import Any, Optional
 
@@ -16,6 +20,8 @@ BUFFER_SIZE = int(os.getenv("DOCTOR_DEV_FORWARD_BUFFER_SIZE", str(256 * 1024)))
 DRAIN_HIGH_WATER = int(os.getenv("DOCTOR_DEV_FORWARD_DRAIN_HIGH_WATER", str(1024 * 1024)))
 CONNECT_TIMEOUT = float(os.getenv("DOCTOR_DEV_FORWARD_CONNECT_TIMEOUT", "5"))
 SHUTDOWN_TIMEOUT = float(os.getenv("DOCTOR_DEV_FORWARD_SHUTDOWN_TIMEOUT", "3"))
+PEER_SYNC_INTERVAL = float(os.getenv("DOCTOR_DEV_NODE_PEER_SYNC_INTERVAL", "10"))
+PEER_SYNC_TIMEOUT = float(os.getenv("DOCTOR_DEV_NODE_PEER_SYNC_TIMEOUT", "3"))
 
 LOCAL_TARGET_HOSTS = {"", "127.0.0.1", "localhost", "::1", "0.0.0.0", "[::1]"}
 
@@ -45,6 +51,8 @@ class ForwarderRuntime:
         self.config: dict[str, Any] = {"version": 1, "cores": []}
         self._rr: dict[str, int] = {}
         self._target_active: dict[str, int] = {}
+        self._peer_runtime_cache: dict[str, dict[str, Any]] = {}
+        self._peer_sync_task: Optional[asyncio.Task] = None
         self.connection_count = 0
         self.active_connections = 0
         self.bytes_in = 0
@@ -53,6 +61,10 @@ class ForwarderRuntime:
         self._lock = asyncio.Lock()
 
     async def stop(self) -> None:
+        if self._peer_sync_task:
+            self._peer_sync_task.cancel()
+            await asyncio.gather(self._peer_sync_task, return_exceptions=True)
+            self._peer_sync_task = None
         for key, server in list(self.servers.items()):
             try:
                 server.close()
@@ -176,11 +188,100 @@ class ForwarderRuntime:
                             })
                             logger.warning("listener failed: %s:%s core=%s inbound=%s error=%s", bind_ip, requested_port, core.get("name"), inbound.get("name"), exc)
 
+            if self._peer_sync_endpoints():
+                await self._sync_all_peers_once()
+            self._restart_peer_sync_if_needed()
             summary = self.summary() | {"started_listeners": started}
             error_count = len([item for item in self.listeners if item.get("status") == "error"])
             summary["listener_errors"] = error_count
             summary["ok"] = error_count == 0 and started > 0
             return summary
+
+
+    def _restart_peer_sync_if_needed(self) -> None:
+        endpoints = self._peer_sync_endpoints()
+        if self._peer_sync_task:
+            self._peer_sync_task.cancel()
+            self._peer_sync_task = None
+        if endpoints and PEER_SYNC_INTERVAL > 0:
+            self._peer_sync_task = asyncio.create_task(self._peer_sync_loop())
+            logger.info("peer runtime sync enabled: endpoints=%s interval=%ss", len(endpoints), PEER_SYNC_INTERVAL)
+
+    def _peer_sync_endpoints(self) -> list[dict[str, Any]]:
+        endpoints: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for core in self.config.get("cores", []) if isinstance(self.config.get("cores"), list) else []:
+            for balancer in core.get("balancers", []) if isinstance(core.get("balancers"), list) else []:
+                for endpoint in balancer.get("endpoints", []) if isinstance(balancer.get("endpoints"), list) else []:
+                    if not isinstance(endpoint, dict) or endpoint.get("enabled") is False:
+                        continue
+                    if endpoint.get("type") != "node_inbound":
+                        continue
+                    sync_urls = endpoint.get("sync_urls") if isinstance(endpoint.get("sync_urls"), list) else []
+                    token = str(endpoint.get("secret_token") or "")
+                    remote_node_id = str(endpoint.get("remote_node_id") or endpoint.get("node_id") or "")
+                    if not sync_urls or not token or not remote_node_id:
+                        continue
+                    key = remote_node_id + "|" + ",".join(str(u) for u in sync_urls)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    endpoints.append(endpoint)
+        return endpoints
+
+    async def _peer_sync_loop(self) -> None:
+        while True:
+            try:
+                await self._sync_all_peers_once()
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("peer runtime sync loop failed: %s", exc)
+            await asyncio.sleep(max(1.0, PEER_SYNC_INTERVAL))
+
+    async def _sync_all_peers_once(self) -> None:
+        endpoints = self._peer_sync_endpoints()
+        if not endpoints:
+            return
+        await asyncio.gather(*(self._sync_peer_endpoint(endpoint) for endpoint in endpoints), return_exceptions=True)
+
+    async def _sync_peer_endpoint(self, endpoint: dict[str, Any]) -> None:
+        data = await asyncio.to_thread(self._fetch_peer_export, endpoint)
+        if not data:
+            return
+        remote_node_id = str(endpoint.get("remote_node_id") or endpoint.get("node_id") or data.get("node_id") or "")
+        if not remote_node_id:
+            return
+        data["synced_at_unix"] = time.time()
+        self._peer_runtime_cache[remote_node_id] = data
+        logger.debug("peer runtime synced: node=%s listeners=%s", remote_node_id, len(data.get("listeners") or []))
+
+    def _fetch_peer_export(self, endpoint: dict[str, Any]) -> Optional[dict[str, Any]]:
+        urls = endpoint.get("sync_urls") if isinstance(endpoint.get("sync_urls"), list) else []
+        token = str(endpoint.get("secret_token") or "")
+        certificate = str(endpoint.get("certificate") or "")
+        if not urls or not token:
+            return None
+        last_error = ""
+        for url in urls:
+            try:
+                headers = {"Accept": "application/json", "User-Agent": "DoctorDevNode/PeerSync", "X-Doctor-Node-Token": token}
+                req = Request(str(url), headers=headers)
+                context = None
+                if str(url).startswith("https://"):
+                    context = ssl.create_default_context(cadata=certificate) if certificate.strip() else ssl._create_unverified_context()
+                with urlopen(req, timeout=PEER_SYNC_TIMEOUT, context=context) as response:  # noqa: S310 - admin configured peer URL
+                    raw = response.read(1024 * 512).decode("utf-8", errors="replace")
+                    parsed = json.loads(raw) if raw else {}
+                    if isinstance(parsed, dict) and parsed.get("ok") is not False:
+                        return parsed
+                    last_error = str(parsed.get("message") or parsed)
+            except Exception as exc:  # noqa: BLE001
+                last_error = str(exc)
+                continue
+        if last_error:
+            logger.debug("peer runtime sync failed: node=%s error=%s", endpoint.get("remote_node_id") or endpoint.get("node_id"), last_error)
+        return None
 
 
     def validate_config(self, config: dict[str, Any]) -> list[str]:
@@ -365,6 +466,45 @@ class ForwarderRuntime:
                 return Target(self._listener_host_for_target(str(listener.get("bind_ip") or "127.0.0.1")), port, "node-inbound-listener")
         return None
 
+    def _target_from_cached_peer(self, endpoint: dict[str, Any]) -> Optional[Target]:
+        remote_node_id = str(endpoint.get("remote_node_id") or endpoint.get("node_id") or "")
+        if not remote_node_id:
+            return None
+        cached = self._peer_runtime_cache.get(remote_node_id)
+        if not cached:
+            return None
+        listeners = cached.get("listeners")
+        if not isinstance(listeners, list):
+            summary = cached.get("summary") if isinstance(cached.get("summary"), dict) else {}
+            listeners = summary.get("listeners") if isinstance(summary.get("listeners"), list) else []
+        core_id = str(endpoint.get("remote_core_id") or endpoint.get("core_id") or "")
+        inbound_name = str(endpoint.get("remote_inbound_name") or endpoint.get("inbound_name") or "")
+        candidates: list[int] = []
+        for listener in listeners:
+            if not isinstance(listener, dict) or listener.get("status") != "listening":
+                continue
+            if core_id and str(listener.get("core_id") or "") != core_id:
+                continue
+            if inbound_name and str(listener.get("inbound_name") or "") != inbound_name:
+                continue
+            try:
+                port = int(listener.get("port") or 0)
+            except (TypeError, ValueError):
+                port = 0
+            if 1 <= port <= 65535:
+                candidates.append(port)
+        if not candidates:
+            return None
+        host = str(endpoint.get("host") or "").strip() or str(endpoint.get("public_host") or "").strip()
+        if not host or host in LOCAL_TARGET_HOSTS:
+            # For remote peer cache a localhost-like host is never useful. Keep
+            # the explicit fallback host generated by the panel if possible.
+            host = str(endpoint.get("peer_host") or "").strip() or host
+        if not host:
+            return None
+        port = random.choice(candidates)
+        return Target(host, port, "node-inbound-peer-cache")
+
     def _target_from_endpoint(self, endpoint: dict[str, Any]) -> Optional[Target]:
         etype = str(endpoint.get("type") or "static")
         if etype == "static":
@@ -384,6 +524,12 @@ class ForwarderRuntime:
         # core is not in this node config, we use that explicit fallback.
         core_id = str(endpoint.get("core_id") or "")
         inbound_name = str(endpoint.get("inbound_name") or "")
+        current_node_id = str(self.config.get("node_id") or "")
+        remote_node_id = str(endpoint.get("remote_node_id") or endpoint.get("node_id") or "")
+        if remote_node_id and current_node_id and remote_node_id != current_node_id:
+            cached_target = self._target_from_cached_peer(endpoint)
+            if cached_target:
+                return cached_target
         if inbound_name or core_id:
             active = self._target_from_active_listener(core_id, inbound_name)
             if active:
@@ -578,6 +724,8 @@ class ForwarderRuntime:
             "last_error": self.last_error,
             "buffer_size": BUFFER_SIZE,
             "connect_timeout": CONNECT_TIMEOUT,
+            "peer_sync_interval": PEER_SYNC_INTERVAL,
+            "peer_sync_nodes": len(self._peer_runtime_cache),
         }
 
 

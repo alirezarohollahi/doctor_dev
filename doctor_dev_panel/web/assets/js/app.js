@@ -923,6 +923,9 @@ function openNodeModal(node) {
     setVal("#apiPort", node.api_port);
     setVal("#connectionType", "grpc");
     setVal("#apiKey", node.api_key);
+    setVal("#nodeSecretToken", node.secret_token);
+    setVal("#nodePort", node.node_port || 62050);
+    setVal("#certificate", node.certificate || "");
 
     var tlsEl = null; // TLS is managed via certificate field
     var enabledEl = $("#nodeEnabled");
@@ -962,9 +965,12 @@ function nodePayload() {
   return {
     name: get("#nodeName"),
     address: get("#nodeAddress"),
+    node_port: parseInt(get("#nodePort"), 10) || 62050,
     api_port: parseInt(get("#apiPort"), 10) || 62051,
     connection_type: "grpc",
     api_key: get("#apiKey"),
+    secret_token: get("#nodeSecretToken"),
+    certificate: get("#certificate"),
     enabled: getChecked("#nodeEnabled"),
   };
 }
@@ -3067,6 +3073,23 @@ document.addEventListener("DOMContentLoaded", function () {
         showToast(err.message || "Failed to generate API key.", "error");
       } finally {
         generateApiKeyBtn.disabled = false;
+      }
+    });
+  }
+
+  var generateSecretTokenBtn = $("#generateSecretToken");
+  if (generateSecretTokenBtn) {
+    generateSecretTokenBtn.addEventListener("click", async function () {
+      generateSecretTokenBtn.disabled = true;
+      try {
+        var data = await api("/api/nodes/secret-token", { method: "POST" });
+        var tokenEl = $("#nodeSecretToken");
+        if (tokenEl && data.secret_token) tokenEl.value = data.secret_token;
+        showToast("New node secret token generated.", "success");
+      } catch (err) {
+        showToast(err.message || "Failed to generate node secret token.", "error");
+      } finally {
+        generateSecretTokenBtn.disabled = false;
       }
     });
   }

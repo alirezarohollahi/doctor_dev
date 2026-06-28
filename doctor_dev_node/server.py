@@ -37,12 +37,28 @@ def api_key() -> str:
     return os.getenv("API_KEY", "")
 
 
+def node_secret_token() -> str:
+    return os.getenv("NODE_SECRET_TOKEN") or os.getenv("DOCTOR_DEV_NODE_SECRET_TOKEN", "")
+
+
 def check_auth(authorization: Optional[str]) -> None:
     key = api_key()
     if not key:
         return
     if authorization != f"Bearer {key}":
         raise HTTPException(status_code=401, detail="Invalid or missing API key.")
+
+
+def check_export_auth(authorization: Optional[str], x_doctor_node_token: Optional[str]) -> None:
+    key = api_key()
+    secret = node_secret_token()
+    if key and authorization == f"Bearer {key}":
+        return
+    if secret and x_doctor_node_token == secret:
+        return
+    if not key and not secret:
+        return
+    raise HTTPException(status_code=401, detail="Invalid or missing node export token.")
 
 
 def node_data_dir() -> Path:
@@ -214,6 +230,7 @@ async def status(authorization: Optional[str] = Header(default=None)) -> dict:
             "service_protocol": os.getenv("SERVICE_PROTOCOL", "grpc"),
             "ssl_cert_file": os.getenv("SSL_CERT_FILE", ""),
             "ssl_key_file": "***" if os.getenv("SSL_KEY_FILE") else "",
+            "node_secret_token": "***" if node_secret_token() else "",
         },
         "routing": runtime_summary(),
     }
@@ -224,6 +241,33 @@ async def get_config(authorization: Optional[str] = Header(default=None)) -> dic
     check_auth(authorization)
     logger.info("config requested")
     return {"ok": True, "config": read_routing_config(), "summary": runtime_summary()}
+
+
+
+@app.get("/config/export")
+async def export_config(
+    authorization: Optional[str] = Header(default=None),
+    x_doctor_node_token: Optional[str] = Header(default=None, alias="X-Doctor-Node-Token"),
+) -> dict:
+    """Return live runtime state for peer nodes and panel sync.
+
+    This endpoint intentionally exposes only operational routing/listener state.
+    It accepts either the panel API key or NODE_SECRET_TOKEN. Peer nodes should
+    use NODE_SECRET_TOKEN, not the panel API key.
+    """
+    check_export_auth(authorization, x_doctor_node_token)
+    cfg = read_routing_config()
+    summary = runtime_summary()
+    listeners = summary.get("listeners") if isinstance(summary.get("listeners"), list) else []
+    return {
+        "ok": True,
+        "source": "node-runtime-export",
+        "node_id": cfg.get("node_id") or os.getenv("NODE_ID", ""),
+        "generated_at": cfg.get("generated_at"),
+        "exported_at": now(),
+        "summary": summary,
+        "listeners": listeners,
+    }
 
 
 @app.get("/logs")

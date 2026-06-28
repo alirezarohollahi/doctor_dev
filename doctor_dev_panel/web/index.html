@@ -1501,7 +1501,7 @@
                                             id="apiKey"
                                             type="text"
                                             name="apiKey"
-                                            placeholder="Authentication key for gRPC API"
+                                            placeholder="Panel control API key"
                                             class="input input--mono"
                                             autocomplete="off"
                                             spellcheck="false"
@@ -1515,6 +1515,31 @@
                                             <i class="fa-solid fa-key" aria-hidden="true"></i>
                                         </button>
                                     </div>
+                                    <p class="form-hint">Used by the panel to manage this node.</p>
+                                </div>
+
+                                <div class="form-field">
+                                    <label for="nodeSecretToken">Node Secret Token</label>
+                                    <div class="input-wrap input-suffix">
+                                        <input
+                                            id="nodeSecretToken"
+                                            type="text"
+                                            name="nodeSecretToken"
+                                            placeholder="Peer sync token for other nodes"
+                                            class="input input--mono"
+                                            autocomplete="off"
+                                            spellcheck="false"
+                                        />
+                                        <button
+                                            id="generateSecretToken"
+                                            class="input-suffix-btn"
+                                            type="button"
+                                            aria-label="Generate a new node secret token"
+                                        >
+                                            <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
+                                        </button>
+                                    </div>
+                                    <p class="form-hint">Other nodes use this token to pull live random inbound ports from this node.</p>
                                 </div>
 
                                 <!-- Advanced settings (collapsible) -->
