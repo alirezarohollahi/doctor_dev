@@ -6,6 +6,7 @@ import logging
 import os
 import ssl
 import tempfile
+import time
 from http.client import RemoteDisconnected
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlparse
@@ -35,7 +36,16 @@ from .core_store import (
 )
 from .id_utils import is_valid_core_id, is_valid_node_id
 from .integrity import inspect_integrity, repair_integrity
-from .logging_utils import filter_lines, panel_log_file, setup_panel_logging, tail_file
+from .logging_utils import (
+    body_preview,
+    debug_json,
+    filter_lines,
+    is_debug_enabled,
+    panel_log_file,
+    redact_headers,
+    setup_panel_logging,
+    tail_file,
+)
 from .node_store import (
     create_node,
     generate_api_key,
@@ -191,6 +201,8 @@ def _read_url(
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     req = Request(url, headers=headers)
+    if is_debug_enabled():
+        logger.debug("panel.node_api.request %s", debug_json({"method": "GET", "url": url, "headers": headers, "certificate_supplied": bool(certificate.strip())}))
     context = None
     if url.startswith("https://"):
         if certificate.strip():
@@ -203,6 +215,8 @@ def _read_url(
             data = json.loads(raw) if raw else {}
         except json.JSONDecodeError:
             data = {"raw": raw[:2000]}
+        if is_debug_enabled():
+            logger.debug("panel.node_api.response %s", debug_json({"url": url, "status": int(response.status), "body": data}))
         return int(response.status), data
 
 
@@ -317,6 +331,8 @@ def _read_node_api(node: dict, path: str, *, timeout: float = 5.0) -> dict:
 
 def _post_node_api(node: dict, path: str, payload: dict, *, timeout: float = 8.0) -> dict:
     body = json.dumps(payload).encode("utf-8")
+    if is_debug_enabled():
+        logger.debug("panel.node_api.apply_payload %s", debug_json({"path": path, "payload": payload}))
     headers = {
         "Accept": "application/json",
         "Content-Type": "application/json",
@@ -333,11 +349,15 @@ def _post_node_api(node: dict, path: str, payload: dict, *, timeout: float = 8.0
                 context = ssl.create_default_context(cadata=certificate)
             else:
                 context = ssl._create_unverified_context()  # noqa: SLF001
+        if is_debug_enabled():
+            logger.debug("panel.node_api.request %s", debug_json({"method": "POST", "url": url, "headers": headers, "payload_bytes": len(body), "certificate_supplied": bool(certificate.strip())}))
         req = Request(url, data=body, headers=headers, method="POST")
         try:
             with urlopen(req, timeout=timeout, context=context) as response:  # noqa: S310
                 raw = response.read(1024 * 256).decode("utf-8", errors="replace")
                 data = json.loads(raw) if raw else {}
+                if is_debug_enabled():
+                    logger.debug("panel.node_api.response %s", debug_json({"url": url, "status": int(response.status), "body": data}))
                 if not (200 <= int(response.status) < 300):
                     attempts.append(f"{url} returned HTTP {response.status}")
                     continue
@@ -358,21 +378,65 @@ def _post_node_api(node: dict, path: str, payload: dict, *, timeout: float = 8.0
     )
 
 
+
+async def _capture_request_body(request: FastAPIRequest) -> bytes:
+    body = await request.body()
+
+    async def receive() -> dict:
+        return {"type": "http.request", "body": body, "more_body": False}
+
+    request._receive = receive  # type: ignore[attr-defined]
+    return body
+
+
+def _debug_request_meta(request: FastAPIRequest, body: bytes) -> dict:
+    return {
+        "method": request.method,
+        "path": request.url.path,
+        "query": str(request.url.query or ""),
+        "client": request.client.host if request.client else "",
+        "headers": redact_headers(request.headers),
+        "body": body_preview(body),
+    }
+
+
 @app.middleware("http")
 async def security_headers(request: FastAPIRequest, call_next):
+    started = time.perf_counter()
+    debug = is_debug_enabled()
+    request_body = b""
+    if debug:
+        try:
+            request_body = await _capture_request_body(request)
+            logger.debug("panel.request.start %s", debug_json(_debug_request_meta(request, request_body)))
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("panel.request.capture_failed method=%s path=%s error=%s", request.method, request.url.path, exc)
     try:
         response = await call_next(request)
     except Exception:
+        elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
         logger.exception(
-            "unhandled request error: %s %s", request.method, request.url.path
+            "unhandled request error: %s %s elapsed_ms=%s", request.method, request.url.path, elapsed_ms
         )
         raise
     for key, value in SECURITY_HEADERS.items():
         response.headers[key] = value
     response.headers["X-Doctor-Dev"] = APP_TITLE
+    elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
     if request.url.path.startswith("/api/") or request.url.path == "/health":
         logger.info(
-            "%s %s -> %s", request.method, request.url.path, response.status_code
+            "%s %s -> %s %.2fms", request.method, request.url.path, response.status_code, elapsed_ms
+        )
+    if debug:
+        logger.debug(
+            "panel.request.end %s",
+            debug_json({
+                "method": request.method,
+                "path": request.url.path,
+                "status": response.status_code,
+                "elapsed_ms": elapsed_ms,
+                "response_headers": redact_headers(response.headers),
+            }),
         )
     return response
 

@@ -8,7 +8,7 @@ from pathlib import Path
 import uvicorn
 
 from doctor_dev_panel.env_loader import load_env_file
-from doctor_dev_panel.logging_utils import setup_panel_logging
+from doctor_dev_panel.logging_utils import is_debug_enabled, setup_panel_logging
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -27,7 +27,7 @@ def main() -> None:
     host = args.host or os.getenv("HOST", "0.0.0.0")
     port = args.port or int(os.getenv("PORT", "8080"))
     log_path = setup_panel_logging()
-    log_level = os.getenv("UVICORN_LOG_LEVEL", "info")
+    log_level = "debug" if is_debug_enabled() else os.getenv("UVICORN_LOG_LEVEL", "info")
     print(f"Doctor Dev Panel log file: {log_path}")
 
     ssl_cert = os.getenv("SSL_CERT_PATH") or None

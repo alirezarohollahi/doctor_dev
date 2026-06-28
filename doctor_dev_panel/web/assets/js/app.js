@@ -2429,7 +2429,9 @@ function colorizeLogLine(line) {
   span.className = "log-line";
 
   var upper = line.toUpperCase();
-  if (upper.indexOf("| ERROR |") !== -1 || upper.indexOf("| ERROR") !== -1) {
+  if (upper.indexOf("| CRITICAL |") !== -1 || upper.indexOf("CRITICAL") !== -1) {
+    span.classList.add("log-level-critical");
+  } else if (upper.indexOf("| ERROR |") !== -1 || upper.indexOf("| ERROR") !== -1 || upper.indexOf("TRACEBACK") !== -1) {
     span.classList.add("log-level-error");
   } else if (
     upper.indexOf("| WARNING |") !== -1 ||
@@ -2438,12 +2440,14 @@ function colorizeLogLine(line) {
     upper.indexOf("WARN") !== -1
   ) {
     span.classList.add("log-level-warn");
+  } else if (upper.indexOf("| DEBUG |") !== -1 || upper.indexOf("PANEL.REQUEST") !== -1 || upper.indexOf("NODE.REQUEST") !== -1 || upper.indexOf("NODE_API") !== -1) {
+    span.classList.add("log-level-debug");
   } else if (upper.indexOf("| INFO |") !== -1) {
     span.classList.add("log-level-info");
-  } else if (upper.indexOf("| DEBUG |") !== -1) {
-    span.classList.add("log-level-debug");
   } else if (/\b(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\s+/.test(line)) {
     span.classList.add("log-level-access");
+  } else if (upper.indexOf("SUCCESS") !== -1 || upper.indexOf("READY") !== -1) {
+    span.classList.add("log-level-success");
   }
 
   var tsMatch = line.match(

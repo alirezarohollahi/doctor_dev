@@ -50,6 +50,7 @@ class ForwarderRuntime:
         self.listeners.clear()
 
     async def apply_config(self, config: dict[str, Any]) -> dict[str, Any]:
+        logger.debug("runtime apply_config received: cores=%s raw=%r", len(config.get("cores") or []) if isinstance(config, dict) else 0, config)
         async with self._lock:
             await self.stop()
             self.config = config if isinstance(config, dict) else {"version": 1, "cores": []}
@@ -132,13 +133,17 @@ class ForwarderRuntime:
     def _resolve_target(self, core: dict[str, Any], inbound: dict[str, Any]) -> Target | None:
         target_type = str(inbound.get("target_type") or "static")
         if target_type == "static":
-            return Target(str(inbound.get("target_host") or "127.0.0.1"), int(inbound.get("target_port") or 80), "static")
+            target = Target(str(inbound.get("target_host") or "127.0.0.1"), int(inbound.get("target_port") or 80), "static")
+            logger.debug("resolved static target: core=%s inbound=%s target=%s:%s", core.get("name"), inbound.get("name"), target.host, target.port)
+            return target
         alias = str(inbound.get("target_balancer") or "").strip()
         balancer = self._balancers_for_core(core).get(alias)
         if not balancer:
+            logger.debug("target balancer not found: core=%s inbound=%s alias=%s", core.get("name"), inbound.get("name"), alias)
             return None
         endpoints = [e for e in (balancer.get("endpoints") or []) if isinstance(e, dict) and e.get("enabled") is not False]
         if not endpoints:
+            logger.debug("target balancer has no enabled endpoints: core=%s inbound=%s alias=%s", core.get("name"), inbound.get("name"), alias)
             return None
         strategy = str(balancer.get("strategy") or "round_robin")
         endpoint: dict[str, Any]

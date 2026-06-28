@@ -27,6 +27,22 @@ This release finishes the current panel/node foundation with UI polish, safer er
 - Direct static targets and balancer targets are supported.
 - Balancer strategies supported: `round_robin`, `random`, `failover`, and a round-robin fallback for `least_connections` until per-endpoint connection accounting is expanded.
 
+
+## Debug logging
+
+Set `DEBUG=true` in `/etc/doctor-dev-panel/panel.env` to make the panel write full diagnostic request, response, node API, apply, validation, and error flow logs into the panel log file.
+
+Set `DEBUG=true` in `/etc/doctor-node/node.env` to make the node write full diagnostic control-plane, config apply, runtime restore, and request logs into the node log file.
+
+Sensitive values such as passwords, API keys, authorization headers, cookies, tokens, and private keys are redacted in debug output.
+
+After changing debug mode, restart the related service:
+
+```bash
+sudo systemctl restart doctor-dev-panel
+sudo systemctl restart doctor-node
+```
+
 ## Update
 
 ```bash

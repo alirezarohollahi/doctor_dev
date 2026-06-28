@@ -36,6 +36,7 @@ ARG_NODE_HOST=""
 ARG_SERVICE_PORT=""
 ARG_API_PORT=""
 ARG_SERVICE_PROTOCOL=""
+ARG_DEBUG=""
 
 BOLD="\033[1m"; DIM="\033[2m"; RED="\033[31m"; GREEN="\033[32m"; YELLOW="\033[33m"; BLUE="\033[34m"; MAGENTA="\033[35m"; CYAN="\033[36m"; RESET="\033[0m"
 cecho(){ printf "%b\n" "$1" >&2; }
@@ -69,7 +70,7 @@ usage(){
   cecho "  sudo bash doctor_dev.sh ${GREEN}install-panel${RESET} [--admin-user USER] [--admin-password PASS] [--panel-port PORT] [--public-host HOST] [--yes]"
   cecho "  sudo bash doctor_dev.sh ${GREEN}update-panel${RESET} [--yes]"
   cecho "  sudo bash doctor_dev.sh ${GREEN}uninstall-panel${RESET} [--purge] [--yes]"
-  cecho "  sudo bash doctor_dev.sh ${GREEN}install-node${RESET} [--node-cli-name doctor-node] [--api-port PORT] [--service-port PORT] [--yes]  ${DIM}# gRPC only${RESET}"
+  cecho "  sudo bash doctor_dev.sh ${GREEN}install-node${RESET} [--node-cli-name doctor-node] [--api-port PORT] [--service-port PORT] [--debug true] [--yes]  ${DIM}# gRPC only${RESET}"
   cecho "  sudo bash doctor_dev.sh ${GREEN}update-node${RESET} [--node-cli-name doctor-node]"
   cecho "  sudo bash doctor_dev.sh ${GREEN}uninstall-node${RESET} [--node-cli-name doctor-node] [--purge] [--yes]"
   echo
@@ -100,6 +101,7 @@ parse_common_args(){
       --service-port|--node-port) need_arg "$@"; ARG_SERVICE_PORT="$2"; shift 2 ;;
       --api-port) need_arg "$@"; ARG_API_PORT="$2"; shift 2 ;;
       --service-protocol|--protocol) need_arg "$@"; ARG_SERVICE_PROTOCOL="$2"; shift 2 ;;
+      --debug) need_arg "$@"; ARG_DEBUG="$2"; shift 2 ;;
       --help|-h) usage; exit 0 ;;
       *) fail "Unknown parameter: $1" ;;
     esac
@@ -553,6 +555,8 @@ PY
 
 write_panel_env(){
   local host="$1" port="$2" public_host="$3" public_scheme="$4" use_tls="$5" cert_path="$6" key_path="$7"
+  local debug_value="${ARG_DEBUG:-${DEBUG:-false}}"
+  case "${debug_value,,}" in 1|true|yes|on|debug|enabled) debug_value="true" ;; *) debug_value="false" ;; esac
   prepare_panel_dirs
   info "Writing $PANEL_ENV_FILE"
   cat > "$PANEL_ENV_FILE" <<ENV
@@ -579,7 +583,9 @@ DOCTOR_DEV_LOG_DIR=$PANEL_LOG_DIR
 DOCTOR_DEV_PANEL_LOG_FILE=$PANEL_LOG_DIR/panel.log
 DOCTOR_DEV_NODES_PATH=$PANEL_DATA_DIR/nodes.json
 DOCTOR_DEV_CORES_PATH=$PANEL_DATA_DIR/cores.json
+DEBUG=$debug_value
 PYTHON_LOG_LEVEL=INFO
+UVICORN_LOG_LEVEL=info
 ENV
   chmod 600 "$PANEL_ENV_FILE"
   ln -sfn "$PANEL_ENV_FILE" "$PANEL_APP_DIR/.env" 2>/dev/null || true
@@ -730,6 +736,8 @@ install_node_cli(){ info "Installing node CLI: /usr/local/bin/$NODE_CLI_NAME"; i
 
 write_node_env(){
   local api_key="$1" node_host="$2" service_port="$3" api_port="$4" service_protocol="$5" cert_file="$6" key_file="$7"
+  local debug_value="${ARG_DEBUG:-${DEBUG:-false}}"
+  case "${debug_value,,}" in 1|true|yes|on|debug|enabled) debug_value="true" ;; *) debug_value="false" ;; esac
   prepare_node_dirs
   info "Writing $NODE_ENV_FILE"
   cat > "$NODE_ENV_FILE" <<ENV
@@ -744,6 +752,7 @@ SSL_KEY_FILE=$key_file
 DOCTOR_DEV_NODE_DATA_DIR=$NODE_DATA_DIR
 DOCTOR_DEV_NODE_LOG_DIR=$NODE_LOG_DIR
 DOCTOR_DEV_NODE_LOG_FILE=$NODE_LOG_DIR/node.log
+DEBUG=$debug_value
 PYTHON_LOG_LEVEL=INFO
 UVICORN_LOG_LEVEL=info
 ENV

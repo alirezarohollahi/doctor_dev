@@ -5,17 +5,28 @@ import json
 import logging
 import os
 import tempfile
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import uvicorn
 from fastapi import FastAPI, Header, HTTPException
+from fastapi import Request as FastAPIRequest
 from pydantic import BaseModel
 
 from . import __version__
 from .env_loader import load_env_file
-from .logging_utils import filter_lines, node_log_file, setup_node_logging, tail_file
+from .logging_utils import (
+    body_preview,
+    debug_json,
+    filter_lines,
+    is_debug_enabled,
+    node_log_file,
+    redact_headers,
+    setup_node_logging,
+    tail_file,
+)
 from .runtime import runtime
 
 app = FastAPI(title="Doctor Dev Node", version=__version__, docs_url=None, redoc_url=None)
@@ -54,9 +65,14 @@ def now() -> str:
 def read_routing_config() -> dict[str, Any]:
     path = routing_config_path()
     if not path.exists():
+        if is_debug_enabled():
+            logger.debug("node.config.read missing path=%s", path)
         return {"version": 1, "generated_at": None, "cores": []}
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if is_debug_enabled():
+            logger.debug("node.config.read %s", debug_json({"path": str(path), "config": data}))
+        return data
     except Exception as exc:  # noqa: BLE001
         return {"version": 1, "error": f"Cannot read routing config: {exc}", "cores": []}
 
@@ -71,6 +87,8 @@ def write_routing_config(data: dict[str, Any]) -> None:
             handle.write("\n")
         os.chmod(tmp, 0o600)
         os.replace(tmp, path)
+        if is_debug_enabled():
+            logger.debug("node.config.write %s", debug_json({"path": str(path), "config": data}))
     finally:
         if os.path.exists(tmp):
             try:
@@ -99,6 +117,59 @@ def runtime_summary() -> dict[str, Any]:
         "generated_at": cfg.get("generated_at"),
         **runtime.summary(),
     }
+
+
+
+async def _capture_request_body(request: FastAPIRequest) -> bytes:
+    body = await request.body()
+
+    async def receive() -> dict:
+        return {"type": "http.request", "body": body, "more_body": False}
+
+    request._receive = receive  # type: ignore[attr-defined]
+    return body
+
+
+@app.middleware("http")
+async def debug_request_logging(request: FastAPIRequest, call_next):
+    started = time.perf_counter()
+    debug = is_debug_enabled()
+    if debug:
+        try:
+            body = await _capture_request_body(request)
+            logger.debug(
+                "node.request.start %s",
+                debug_json({
+                    "method": request.method,
+                    "path": request.url.path,
+                    "query": str(request.url.query or ""),
+                    "client": request.client.host if request.client else "",
+                    "headers": redact_headers(request.headers),
+                    "body": body_preview(body),
+                }),
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("node.request.capture_failed method=%s path=%s error=%s", request.method, request.url.path, exc)
+    try:
+        response = await call_next(request)
+    except Exception:
+        elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
+        logger.exception("node.request.error method=%s path=%s elapsed_ms=%s", request.method, request.url.path, elapsed_ms)
+        raise
+    elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
+    logger.info("%s %s -> %s %.2fms", request.method, request.url.path, response.status_code, elapsed_ms)
+    if debug:
+        logger.debug(
+            "node.request.end %s",
+            debug_json({
+                "method": request.method,
+                "path": request.url.path,
+                "status": response.status_code,
+                "elapsed_ms": elapsed_ms,
+                "response_headers": redact_headers(response.headers),
+            }),
+        )
+    return response
 
 
 class ApplyConfigBody(BaseModel):
@@ -131,6 +202,8 @@ async def health() -> dict:
 async def status(authorization: str | None = Header(default=None)) -> dict:
     check_auth(authorization)
     logger.info("status requested")
+    if is_debug_enabled():
+        logger.debug("node.status.env %s", debug_json({"NODE_HOST": os.getenv("NODE_HOST"), "API_PORT": os.getenv("API_PORT"), "SERVICE_PORT": os.getenv("SERVICE_PORT"), "SERVICE_PROTOCOL": os.getenv("SERVICE_PROTOCOL"), "SSL_CERT_FILE": os.getenv("SSL_CERT_FILE"), "SSL_KEY_FILE": "***" if os.getenv("SSL_KEY_FILE") else ""}))
     return {
         "status": "running",
         "version": __version__,
@@ -165,6 +238,8 @@ async def logs(limit: int = 300, level: str = "all", q: str = "", authorization:
 async def apply_config(body: ApplyConfigBody, authorization: str | None = Header(default=None)) -> dict:
     check_auth(authorization)
     data = body.model_dump()
+    if is_debug_enabled():
+        logger.debug("node.apply.received %s", debug_json(data))
     data["applied_at"] = now()
     write_routing_config(data)
     summary = await runtime.apply_config(data)
@@ -203,7 +278,7 @@ def main() -> None:
     if args.env and Path(args.env).exists():
         load_env_file(args.env)
     log_path = setup_node_logging()
-    logger.info("starting node server env=%s log=%s", args.env, log_path)
+    logger.info("starting node server env=%s log=%s debug=%s", args.env, log_path, is_debug_enabled())
     host = args.host or os.getenv("NODE_HOST", "127.0.0.1")
     port = args.port or int(os.getenv("API_PORT", "62051"))
     protocol = os.getenv("SERVICE_PROTOCOL", "grpc").lower()
@@ -216,7 +291,7 @@ def main() -> None:
         "doctor_dev_node.server:app",
         host=host,
         port=port,
-        log_level=os.getenv("UVICORN_LOG_LEVEL", "info"),
+        log_level="debug" if is_debug_enabled() else os.getenv("UVICORN_LOG_LEVEL", "info"),
         ssl_certfile=ssl_cert if use_tls else None,
         ssl_keyfile=ssl_key if use_tls else None,
     )
