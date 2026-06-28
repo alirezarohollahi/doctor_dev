@@ -44,7 +44,7 @@ def generate_secret_token() -> str:
 
 
 def empty_store() -> dict[str, Any]:
-    return {"version": 3, "nodes": []}
+    return {"version": 4, "nodes": []}
 
 
 def load_store() -> dict[str, Any]:
@@ -57,7 +57,7 @@ def load_store() -> dict[str, Any]:
         raise RuntimeError(f"Cannot read nodes store: {path}: {exc}") from exc
     if not isinstance(loaded, dict):
         return empty_store()
-    loaded.setdefault("version", 3)
+    loaded.setdefault("version", 4)
     if not isinstance(loaded.get("nodes"), list):
         loaded["nodes"] = []
     return loaded
@@ -103,6 +103,12 @@ def normalize_node(payload: dict[str, Any], existing: Optional[dict[str, Any]] =
     if not str(base.get("secret_token") or "").strip():
         base["secret_token"] = generate_secret_token()
 
+    try:
+        update_interval = int(base.get("update_interval") or 10)
+    except (TypeError, ValueError):
+        update_interval = 10
+    base["update_interval"] = min(max(update_interval, 1), 86400)
+
     # Current node agent supports gRPC only. Normalize legacy UI values so the
     # stored data stays in sync with the panel and future edits never emit direct/proxy.
     base["connection_type"] = "grpc"
@@ -142,7 +148,7 @@ def create_node(payload: dict[str, Any]) -> dict[str, Any]:
     data = load_store()
     node = normalize_node(payload)
     data.setdefault("nodes", []).append(node)
-    data["version"] = 3
+    data["version"] = 4
     save_store(data)
     return node
 
@@ -157,7 +163,7 @@ def update_node(node_id: str, payload: dict[str, Any]) -> Optional[dict[str, Any
             payload = dict(payload)
             payload["id"] = node_id
             nodes[index] = normalize_node(payload, existing=node)
-            data["version"] = 3
+            data["version"] = 4
             save_store(data)
             return nodes[index]
     return None
@@ -180,7 +186,7 @@ def set_node_check_result(node_id: str, *, ok: bool, error: str = "", details: O
             if details is not None:
                 updated["last_check_details"] = details
             nodes[index] = updated
-            data["version"] = 3
+            data["version"] = 4
             save_store(data)
             return updated
     return None
@@ -195,6 +201,6 @@ def remove_node(node_id: str) -> bool:
     if len(next_nodes) == len(nodes):
         return False
     data["nodes"] = next_nodes
-    data["version"] = 3
+    data["version"] = 4
     save_store(data)
     return True

@@ -924,6 +924,7 @@ function openNodeModal(node) {
     setVal("#connectionType", "grpc");
     setVal("#apiKey", node.api_key);
     setVal("#nodeSecretToken", node.secret_token);
+    setVal("#nodeUpdateInterval", node.update_interval || 10);
     setVal("#nodePort", node.node_port || 62050);
     setVal("#certificate", node.certificate || "");
 
@@ -950,6 +951,8 @@ function closeNodeModal() {
 function resetNodeForm() {
   var form = $("#nodeForm");
   if (form) form.reset();
+  var updateIntervalEl = $("#nodeUpdateInterval");
+  if (updateIntervalEl && !updateIntervalEl.value) updateIntervalEl.value = "10";
   setStatusPreview("pending", "Not checked");
 }
 
@@ -970,6 +973,7 @@ function nodePayload() {
     connection_type: "grpc",
     api_key: get("#apiKey"),
     secret_token: get("#nodeSecretToken"),
+    update_interval: parseInt(get("#nodeUpdateInterval"), 10) || 10,
     certificate: get("#certificate"),
     enabled: getChecked("#nodeEnabled"),
   };

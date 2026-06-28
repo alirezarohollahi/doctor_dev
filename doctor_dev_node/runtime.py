@@ -52,6 +52,7 @@ class ForwarderRuntime:
         self._rr: dict[str, int] = {}
         self._target_active: dict[str, int] = {}
         self._peer_runtime_cache: dict[str, dict[str, Any]] = {}
+        self._peer_sync_last: dict[str, float] = {}
         self._peer_sync_task: Optional[asyncio.Task] = None
         self.connection_count = 0
         self.active_connections = 0
@@ -198,46 +199,76 @@ class ForwarderRuntime:
             return summary
 
 
+    def _endpoint_sync_interval(self, endpoint: dict[str, Any]) -> float:
+        try:
+            interval = float(endpoint.get("update_interval") or endpoint.get("sync_interval") or PEER_SYNC_INTERVAL or 10)
+        except (TypeError, ValueError):
+            interval = 10.0
+        return min(max(interval, 1.0), 86400.0)
+
+    def _peer_sync_key(self, endpoint: dict[str, Any]) -> str:
+        remote_node_id = str(endpoint.get("remote_node_id") or endpoint.get("node_id") or "")
+        sync_urls = endpoint.get("sync_urls") if isinstance(endpoint.get("sync_urls"), list) else []
+        return remote_node_id + "|" + ",".join(str(u) for u in sync_urls)
+
     def _restart_peer_sync_if_needed(self) -> None:
         endpoints = self._peer_sync_endpoints()
         if self._peer_sync_task:
             self._peer_sync_task.cancel()
             self._peer_sync_task = None
-        if endpoints and PEER_SYNC_INTERVAL > 0:
+        if endpoints:
+            min_interval = min(self._endpoint_sync_interval(endpoint) for endpoint in endpoints)
             self._peer_sync_task = asyncio.create_task(self._peer_sync_loop())
-            logger.info("peer runtime sync enabled: endpoints=%s interval=%ss", len(endpoints), PEER_SYNC_INTERVAL)
+            logger.info("peer runtime sync enabled: endpoints=%s min_interval=%ss", len(endpoints), min_interval)
+
+    def _add_peer_sync_endpoint(self, endpoints_by_key: dict[str, dict[str, Any]], endpoint: dict[str, Any]) -> None:
+        sync_urls = endpoint.get("sync_urls") if isinstance(endpoint.get("sync_urls"), list) else []
+        token = str(endpoint.get("secret_token") or "")
+        remote_node_id = str(endpoint.get("remote_node_id") or endpoint.get("node_id") or endpoint.get("ref_id") or "")
+        if not sync_urls or not token or not remote_node_id:
+            return
+        endpoint = dict(endpoint)
+        endpoint["remote_node_id"] = remote_node_id
+        key = self._peer_sync_key(endpoint)
+        previous = endpoints_by_key.get(key)
+        if not previous or self._endpoint_sync_interval(endpoint) < self._endpoint_sync_interval(previous):
+            endpoints_by_key[key] = endpoint
 
     def _peer_sync_endpoints(self) -> list[dict[str, Any]]:
-        endpoints: list[dict[str, Any]] = []
-        seen: set[str] = set()
+        endpoints_by_key: dict[str, dict[str, Any]] = {}
         for core in self.config.get("cores", []) if isinstance(self.config.get("cores"), list) else []:
+            for dep in core.get("dependencies", []) if isinstance(core.get("dependencies"), list) else []:
+                if isinstance(dep, dict) and dep.get("type") == "node" and dep.get("required") is not False:
+                    self._add_peer_sync_endpoint(endpoints_by_key, dep)
             for balancer in core.get("balancers", []) if isinstance(core.get("balancers"), list) else []:
                 for endpoint in balancer.get("endpoints", []) if isinstance(balancer.get("endpoints"), list) else []:
                     if not isinstance(endpoint, dict) or endpoint.get("enabled") is False:
                         continue
                     if endpoint.get("type") != "node_inbound":
                         continue
-                    sync_urls = endpoint.get("sync_urls") if isinstance(endpoint.get("sync_urls"), list) else []
-                    token = str(endpoint.get("secret_token") or "")
-                    remote_node_id = str(endpoint.get("remote_node_id") or endpoint.get("node_id") or "")
-                    if not sync_urls or not token or not remote_node_id:
-                        continue
-                    key = remote_node_id + "|" + ",".join(str(u) for u in sync_urls)
-                    if key in seen:
-                        continue
-                    seen.add(key)
-                    endpoints.append(endpoint)
-        return endpoints
+                    self._add_peer_sync_endpoint(endpoints_by_key, endpoint)
+        return list(endpoints_by_key.values())
 
     async def _peer_sync_loop(self) -> None:
         while True:
             try:
-                await self._sync_all_peers_once()
+                endpoints = self._peer_sync_endpoints()
+                now_ts = time.time()
+                due = []
+                for endpoint in endpoints:
+                    key = self._peer_sync_key(endpoint)
+                    last = self._peer_sync_last.get(key, 0.0)
+                    if now_ts - last >= self._endpoint_sync_interval(endpoint):
+                        due.append(endpoint)
+                if due:
+                    await asyncio.gather(*(self._sync_peer_endpoint(endpoint) for endpoint in due), return_exceptions=True)
+                sleep_for = min([self._endpoint_sync_interval(endpoint) for endpoint in endpoints] or [max(1.0, PEER_SYNC_INTERVAL)])
             except asyncio.CancelledError:
                 raise
             except Exception as exc:  # noqa: BLE001
                 logger.debug("peer runtime sync loop failed: %s", exc)
-            await asyncio.sleep(max(1.0, PEER_SYNC_INTERVAL))
+                sleep_for = max(1.0, PEER_SYNC_INTERVAL)
+            await asyncio.sleep(max(1.0, min(sleep_for, 60.0)))
 
     async def _sync_all_peers_once(self) -> None:
         endpoints = self._peer_sync_endpoints()
@@ -246,15 +277,21 @@ class ForwarderRuntime:
         await asyncio.gather(*(self._sync_peer_endpoint(endpoint) for endpoint in endpoints), return_exceptions=True)
 
     async def _sync_peer_endpoint(self, endpoint: dict[str, Any]) -> None:
-        data = await asyncio.to_thread(self._fetch_peer_export, endpoint)
-        if not data:
-            return
-        remote_node_id = str(endpoint.get("remote_node_id") or endpoint.get("node_id") or data.get("node_id") or "")
-        if not remote_node_id:
-            return
-        data["synced_at_unix"] = time.time()
-        self._peer_runtime_cache[remote_node_id] = data
-        logger.debug("peer runtime synced: node=%s listeners=%s", remote_node_id, len(data.get("listeners") or []))
+        key = self._peer_sync_key(endpoint)
+        try:
+            data = await asyncio.to_thread(self._fetch_peer_export, endpoint)
+            if not data:
+                return
+            remote_node_id = str(endpoint.get("remote_node_id") or endpoint.get("node_id") or data.get("node_id") or "")
+            if not remote_node_id:
+                return
+            data["synced_at_unix"] = time.time()
+            data["sync_interval"] = self._endpoint_sync_interval(endpoint)
+            self._peer_runtime_cache[remote_node_id] = data
+            logger.debug("peer runtime synced: node=%s listeners=%s interval=%ss", remote_node_id, len(data.get("listeners") or []), data["sync_interval"])
+        finally:
+            if key:
+                self._peer_sync_last[key] = time.time()
 
     def _fetch_peer_export(self, endpoint: dict[str, Any]) -> Optional[dict[str, Any]]:
         urls = endpoint.get("sync_urls") if isinstance(endpoint.get("sync_urls"), list) else []
@@ -725,6 +762,7 @@ class ForwarderRuntime:
             "buffer_size": BUFFER_SIZE,
             "connect_timeout": CONNECT_TIMEOUT,
             "peer_sync_interval": PEER_SYNC_INTERVAL,
+            "peer_sync_effective_intervals": [self._endpoint_sync_interval(endpoint) for endpoint in self._peer_sync_endpoints()],
             "peer_sync_nodes": len(self._peer_runtime_cache),
         }
 

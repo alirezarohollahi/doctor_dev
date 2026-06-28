@@ -17,6 +17,7 @@ class NodeBody(BaseModel):
     api_port: int = Field(default=62051, ge=1, le=65535)
     api_key: str = Field(min_length=1, max_length=255)
     secret_token: str = Field(default="", max_length=255)
+    update_interval: int = Field(default=10, ge=1, le=86400)
     certificate: str = Field(default="", max_length=20000)
     enabled: bool = True
 

@@ -373,12 +373,22 @@ def _node_sync_urls(node: dict[str, Any]) -> list[str]:
     return urls
 
 
+def _node_update_interval(node: dict[str, Any]) -> int:
+    try:
+        interval = int(node.get("update_interval") or 10)
+    except (TypeError, ValueError):
+        interval = 10
+    return min(max(interval, 1), 86400)
+
+
 def _attach_peer_sync_fields(endpoint: dict[str, Any], target_node: dict[str, Any], target_node_id: str, target_core_id: str, inbound_name: str) -> None:
     endpoint["remote_node_id"] = target_node_id
     endpoint["remote_core_id"] = target_core_id
     endpoint["remote_inbound_name"] = inbound_name
     endpoint["sync_urls"] = _node_sync_urls(target_node)
     endpoint["secret_token"] = str(target_node.get("secret_token") or "")
+    endpoint["update_interval"] = _node_update_interval(target_node)
+    endpoint["sync_interval"] = _node_update_interval(target_node)
     endpoint["api_port"] = int(target_node.get("api_port") or 62051)
 
 def _first_fixed_port(inbound: dict[str, Any]) -> Optional[int]:
@@ -470,6 +480,42 @@ def _enrich_node_inbound_endpoints(config_node_id: str, cores: list[dict[str, An
     return cores
 
 
+def _enrich_node_dependencies(config_node_id: str, cores: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Attach peer sync credentials for node dependencies.
+
+    A core can depend on another node even if a balancer endpoint also carries
+    a node-inbound reference. Sending the peer token and sync URLs with the
+    applied config lets the running node keep the dependency node's live runtime
+    state fresh without another manual apply.
+    """
+    try:
+        from .node_store import list_nodes
+    except Exception:  # pragma: no cover - defensive fallback
+        list_nodes = lambda: []  # type: ignore[assignment]
+
+    node_map = {str(node.get("id")): node for node in list_nodes() if isinstance(node, dict)}
+    for core in cores:
+        dependencies = core.get("dependencies") if isinstance(core.get("dependencies"), list) else []
+        for dep in dependencies:
+            if not isinstance(dep, dict) or dep.get("type") != "node":
+                continue
+            target_node_id = str(dep.get("ref_id") or "")
+            if not target_node_id or target_node_id == config_node_id:
+                continue
+            target_node = node_map.get(target_node_id)
+            if not target_node:
+                dep["resolve_error"] = "Selected dependency node was not found."
+                continue
+            dep["remote_node_id"] = target_node_id
+            dep["sync_urls"] = _node_sync_urls(target_node)
+            dep["secret_token"] = str(target_node.get("secret_token") or "")
+            dep["update_interval"] = _node_update_interval(target_node)
+            dep["sync_interval"] = _node_update_interval(target_node)
+            dep["peer_host"] = _address_host(target_node.get("address"))
+            dep["certificate"] = str(target_node.get("certificate") or "")
+    return cores
+
+
 def build_node_config(node_id: str) -> dict[str, Any]:
     """Return a normalized node-side routing config preview.
 
@@ -481,6 +527,7 @@ def build_node_config(node_id: str) -> dict[str, Any]:
     else:
         cores = [core for core in list_cores() if core.get("node_id") == node_id]
     cores = _enrich_node_inbound_endpoints(node_id, cores)
+    cores = _enrich_node_dependencies(node_id, cores)
     for core in cores:
         adv = core.get("advanced_config") if isinstance(core.get("advanced_config"), dict) else {}
         raw = str(adv.get("json_config") or "").strip()
