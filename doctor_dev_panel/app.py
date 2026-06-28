@@ -922,3 +922,16 @@ async def api_logs(
 @app.get("/health")
 async def health() -> dict:
     return {"status": "ok", "app": APP_TITLE, "version": __version__}
+
+
+@app.get("/{full_path:path}", include_in_schema=False)
+async def spa_fallback(full_path: str) -> FileResponse:
+    """Serve the single-page app for browser history routes.
+
+    This lets the panel use clean URLs such as /nodes, /cores and
+    /cores/<core_id>/balancers instead of hash fragments.
+    """
+    path = (full_path or "").strip("/")
+    if path.startswith("api/"):
+        raise HTTPException(status_code=404, detail="API endpoint not found.")
+    return FileResponse(str(WEB_DIR / "index.html"))

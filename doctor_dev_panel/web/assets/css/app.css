@@ -3987,3 +3987,35 @@ input[type="checkbox"].toggle-input {
     height: 30px;
   }
 }
+
+/* ========================================================================== 
+   CORE BUILDER SECTION TOOLBAR + HISTORY ROUTING HOTFIX
+   ========================================================================== */
+.tab-panel-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+
+.tab-panel-actions .btn {
+  min-height: 36px;
+  white-space: nowrap;
+}
+
+.tab-panel-header > .btn + .tab-panel-actions {
+  margin-left: auto;
+}
+
+@media (max-width: 760px) {
+  .tab-panel-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .tab-panel-actions {
+    justify-content: flex-start;
+    margin-left: 0;
+  }
+}

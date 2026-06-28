@@ -144,7 +144,78 @@ const state = {
   rawLogLines: [],
   endpointOpen: {},
   editorCardOpen: {},
+  routingReady: false,
 };
+
+const APP_ROUTES = Object.freeze({
+  dashboard: "/dashboard",
+  nodes: "/nodes",
+  cores: "/cores",
+  logs: "/logs",
+});
+
+const CORE_TABS = Object.freeze(["inbounds", "routing", "balancers", "dependencies", "advanced"]);
+
+function cleanPath(pathname) {
+  var path = String(pathname || "/").split("?")[0].split("#")[0];
+  if (!path.startsWith("/")) path = "/" + path;
+  path = path.replace(/\/+$/, "");
+  return path || "/";
+}
+
+function pathForPage(page) {
+  return APP_ROUTES[page] || APP_ROUTES.dashboard;
+}
+
+function pathForCore(coreId, tab) {
+  var safeTab = CORE_TABS.includes(tab) ? tab : "inbounds";
+  return "/cores/" + encodeURIComponent(coreId) + "/" + safeTab;
+}
+
+function routeFromPath(pathname) {
+  var path = cleanPath(pathname);
+  if (path === "/" || path === "/admin") return { page: "dashboard" };
+  for (var page in APP_ROUTES) {
+    if (Object.prototype.hasOwnProperty.call(APP_ROUTES, page) && path === APP_ROUTES[page]) {
+      return { page: page };
+    }
+  }
+  var coreMatch = path.match(/^\/cores\/(core_[A-Za-z0-9_-]{6,96})(?:\/([A-Za-z0-9_-]+))?$/);
+  if (coreMatch) {
+    return {
+      page: "coreEditor",
+      coreId: decodeURIComponent(coreMatch[1]),
+      tab: CORE_TABS.includes(coreMatch[2]) ? coreMatch[2] : "inbounds",
+    };
+  }
+  return { page: "dashboard" };
+}
+
+function writeRoute(path, replace) {
+  if (!window.history || !window.history.pushState) return;
+  var target = cleanPath(path);
+  var current = cleanPath(window.location.pathname);
+  if (target === current) return;
+  if (replace) window.history.replaceState({}, "", target);
+  else window.history.pushState({}, "", target);
+}
+
+function applyRouteFromLocation(options) {
+  options = options || {};
+  if (!state.user || !state.routingReady) return;
+  var route = routeFromPath(window.location.pathname);
+  if (route.page === "coreEditor") {
+    var core = coreById(route.coreId);
+    if (!core) {
+      showToast("Core was not found. Showing the cores page instead.", "warning");
+      switchPage("cores", { replaceRoute: true });
+      return;
+    }
+    openCoreEditorPage(core, route.tab || "inbounds", { replaceRoute: !!options.replaceRoute, skipRoute: true });
+    return;
+  }
+  switchPage(route.page || "dashboard", { replaceRoute: !!options.replaceRoute, skipRoute: true });
+}
 
 function editorCardKey(type, index, extra) {
   return String(type || "card") + ":" + String(index) + (extra ? ":" + String(extra) : "");
@@ -172,27 +243,45 @@ function editorCollapseButton(type, index, isOpen, label, extra) {
   );
 }
 
+function setEditorCardButtonState(btn, isOpen) {
+  if (!btn) return;
+  var type = btn.dataset.cardType || "card";
+  var idx = btn.dataset.cardIndex || "0";
+  var extra = btn.dataset.cardExtra || "";
+  var key = editorCardKey(type, idx, extra);
+  state.editorCardOpen[key] = !!isOpen;
+  var card = btn.closest(".editor-card");
+  if (card) {
+    card.classList.toggle("is-collapsed", !isOpen);
+    card.classList.toggle("is-open", !!isOpen);
+  }
+  var icon = btn.querySelector("i");
+  if (icon) {
+    icon.classList.toggle("fa-chevron-down", !!isOpen);
+    icon.classList.toggle("fa-chevron-right", !isOpen);
+  }
+}
+
 function bindEditorCardToggles(root) {
   if (!root) return;
   root.querySelectorAll('[data-action="toggle-editor-card"]').forEach(function (btn) {
+    if (btn.dataset.boundToggle === "1") return;
+    btn.dataset.boundToggle = "1";
     btn.addEventListener("click", function () {
       var type = btn.dataset.cardType || "card";
       var idx = btn.dataset.cardIndex || "0";
       var extra = btn.dataset.cardExtra || "";
       var key = editorCardKey(type, idx, extra);
-      state.editorCardOpen[key] = state.editorCardOpen[key] === false;
-      var card = btn.closest(".editor-card");
-      var isOpen = state.editorCardOpen[key] !== false;
-      if (card) {
-        card.classList.toggle("is-collapsed", !isOpen);
-        card.classList.toggle("is-open", isOpen);
-      }
-      var icon = btn.querySelector("i");
-      if (icon) {
-        icon.classList.toggle("fa-chevron-down", isOpen);
-        icon.classList.toggle("fa-chevron-right", !isOpen);
-      }
+      setEditorCardButtonState(btn, state.editorCardOpen[key] === false);
     });
+  });
+}
+
+function setSectionCardsOpen(scope, isOpen) {
+  var panel = document.querySelector('.tab-panel[data-core-tab="' + String(scope || "").replace(/"/g, "") + '"]');
+  if (!panel) return;
+  panel.querySelectorAll('[data-action="toggle-editor-card"]').forEach(function (btn) {
+    setEditorCardButtonState(btn, !!isOpen);
   });
 }
 
@@ -413,7 +502,10 @@ function showApp(username) {
   var appView = $("#appView");
   if (loginView) loginView.classList.add("hidden");
   if (appView) appView.classList.remove("hidden");
-  refreshAll();
+  refreshAll().then(function () {
+    state.routingReady = true;
+    applyRouteFromLocation({ replaceRoute: cleanPath(window.location.pathname) === "/" || cleanPath(window.location.pathname) === "/admin" });
+  });
 }
 
 function showLogin() {
@@ -423,7 +515,9 @@ function showLogin() {
   if (loginView) loginView.classList.remove("hidden");
 }
 
-function switchPage(page) {
+function switchPage(page, options) {
+  options = options || {};
+  if (!options.skipRoute) writeRoute(pathForPage(page), !!options.replaceRoute);
   if (state.page === "logs" && page !== "logs") {
     stopLogAutoRefresh(true);
   }
@@ -452,8 +546,11 @@ function switchPage(page) {
   else if (page === "cores") renderCores();
 }
 
-function openCoreEditorPage(core) {
+function openCoreEditorPage(core, tab, options) {
+  options = options || {};
   if (!core || !isValidCoreId(core.id)) { warnInvalidIdentifier("core"); return; }
+  var initialTab = CORE_TABS.includes(tab) ? tab : "inbounds";
+  if (!options.skipRoute) writeRoute(pathForCore(core.id, initialTab), !!options.replaceRoute);
   state.editingCore = core;
   state.editorDraft = deepCopy(core);
 
@@ -480,7 +577,7 @@ function openCoreEditorPage(core) {
   if (bc) bc.textContent = core.name || "Core Editor";
 
   bindCoreEditorHeader();
-  switchCoreTab("inbounds");
+  switchCoreTab(initialTab, { skipRoute: true });
   renderCoreEditor();
 }
 
@@ -1307,9 +1404,13 @@ function syncEditorHeaderToDraft() {
   if (enabledEl) state.editorDraft.enabled = enabledEl.checked;
 }
 
-function switchCoreTab(tab) {
-  tab = tab || "inbounds";
+function switchCoreTab(tab, options) {
+  options = options || {};
+  tab = CORE_TABS.includes(tab) ? tab : "inbounds";
   state.currentCoreTab = tab;
+  if (!options.skipRoute && state.editingCore && isValidCoreId(state.editingCore.id)) {
+    writeRoute(pathForCore(state.editingCore.id, tab), !!options.replaceRoute);
+  }
   $$(".tab-btn").forEach(function (btn) {
     var key = btn.dataset.coreTab || btn.dataset.tab || "";
     var active = key === tab;
@@ -2983,7 +3084,8 @@ document.addEventListener("DOMContentLoaded", function () {
   // --- Core Editor navigation ---
   $$("#backToCoresBtn, #backToCoresBtn2, #backToCoresLink").forEach(
     function (el) {
-      el.addEventListener("click", function () {
+      el.addEventListener("click", function (event) {
+        if (event) event.preventDefault();
         switchPage("cores");
       });
     },
@@ -3001,6 +3103,17 @@ document.addEventListener("DOMContentLoaded", function () {
     btn.addEventListener("click", function () {
       switchCoreTab(btn.dataset.coreTab || btn.dataset.tab);
     });
+  });
+
+  $$('[data-action="open-section-cards"], [data-action="close-section-cards"]').forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var scope = btn.dataset.scope || state.currentCoreTab;
+      setSectionCardsOpen(scope, btn.dataset.action === "open-section-cards");
+    });
+  });
+
+  window.addEventListener("popstate", function () {
+    applyRouteFromLocation();
   });
 
   // --- Core Editor add buttons ---
