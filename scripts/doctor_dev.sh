@@ -38,7 +38,7 @@ ARG_API_PORT=""
 ARG_SERVICE_PROTOCOL=""
 
 BOLD="\033[1m"; DIM="\033[2m"; RED="\033[31m"; GREEN="\033[32m"; YELLOW="\033[33m"; BLUE="\033[34m"; MAGENTA="\033[35m"; CYAN="\033[36m"; RESET="\033[0m"
-cecho(){ printf "%b\n" "$1"; }
+cecho(){ printf "%b\n" "$1" >&2; }
 info(){ cecho "${BLUE}➜${RESET} $1"; }
 ok(){ cecho "${GREEN}✓${RESET} $1"; }
 warn(){ cecho "${YELLOW}⚠${RESET} $1"; }
@@ -46,15 +46,22 @@ fail(){ cecho "${RED}✗${RESET} $1"; exit 1; }
 
 need_root(){ [[ "${EUID}" -eq 0 ]] || fail "Please run this script with sudo/root."; }
 
+hr(){ cecho "${DIM}────────────────────────────────────────────────────────────${RESET}"; }
+box(){
+  local title="${1:-Doctor Dev}" subtitle="${2:-}"
+  cecho "${CYAN}${BOLD}╭──────────────────────────────────────────────────────────╮${RESET}"
+  cecho "${CYAN}${BOLD}│${RESET} ${BOLD}${title}${RESET}"
+  [[ -n "$subtitle" ]] && cecho "${CYAN}${BOLD}│${RESET} ${DIM}${subtitle}${RESET}"
+  cecho "${CYAN}${BOLD}╰──────────────────────────────────────────────────────────╯${RESET}"
+}
 header(){
   local title="${1:-Doctor Dev}" subtitle="${2:-Installer}"
-  clear || true
-  cecho "${CYAN}${BOLD}============================================================${RESET}"
-  cecho "${CYAN}${BOLD}                 ${title}${RESET}"
-  cecho "${CYAN}${BOLD}============================================================${RESET}"
-  cecho "${DIM}${subtitle}${RESET}"
-  echo
+  clear 2>/dev/null || true
+  box "$title" "$subtitle"
+  echo >&2
 }
+step(){ cecho "${MAGENTA}${BOLD}▶ $1${RESET}"; }
+subtle(){ cecho "${DIM}$1${RESET}"; }
 
 usage(){
   header "Doctor Dev Installer" "Panel / node install, update, remove"
@@ -99,22 +106,39 @@ parse_common_args(){
   done
 }
 
-ask(){
-  local prompt="$1" default="${2:-}" value
+prompt_read(){
+  local prompt="$1" default="${2:-}" secret="${3:-0}" value=""
+  local rendered
   if [[ -n "$default" ]]; then
-    read -r -p "$(printf "%b" "${CYAN}?${RESET} ${prompt} ${DIM}[${default}]${RESET}: ")" value || true
-    echo "${value:-$default}"
+    rendered=$(printf "%b" "${CYAN}?${RESET} ${prompt} ${DIM}[${default}]${RESET}: ")
   else
-    read -r -p "$(printf "%b" "${CYAN}?${RESET} ${prompt}: ")" value || true
-    echo "$value"
+    rendered=$(printf "%b" "${CYAN}?${RESET} ${prompt}: ")
   fi
+  if [[ "$secret" == "1" ]]; then
+    read -r -s -p "$rendered" value || true
+    echo >&2
+    printf '%s\n' "$value"
+    return
+  fi
+  # -e enables readline, so Left/Right arrows work instead of printing ^[[D/^[[C.
+  if [[ -t 0 && -n "$default" ]]; then
+    read -r -e -i "$default" -p "$rendered" value || true
+  elif [[ -t 0 ]]; then
+    read -r -e -p "$rendered" value || true
+  else
+    read -r value || true
+  fi
+  [[ -z "$value" && -n "$default" ]] && value="$default"
+  printf '%s\n' "$value"
 }
+
+ask(){ prompt_read "$1" "${2:-}" 0; }
 
 ask_yes_no(){
   local prompt="$1" default="${2:-y}" answer
   if [[ "$FLAG_YES" == "1" ]]; then return 0; fi
   while true; do
-    read -r -p "$(printf "%b" "${CYAN}?${RESET} ${prompt} ${DIM}[${default}]${RESET}: ")" answer || true
+    answer="$(prompt_read "$prompt" "$default" 0)"
     answer="${answer:-$default}"
     case "${answer,,}" in y|yes) return 0 ;; n|no) return 1 ;; *) warn "Please answer y or n." ;; esac
   done
@@ -124,7 +148,7 @@ ask_non_empty(){
   local prompt="$1" default="${2:-}" value
   while true; do
     value="$(ask "$prompt" "$default")"
-    [[ -n "$value" ]] && { echo "$value"; return; }
+    [[ -n "$value" ]] && { printf '%s\n' "$value"; return; }
     warn "This value cannot be empty."
   done
 }
@@ -133,15 +157,15 @@ ask_password(){
   local pass1 pass2
   if [[ -n "$ARG_ADMIN_PASSWORD" ]]; then
     [[ ${#ARG_ADMIN_PASSWORD} -ge 8 ]] || fail "--admin-password must be at least 8 characters."
-    echo "$ARG_ADMIN_PASSWORD"
+    printf '%s\n' "$ARG_ADMIN_PASSWORD"
     return
   fi
   while true; do
-    read -r -s -p "$(printf "%b" "${CYAN}?${RESET} Admin password: ")" pass1 || true; echo
+    pass1="$(prompt_read "Admin password" "" 1)"
     [[ ${#pass1} -ge 8 ]] || { warn "Password must be at least 8 characters."; continue; }
-    read -r -s -p "$(printf "%b" "${CYAN}?${RESET} Repeat admin password: ")" pass2 || true; echo
+    pass2="$(prompt_read "Repeat admin password" "" 1)"
     [[ "$pass1" == "$pass2" ]] || { warn "Passwords do not match."; continue; }
-    echo "$pass1"; return
+    printf '%s\n' "$pass1"; return
   done
 }
 
@@ -169,14 +193,117 @@ for family in families:
 PY
 }
 
+service_for_pid(){
+  local pid="$1" unit mainpid
+  systemctl_exists || return 1
+  while IFS= read -r unit; do
+    [[ -n "$unit" ]] || continue
+    mainpid="$(systemctl show "$unit" -p MainPID --value 2>/dev/null || true)"
+    [[ "$mainpid" == "$pid" ]] && { printf '%s\n' "${unit%.service}"; return 0; }
+  done < <(systemctl list-units --type=service --all --no-legend 2>/dev/null | awk '{gsub(/^●/,"",$1); print $1}')
+  return 1
+}
+
+port_pids(){
+  local port="$1"
+  if command -v ss >/dev/null 2>&1; then
+    ss -H -ltnp "sport = :$port" 2>/dev/null | grep -oE 'pid=[0-9]+' | cut -d= -f2 | sort -u
+  elif command -v lsof >/dev/null 2>&1; then
+    lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null | sort -u
+  elif command -v fuser >/dev/null 2>&1; then
+    fuser "${port}/tcp" 2>/dev/null | tr ' ' '\n' | awk 'NF' | sort -u
+  fi
+}
+
+pid_is_doctor_dev(){
+  local pid="$1" args
+  args="$(ps -p "$pid" -o args= 2>/dev/null || true)"
+  [[ "$args" == *doctor-dev-panel* || "$args" == *doctor_dev_panel* || "$args" == *doctor-dev-node* || "$args" == *doctor_dev_node* || "$args" == *docter-node* || "$args" == *doctor-node* ]]
+}
+
+port_usage_details(){
+  local host="$1" port="$2" pid cmd unit
+  warn "Port $port is already in use on $host."
+  if command -v ss >/dev/null 2>&1; then
+    subtle "Listener detail from ss:"
+    ss -H -ltnp "sport = :$port" 2>/dev/null | sed 's/^/  /' >&2 || true
+  fi
+  while IFS= read -r pid; do
+    [[ -n "$pid" ]] || continue
+    cmd="$(ps -p "$pid" -o args= 2>/dev/null || true)"
+    unit="$(service_for_pid "$pid" 2>/dev/null || true)"
+    cecho "${YELLOW}  PID:${RESET} $pid"
+    [[ -n "$unit" ]] && cecho "${YELLOW}  Service:${RESET} $unit"
+    [[ -n "$cmd" ]] && cecho "${YELLOW}  Command:${RESET} $cmd"
+  done < <(port_pids "$port")
+}
+
+kill_pid_safely(){
+  local pid="$1" cmd
+  [[ -n "$pid" && "$pid" =~ ^[0-9]+$ ]] || return 0
+  cmd="$(ps -p "$pid" -o args= 2>/dev/null || true)"
+  [[ -n "$cmd" ]] || return 0
+  info "Stopping process PID $pid"
+  kill -TERM "$pid" 2>/dev/null || true
+  for _ in {1..20}; do
+    ps -p "$pid" >/dev/null 2>&1 || return 0
+    sleep 0.2
+  done
+  warn "Process $pid did not stop gracefully; killing it."
+  kill -KILL "$pid" 2>/dev/null || true
+}
+
+stop_doctor_processes_on_port(){
+  local port="$1" pid unit stopped=0
+  while IFS= read -r pid; do
+    [[ -n "$pid" ]] || continue
+    if pid_is_doctor_dev "$pid"; then
+      unit="$(service_for_pid "$pid" 2>/dev/null || true)"
+      if [[ -n "$unit" ]]; then
+        info "Stopping Doctor Dev service using port $port: $unit"
+        stop_disable_service "$unit"
+      else
+        kill_pid_safely "$pid"
+      fi
+      stopped=1
+    fi
+  done < <(port_pids "$port")
+  [[ "$stopped" == "1" ]]
+}
+
+handle_busy_port(){
+  local label="$1" host="$2" port="$3"
+  port_usage_details "$host" "$port"
+  if stop_doctor_processes_on_port "$port"; then
+    sleep 0.5
+    if port_available "$host" "$port"; then
+      ok "$label $port was freed by stopping the old Doctor Dev process/service."
+      return 0
+    fi
+    warn "$label $port is still busy after cleanup."
+  fi
+  return 1
+}
+
 ask_port_named(){
   local label="$1" default="$2" bind_host="${3:-0.0.0.0}" value
   while true; do
     value="$(ask "$label" "$default")"
     if ! valid_port "$value"; then warn "Invalid port. Use a number between 1 and 65535."; continue; fi
-    if ! port_available "$bind_host" "$value"; then warn "Port $value is already used on $bind_host. Choose another port."; continue; fi
-    echo "$value"; return
+    if port_available "$bind_host" "$value"; then
+      printf '%s\n' "$value"; return
+    fi
+    handle_busy_port "$label" "$bind_host" "$value" && { printf '%s\n' "$value"; return; }
+    warn "Choose another port for $label."
   done
+}
+
+require_port_available_or_fail(){
+  local label="$1" host="$2" port="$3"
+  valid_port "$port" || fail "Invalid $label: $port. Use a number between 1 and 65535."
+  port_available "$host" "$port" && return 0
+  handle_busy_port "$label" "$host" "$port" && return 0
+  fail "$label $port is already used. See the process/service details above."
 }
 
 require_file_readable(){ [[ -r "$1" ]] || fail "File is not readable: $1"; }
@@ -198,7 +325,14 @@ install_packages(){
 }
 
 systemctl_exists(){ command -v systemctl >/dev/null 2>&1; }
-service_known(){ systemctl_exists && { systemctl list-unit-files --type=service 2>/dev/null; systemctl list-units --all --type=service 2>/dev/null; } | grep -q "^$1.service"; }
+service_known(){
+  local service="$1"
+  systemctl_exists || return 1
+  systemctl status "${service}.service" >/dev/null 2>&1 && return 0
+  systemctl list-unit-files --type=service --no-legend 2>/dev/null | awk '{print $1}' | grep -qx "${service}.service" && return 0
+  systemctl list-units --all --type=service --no-legend 2>/dev/null | awk '{gsub(/^●/,"",$1); print $1}' | grep -qx "${service}.service" && return 0
+  return 1
+}
 stop_disable_service(){
   local service="$1"
   if systemctl_exists; then
@@ -207,6 +341,22 @@ stop_disable_service(){
     rm -f "/etc/systemd/system/${service}.service"
     systemctl daemon-reload 2>/dev/null || true
   fi
+}
+
+collect_doctor_process_items(){
+  local kind="$1" pattern pid args
+  if [[ "$kind" == "panel" ]]; then
+    pattern='doctor-dev-panel|doctor_dev_panel|/opt/doctor-dev-panel|/etc/doctor-dev-panel/panel.env'
+  else
+    pattern='doctor-dev-node|doctor_dev_node|doctor-node|docter-node|/opt/doctor-node|/opt/docter-node'
+  fi
+  while IFS= read -r line; do
+    pid="${line%% *}"
+    args="${line#* }"
+    [[ "$pid" == "$$" ]] && continue
+    [[ "$args" == *grep* ]] && continue
+    printf 'process:%s\n' "$pid"
+  done < <(ps -eo pid=,args= | awk '{$1=$1; print}' | grep -E "$pattern" || true)
 }
 
 collect_existing_paths(){
@@ -232,6 +382,7 @@ collect_existing_paths(){
     done
     while IFS= read -r svc; do [[ -n "$svc" ]] && found+=("systemd:${svc%.service}"); done < <(find /etc/systemd/system -maxdepth 1 -type f -name 'doctor-dev-node*.service' -printf '%f\n' 2>/dev/null || true)
   fi
+  while IFS= read -r proc_item; do [[ -n "$proc_item" ]] && found+=("$proc_item"); done < <(collect_doctor_process_items "$kind")
   printf '%s\n' "${found[@]}" | awk 'NF && !seen[$0]++'
 }
 
@@ -241,7 +392,17 @@ show_found_items(){
   [[ ${#items[@]} -eq 0 ]] && return 0
   cecho "${MAGENTA}${BOLD}${title}${RESET}"
   local item
-  for item in "${items[@]}"; do cecho "  - ${item}"; done
+  for item in "${items[@]}"; do
+    if [[ "$item" == process:* ]]; then
+      local pid="${item#process:}" cmd unit
+      cmd="$(ps -p "$pid" -o args= 2>/dev/null || true)"
+      unit="$(service_for_pid "$pid" 2>/dev/null || true)"
+      cecho "  - process:$pid${unit:+ service:$unit}"
+      [[ -n "$cmd" ]] && subtle "      $cmd"
+    else
+      cecho "  - ${item}"
+    fi
+  done
 }
 
 remove_found_items(){
@@ -251,6 +412,15 @@ remove_found_items(){
       svc="${item#systemd:}"
       info "Removing service: $svc"
       stop_disable_service "$svc"
+    elif [[ "$item" == process:* ]]; then
+      local pid="${item#process:}" unit
+      unit="$(service_for_pid "$pid" 2>/dev/null || true)"
+      if [[ -n "$unit" ]]; then
+        info "Stopping process service: $unit"
+        stop_disable_service "$unit"
+      else
+        kill_pid_safely "$pid"
+      fi
     else
       info "Removing: $item"
       rm -rf --one-file-system "$item" 2>/dev/null || rm -rf "$item"
@@ -434,12 +604,17 @@ configure_panel_tls(){
 install_panel(){
   header "Doctor Dev Panel Installer" "Clean install with verified admin and data integrity safeguards"
   need_root
+  step "1/8 Scan and remove previous panel installation"
   clean_existing_or_fail panel
+  step "2/8 Check system packages"
   install_packages
+  step "3/8 Install project files"
   clone_or_update_repo "$PANEL_APP_DIR" "clean"
   validate_project_tree "$PANEL_APP_DIR"
+  step "4/8 Prepare Python environment"
   setup_venv "$PANEL_APP_DIR"
 
+  step "5/8 Configure panel endpoint"
   local target_choice install_target public_host bind_host port admin_user admin_pass tls_result use_tls public_scheme cert_path key_path
   target_choice="${ARG_TARGET:-}"
   if [[ -z "$target_choice" ]]; then
@@ -452,12 +627,20 @@ install_panel(){
     *) install_target="ip"; public_host="${ARG_PUBLIC_HOST:-$(hostname -I 2>/dev/null | awk '{print $1}' || echo 127.0.0.1)}"; public_host="$(valid_hostname "$public_host" && echo "$public_host" || ask_non_empty "Server IP or public host" "127.0.0.1")"; bind_host="0.0.0.0" ;;
   esac
   bind_host="${ARG_BIND_HOST:-$(ask "Bind host" "$bind_host")}"; valid_hostname "$bind_host" || fail "Invalid bind host: $bind_host"
-  port="${ARG_PANEL_PORT:-$(ask_port_named "Panel port" "8080" "$bind_host")}"; valid_port "$port" || fail "Invalid panel port: $port"; port_available "$bind_host" "$port" || fail "Panel port $port is already used."
+  if [[ -n "$ARG_PANEL_PORT" ]]; then
+    require_port_available_or_fail "Panel port" "$bind_host" "$ARG_PANEL_PORT"
+    port="$ARG_PANEL_PORT"
+  else
+    port="$(ask_port_named "Panel port" "8080" "$bind_host")"
+  fi
+  step "6/8 Configure admin account"
   admin_user="${ARG_ADMIN_USER:-$(ask_non_empty "Admin username" "admin")}"; [[ -n "$admin_user" ]] || fail "Admin username cannot be empty."
   admin_pass="$(ask_password)"
   tls_result="$(configure_panel_tls "$install_target" "$public_host")"; IFS='|' read -r use_tls public_scheme cert_path key_path <<< "$tls_result"
+  step "7/8 Write environment and verify admin password"
   write_panel_env "$bind_host" "$port" "$public_host" "$public_scheme" "$use_tls" "$cert_path" "$key_path"
   create_admin_store "$admin_user" "$admin_pass"
+  step "8/8 Install CLI and service"
   install_panel_cli
   if ask_yes_no "Install and start systemd service now?" "y"; then install_panel_service; else write_panel_service; warn "Service was not started. Start later with: doctor-dev start"; fi
   echo; ok "Doctor Dev Panel installation finished."; cecho "${BOLD}Panel:${RESET} ${GREEN}${public_scheme}://${public_host}:${port}${RESET}"; cecho "${BOLD}CLI:${RESET}   ${GREEN}doctor-dev help${RESET}"
@@ -568,8 +751,18 @@ install_node(){
   clone_or_update_repo "$NODE_APP_DIR" "clean"; validate_project_tree "$NODE_APP_DIR"; setup_venv "$NODE_APP_DIR"
   api_default="$(generate_uuid)"; api_key="${ARG_API_KEY:-$(ask "API_KEY" "$api_default")}"; [[ -n "$api_key" ]] || fail "API_KEY cannot be empty."
   node_host="${ARG_NODE_HOST:-$(ask "NODE_HOST" "127.0.0.1")}"; valid_hostname "$node_host" || fail "Invalid NODE_HOST: $node_host"
-  service_port="${ARG_SERVICE_PORT:-$(ask_port_named "SERVICE_PORT / data-plane port" "62050" "$node_host")}"; valid_port "$service_port" || fail "Invalid service port: $service_port"; port_available "$node_host" "$service_port" || fail "Service port $service_port is already used."
-  api_port="${ARG_API_PORT:-$(ask_port_named "API_PORT / control-plane port" "62051" "$node_host")}"; valid_port "$api_port" || fail "Invalid API port: $api_port"; port_available "$node_host" "$api_port" || fail "API port $api_port is already used."
+  if [[ -n "$ARG_SERVICE_PORT" ]]; then
+    require_port_available_or_fail "SERVICE_PORT / data-plane port" "$node_host" "$ARG_SERVICE_PORT"
+    service_port="$ARG_SERVICE_PORT"
+  else
+    service_port="$(ask_port_named "SERVICE_PORT / data-plane port" "62050" "$node_host")"
+  fi
+  if [[ -n "$ARG_API_PORT" ]]; then
+    require_port_available_or_fail "API_PORT / control-plane port" "$node_host" "$ARG_API_PORT"
+    api_port="$ARG_API_PORT"
+  else
+    api_port="$(ask_port_named "API_PORT / control-plane port" "62051" "$node_host")"
+  fi
   service_protocol="${ARG_SERVICE_PROTOCOL:-$(ask "SERVICE_PROTOCOL" "grpc")}"; service_protocol="${service_protocol,,}"; [[ "$service_protocol" == "grpc" || "$service_protocol" == "rest" ]] || fail "SERVICE_PROTOCOL must be grpc or rest."
   cert_file=""; key_file=""
   tls_choice="${ARG_TLS_MODE:-}"
