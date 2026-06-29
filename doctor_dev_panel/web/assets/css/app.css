@@ -4023,3 +4023,14 @@ input[type="checkbox"].toggle-input {
 
 
 
+
+/* Phase 3 runtime consistency helpers */
+.stacked-status {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  align-items: flex-start;
+}
+.stacked-status .badge {
+  white-space: nowrap;
+}

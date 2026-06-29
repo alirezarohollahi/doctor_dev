@@ -74,6 +74,41 @@ function nodeName(id) {
   return n ? nodeDisplayName(n) : UI_TEXT.unknownNode;
 }
 
+function runtimeEntryForNode(nodeId) {
+  var cache = state.runtimeCache || {};
+  var nodes = cache.nodes && typeof cache.nodes === "object" ? cache.nodes : cache;
+  var entry = nodes ? nodes[String(nodeId || "")] : null;
+  return entry && typeof entry === "object" ? entry : null;
+}
+
+function runtimeApiLabel(entry, fallbackPort) {
+  if (!entry) return "—";
+  var summary = entry.summary && typeof entry.summary === "object" ? entry.summary : {};
+  var raw = entry.raw && typeof entry.raw === "object" ? entry.raw : {};
+  var api = raw.api && typeof raw.api === "object" ? raw.api : entry.api && typeof entry.api === "object" ? entry.api : {};
+  var port = api.port || api.api_port || summary.api_port || fallbackPort || "—";
+  var host = api.host || "node";
+  return host + ":" + port;
+}
+
+function runtimeBadge(entry) {
+  if (!entry) return '<span class="badge badge-pending">Not synced</span>';
+  if (entry.auth_ok === false) return '<span class="badge badge-error" title="' + escapeHtml(entry.last_error || "Auth failed") + '">Auth failed</span>';
+  if (entry.reachable === false) return '<span class="badge badge-error" title="' + escapeHtml(entry.last_error || "Unreachable") + '">Unreachable</span>';
+  if (entry.runtime_ok === false) return '<span class="badge badge-warning" title="' + escapeHtml(entry.last_error || "Runtime error") + '">Runtime error</span>';
+  return '<span class="badge badge-running">Runtime OK</span>';
+}
+
+function runtimeUsageLabel(entry) {
+  if (!entry) return "—";
+  var summary = entry.summary && typeof entry.summary === "object" ? entry.summary : {};
+  var listeners = Array.isArray(entry.listeners) ? entry.listeners : [];
+  var active = summary.active_connections || 0;
+  var total = listeners.length || summary.listeners_total || 0;
+  var age = timeAgo(entry.last_success_at || entry.last_seen_at || entry.synced_at || "");
+  return String(total) + " listener" + (Number(total) === 1 ? "" : "s") + " · " + String(active) + " active · " + age;
+}
+
 function ensureAdvancedConfig(draft) {
   if (!draft) return { enabled: false, json_config: "" };
   if (!draft.advanced_config || typeof draft.advanced_config !== "object") {
@@ -129,6 +164,7 @@ const state = {
   nodes: [],
   cores: [],
   inboundCatalog: [],
+  runtimeCache: {},
   stats: null,
   page: "dashboard",
   editingNode: null,
@@ -586,7 +622,7 @@ function openCoreEditorPage(core, tab, options) {
 // ============================================================
 
 async function refreshAll() {
-  await Promise.all([loadNodes(), loadCores()]);
+  await Promise.all([loadNodes(), loadCores(), loadRuntimeCache()]);
   if (state.page === "dashboard") await loadStats();
 }
 
@@ -633,6 +669,36 @@ async function loadNodes() {
     }
   } catch (err) {
     console.error("loadNodes:", err);
+  }
+}
+
+async function loadRuntimeCache() {
+  try {
+    var data = await api("/api/nodes/runtime-cache");
+    if (data.ok) {
+      state.runtimeCache = data.cache || { nodes: {} };
+      renderNodes();
+    }
+  } catch (err) {
+    console.error("loadRuntimeCache:", err);
+  }
+}
+
+async function syncNodeRuntime(id, button) {
+  if (!isValidNodeId(id)) { warnInvalidIdentifier("node"); await refreshAll(); return; }
+  var origHTML = button ? button.innerHTML : "";
+  if (button) button.disabled = true;
+  try {
+    var data = await api("/api/nodes/" + encodeURIComponent(id) + "/sync-runtime", { method: "POST" });
+    if (data.ok) {
+      showToast("Runtime synced for node.", "success");
+      await loadRuntimeCache();
+    }
+  } catch (err) {
+    showToast(err.message || "Runtime sync failed.", "error");
+    await loadRuntimeCache();
+  } finally {
+    if (button) { button.disabled = false; button.innerHTML = origHTML; }
   }
 }
 
@@ -830,55 +896,28 @@ function renderNodes() {
   if (tableWrap) tableWrap.classList.remove("hidden");
 
   tbody.innerHTML = state.nodes
-    .map(function (node) {
+    .map(function (node, idx) {
       var st = statusFor(node);
-      var titleAttr = node.last_error
-        ? ' title="' + escapeHtml(node.last_error) + '"'
-        : "";
-      var checkedAt = node.last_checked_at
-        ? timeAgo(node.last_checked_at)
-        : "Not yet";
+      var runtime = runtimeEntryForNode(node.id);
+      var titlePieces = [];
+      if (node.last_error) titlePieces.push(node.last_error);
+      if (runtime && runtime.last_error) titlePieces.push(runtime.last_error);
+      var titleAttr = titlePieces.length ? ' title="' + escapeHtml(titlePieces.join(" | ")) + '"' : "";
       return (
-        "<tr" +
-        titleAttr +
-        ">" +
-        '<td><span class="badge badge-' +
-        escapeHtml(st) +
-        '">' +
-        escapeHtml(statusLabel(st)) +
-        "</span></td>" +
-        "<td>" +
-        escapeHtml(node.name || "\u2014") +
-        "</td>" +
-        "<td>" +
-        escapeHtml(node.address || "\u2014") +
-        "</td>" +
-        "<td>" +
-        escapeHtml(String(node.api_port || "\u2014")) +
-        "</td>" +
-        "<td>" +
-        (node.certificate ? "TLS" : "Plain") +
-        "</td>" +
-        '<td><span class="badge ' +
-        (node.enabled ? "badge-running" : "badge-disabled") +
-        '">' +
-        (node.enabled ? "Enabled" : "Disabled") +
-        "</span></td>" +
-        "<td>" +
-        escapeHtml(checkedAt) +
-        "</td>" +
+        "<tr" + titleAttr + ">" +
+        '<td class="th-num">' + String(idx + 1) + "</td>" +
+        "<td>" + escapeHtml(node.name || "—") + "</td>" +
+        "<td>" + escapeHtml(node.address || "—") + "</td>" +
+        "<td>" + escapeHtml(String(node.api_port || "—")) + "</td>" +
+        "<td>" + escapeHtml(runtimeApiLabel(runtime, node.api_port)) + "</td>" +
+        '<td><div class="stacked-status"><span class="badge badge-' + escapeHtml(st) + '">' + escapeHtml(statusLabel(st)) + "</span>" + runtimeBadge(runtime) + "</div></td>" +
+        '<td><span class="badge ' + (node.enabled ? "badge-running" : "badge-disabled") + '">' + (node.enabled ? "Enabled" : "Disabled") + "</span></td>" +
+        "<td>" + escapeHtml(runtimeUsageLabel(runtime)) + "</td>" +
         '<td class="actions-cell">' +
-        '<button class="btn btn-xs btn-ghost" data-node-action="check" data-id="' +
-        escapeHtml(String(node.id || "")) +
-        '" title="Check">' +
-        '<i class="fa-solid fa-rotate-right" aria-hidden="true"></i>' +
-        "</button>" +
-        '<button class="btn btn-xs btn-secondary" data-node-action="edit"   data-id="' +
-        escapeHtml(String(node.id || "")) +
-        '">Edit</button>' +
-        '<button class="btn btn-xs btn-danger"    data-node-action="delete" data-id="' +
-        escapeHtml(String(node.id || "")) +
-        '">Delete</button>' +
+        '<button class="btn btn-xs btn-ghost" data-node-action="check" data-id="' + escapeHtml(String(node.id || "")) + '" title="Check API health"><i class="fa-solid fa-rotate-right" aria-hidden="true"></i></button>' +
+        '<button class="btn btn-xs btn-ghost" data-node-action="sync-runtime" data-id="' + escapeHtml(String(node.id || "")) + '" title="Sync runtime"><i class="fa-solid fa-satellite-dish" aria-hidden="true"></i></button>' +
+        '<button class="btn btn-xs btn-secondary" data-node-action="edit" data-id="' + escapeHtml(String(node.id || "")) + '">Edit</button>' +
+        '<button class="btn btn-xs btn-danger" data-node-action="delete" data-id="' + escapeHtml(String(node.id || "")) + '">Delete</button>' +
         "</td>" +
         "</tr>"
       );
@@ -891,6 +930,7 @@ function renderNodes() {
       var action = btn.dataset.nodeAction;
       if (!isValidNodeId(id)) { warnInvalidIdentifier("node"); return; }
       if (action === "check") checkSavedNode(id, btn);
+      if (action === "sync-runtime") syncNodeRuntime(id, btn);
       if (action === "edit") openNodeModal(nodeById(id));
       if (action === "delete") deleteNode(id);
     });
@@ -1982,9 +2022,7 @@ function endpointKey(balancerIndex, endpointIndex) {
 function endpointTitle(ep, index) {
   if (!ep) return "Endpoint " + (index + 1);
   if (ep.type === "node_inbound") {
-    var node = nodeById(ep.node_id);
-    var inbound = ep.inbound_name || "Select inbound";
-    return (inbound || "Node inbound") + " → " + (node ? nodeDisplayName(node) : "Select node");
+    return ep.inbound_name || "Select inbound";
   }
   return (ep.host || "Static target") + ":" + (ep.port || "port");
 }
@@ -1992,7 +2030,13 @@ function endpointTitle(ep, index) {
 function endpointSubTitle(ep) {
   if (!ep) return "";
   if (ep.type === "node_inbound") {
-    return "Node inbound" + (ep.weight ? " · weight " + ep.weight : "");
+    var node = nodeById(ep.node_id);
+    var core = coreById(ep.core_id);
+    var parts = ["Node inbound"];
+    if (node) parts.push(nodeDisplayName(node));
+    if (core) parts.push(cleanDisplayName(core.name, ep.core_id));
+    if (ep.weight) parts.push("weight " + ep.weight);
+    return parts.join(" · ");
   }
   return "Static" + (ep.weight ? " · weight " + ep.weight : "");
 }

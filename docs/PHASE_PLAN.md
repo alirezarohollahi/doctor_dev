@@ -23,12 +23,17 @@
   - `GET /api/nodes/{node_id}/drift?refresh=true|false`
 - Drift detector compares desired config with cached actual runtime.
 
-## Still pending
+### Phase 3 — runtime consistency + node UI runtime table
+- Fixed stale API self-reporting when running node with CLI overrides such as `--port 9098`.
+- Node startup now writes the actual bound host/port into the process env before Uvicorn imports the ASGI app.
+- Node `/health` and `/runtime` use the same actual API identity helper.
+- Panel runtime cache stores API identity from node runtime export.
+- Nodes table shows desired API port and actual runtime API side by side.
+- Nodes table shows runtime auth/reachability status, listener count, active connections, and last sync age.
+- Added per-node manual Runtime Sync action.
+- Core/node apply refreshes runtime cache immediately after a successful apply.
 
-### Phase 3 — UI runtime/drift cards
-- Show runtime cache and drift results directly on node cards.
-- Add manual Refresh Runtime button per node.
-- Add View Runtime JSON and View Drift actions.
+## Still pending
 
 ### Phase 4 — atomic apply/rollback
 - Node should keep previous runtime if new config fails.

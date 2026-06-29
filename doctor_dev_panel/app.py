@@ -991,11 +991,16 @@ async def api_apply_node_config(node_id: str, user: str = Depends(require_admin)
     try:
         data = await asyncio.to_thread(_post_node_api, node, "/config/apply", payload)
         changed = set_node_cores_apply_result(node_id, ok=True)
+        # Runtime becomes authoritative immediately after a successful apply.
+        # Sync it now so UI and cache do not keep stale listener/API details.
+        await _sync_node_runtime_once(node)
+        runtime_entry = get_node_runtime(node_id)
         logger.info("node config applied: node_id=%s cores=%s by=%s", node_id, len(payload.get("cores", [])), user)
         return {
             "ok": True,
             "message": f"Applied {len(payload.get('cores', []))} core configuration(s) to {node.get('name') or node.get('address')}.",
             "node_response": data,
+            "runtime": runtime_entry,
             "updated_cores": changed,
         }
     except NodeAPIError as exc:
@@ -1019,8 +1024,10 @@ async def api_apply_core(core_id: str, user: str = Depends(require_admin)) -> di
     try:
         data = await asyncio.to_thread(_post_node_api, node, "/config/apply", payload)
         updated = set_core_apply_result(core_id, ok=True)
+        await _sync_node_runtime_once(node)
+        runtime_entry = get_node_runtime(node_id)
         logger.info("core applied: core_id=%s node_id=%s by=%s", core_id, node_id, user)
-        return {"ok": True, "message": "Core configuration was applied successfully.", "core": updated, "node_response": data}
+        return {"ok": True, "message": "Core configuration was applied successfully.", "core": updated, "node_response": data, "runtime": runtime_entry}
     except NodeAPIError as exc:
         updated = set_core_apply_result(core_id, ok=False, error=str(exc))
         logger.warning("core apply failed: core_id=%s node_id=%s error=%s", core_id, node_id, exc)

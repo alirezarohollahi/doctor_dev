@@ -21,15 +21,21 @@
 - Added docs for Linux `main.py` execution and runtime contract.
 - Added helper scripts for running panel/node and testing node runtime.
 
-## Pending
+### Phase 3 Runtime Consistency + Node UI Runtime Table
+- Fixed node self-reporting inconsistency when CLI `--host`/`--port` overrides env values.
+- `/health` and `/runtime` now report the actual bound API host/port.
+- Added process-level `DOCTOR_DEV_NODE_BOUND_HOST` and `DOCTOR_DEV_NODE_BOUND_API_PORT` consistency markers.
+- Panel runtime cache now stores the node API identity returned by runtime export.
+- Nodes table now shows runtime API, runtime auth/reachability state, listener count, active connections, and last sync age.
+- Added a per-node Runtime Sync action in the Nodes table.
+- Core apply and node config apply now refresh runtime cache immediately after successful apply.
+- Balancer endpoint labels were simplified to show inbound first, not route-like labels.
 
-### Phase 3 UI Runtime/Drift Cards
-- Add runtime/drift cards directly inside the node UI.
-- Add per-node Refresh Runtime, View Runtime JSON, and View Drift buttons.
+## Pending
 
 ### Phase 4 Atomic Apply/Rollback
 - Preserve previous node runtime when a new config fails.
-- Add apply transaction result and immediate post-apply runtime sync.
+- Add apply transaction result and immediate post-apply runtime sync result details.
 
 ### Phase 5 Token Test Suite
 - Add automated peer-token tests for expired, wrong-target, and bad-signature cases.

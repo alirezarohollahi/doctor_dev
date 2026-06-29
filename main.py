@@ -178,6 +178,13 @@ def run_node(args: argparse.Namespace, env_path: Optional[Path]) -> None:
     port = args.port or int(os.getenv("API_PORT") or os.getenv("PORT") or "62051")
     # Node now exposes one management API port only. Listener/data ports are
     # created from inbound runtime config; SERVICE_PORT/SERVICE_PROTOCOL are legacy.
+    # Keep the process environment consistent before Uvicorn imports the app in
+    # its worker process. Without this, `python main.py --mode node --port 9098`
+    # could listen on 9098 while /health still reported the stale env API_PORT.
+    os.environ["NODE_HOST"] = str(host)
+    os.environ["API_PORT"] = str(port)
+    os.environ["DOCTOR_DEV_NODE_BOUND_HOST"] = str(host)
+    os.environ["DOCTOR_DEV_NODE_BOUND_API_PORT"] = str(port)
 
     log_path = setup_node_logging()
     ssl_cert = os.getenv("SSL_CERT_FILE") or os.getenv("SSL_CERT_PATH") or None

@@ -123,6 +123,37 @@ def now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def _int_env(*names: str, default: int) -> int:
+    for name in names:
+        value = os.getenv(name)
+        if value is None or str(value).strip() == "":
+            continue
+        try:
+            return int(str(value).strip())
+        except ValueError:
+            continue
+    return int(default)
+
+
+def api_identity() -> dict[str, Any]:
+    """Return the actual API bind identity for the running node process.
+
+    `main.py` and `doctor_dev_node.server:main` set DOCTOR_DEV_NODE_BOUND_*
+    from CLI overrides before the ASGI app is imported. These values are the
+    source of truth for self-reporting, while NODE_HOST/API_PORT remain
+    backwards-compatible aliases.
+    """
+    host = os.getenv("DOCTOR_DEV_NODE_BOUND_HOST") or os.getenv("NODE_HOST") or "127.0.0.1"
+    port = _int_env("DOCTOR_DEV_NODE_BOUND_API_PORT", "API_PORT", default=62051)
+    tls = bool(os.getenv("SSL_CERT_FILE") and os.getenv("SSL_KEY_FILE"))
+    return {
+        "host": host,
+        "port": port,
+        "api_port": port,
+        "tls": tls,
+    }
+
+
 def read_routing_config() -> dict[str, Any]:
     path = routing_config_path()
     if not path.exists():
@@ -208,11 +239,7 @@ def runtime_payload(*, auth_source: str = "") -> dict[str, Any]:
         "node_id": cfg.get("node_id") or os.getenv("NODE_ID", ""),
         "generated_at": cfg.get("generated_at"),
         "exported_at": now(),
-        "api": {
-            "host": os.getenv("NODE_HOST", "127.0.0.1"),
-            "api_port": int(os.getenv("API_PORT", "62051")),
-            "tls": bool(os.getenv("SSL_CERT_FILE") and os.getenv("SSL_KEY_FILE")),
-        },
+        "api": api_identity(),
         "core": summary.get("core") or {},
         "summary": summary,
         "listeners": listeners,
@@ -287,11 +314,7 @@ async def health() -> dict:
         "status": "ok",
         "app": "Doctor Dev Node",
         "version": __version__,
-        "api": {
-            "host": os.getenv("NODE_HOST", "127.0.0.1"),
-            "api_port": int(os.getenv("API_PORT", "62051")),
-            "tls": bool(os.getenv("SSL_CERT_FILE") and os.getenv("SSL_KEY_FILE")),
-        },
+        "api": api_identity(),
         "runtime": {
             "active": bool(summary.get("runtime_active")),
             "listeners_total": int(summary.get("listeners_total") or 0),
@@ -310,8 +333,8 @@ async def status(authorization: Optional[str] = Header(default=None)) -> dict:
         "status": "running",
         "version": __version__,
         "config": {
-            "node_host": os.getenv("NODE_HOST", "127.0.0.1"),
-            "api_port": int(os.getenv("API_PORT", "62051")),
+            "node_host": api_identity()["host"],
+            "api_port": api_identity()["port"],
             "ssl_cert_file": os.getenv("SSL_CERT_FILE", ""),
             "ssl_key_file": "***" if os.getenv("SSL_KEY_FILE") else "",
             "peer_token_auth": bool(read_routing_config().get("peer_verify_secret")),
@@ -431,6 +454,10 @@ def main() -> None:
     logger.info("starting node server env=%s log=%s debug=%s", args.env, log_path, is_debug_enabled())
     host = args.host or os.getenv("NODE_HOST", "127.0.0.1")
     port = args.port or int(os.getenv("API_PORT", "62051"))
+    os.environ["NODE_HOST"] = str(host)
+    os.environ["API_PORT"] = str(port)
+    os.environ["DOCTOR_DEV_NODE_BOUND_HOST"] = str(host)
+    os.environ["DOCTOR_DEV_NODE_BOUND_API_PORT"] = str(port)
     ssl_cert = os.getenv("SSL_CERT_FILE") or None
     ssl_key = os.getenv("SSL_KEY_FILE") or None
     use_tls = bool(ssl_cert and ssl_key)

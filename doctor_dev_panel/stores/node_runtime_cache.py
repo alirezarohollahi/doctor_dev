@@ -95,6 +95,7 @@ def update_node_runtime(node_id: str, payload: dict[str, Any], *, source: str = 
         "generated_at": payload.get("generated_at") or payload.get("config", {}).get("generated_at"),
         "exported_at": payload.get("exported_at"),
         "config_hash": summary.get("config_hash") or payload.get("config_hash"),
+        "api": payload.get("api") if isinstance(payload.get("api"), dict) else {},
         "core": payload.get("core") if isinstance(payload.get("core"), dict) else summary.get("core", {}),
         "summary": summary,
         "listeners": listeners,
