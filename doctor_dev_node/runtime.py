@@ -53,6 +53,7 @@ class ForwarderRuntime:
         self._target_active: dict[str, int] = {}
         self._peer_runtime_cache: dict[str, dict[str, Any]] = {}
         self._peer_sync_last: dict[str, float] = {}
+        self._peer_tokens: dict[str, dict[str, Any]] = {}
         self._peer_sync_task: Optional[asyncio.Task] = None
         self.connection_count = 0
         self.active_connections = 0
@@ -223,9 +224,9 @@ class ForwarderRuntime:
 
     def _add_peer_sync_endpoint(self, endpoints_by_key: dict[str, dict[str, Any]], endpoint: dict[str, Any]) -> None:
         sync_urls = endpoint.get("sync_urls") if isinstance(endpoint.get("sync_urls"), list) else []
-        token = str(endpoint.get("secret_token") or "")
+        token_url = str(endpoint.get("token_url") or "")
         remote_node_id = str(endpoint.get("remote_node_id") or endpoint.get("node_id") or endpoint.get("ref_id") or "")
-        if not sync_urls or not token or not remote_node_id:
+        if not sync_urls or not token_url or not remote_node_id:
             return
         endpoint = dict(endpoint)
         endpoint["remote_node_id"] = remote_node_id
@@ -239,6 +240,8 @@ class ForwarderRuntime:
         for core in self.config.get("cores", []) if isinstance(self.config.get("cores"), list) else []:
             for dep in core.get("dependencies", []) if isinstance(core.get("dependencies"), list) else []:
                 if isinstance(dep, dict) and dep.get("type") == "node" and dep.get("required") is not False:
+                    dep = dict(dep)
+                    dep["source_core_id"] = str(core.get("id") or "")
                     self._add_peer_sync_endpoint(endpoints_by_key, dep)
             for balancer in core.get("balancers", []) if isinstance(core.get("balancers"), list) else []:
                 for endpoint in balancer.get("endpoints", []) if isinstance(balancer.get("endpoints"), list) else []:
@@ -246,6 +249,8 @@ class ForwarderRuntime:
                         continue
                     if endpoint.get("type") != "node_inbound":
                         continue
+                    endpoint = dict(endpoint)
+                    endpoint["source_core_id"] = str(core.get("id") or "")
                     self._add_peer_sync_endpoint(endpoints_by_key, endpoint)
         return list(endpoints_by_key.values())
 
@@ -293,9 +298,56 @@ class ForwarderRuntime:
             if key:
                 self._peer_sync_last[key] = time.time()
 
+    def _endpoint_token_refresh_interval(self, endpoint: dict[str, Any]) -> float:
+        try:
+            interval = float(endpoint.get("token_refresh_interval") or 30)
+        except (TypeError, ValueError):
+            interval = 30.0
+        return min(max(interval, 5.0), 86400.0)
+
+    def _fetch_peer_token(self, endpoint: dict[str, Any]) -> str:
+        cache_key = self._peer_sync_key(endpoint) + "|token"
+        cached = self._peer_tokens.get(cache_key) or {}
+        now_ts = time.time()
+        refresh_after = float(cached.get("refresh_after") or self._endpoint_token_refresh_interval(endpoint))
+        if cached.get("token") and now_ts - float(cached.get("fetched_at") or 0) < refresh_after:
+            return str(cached["token"])
+
+        token_url = str(endpoint.get("token_url") or "")
+        if not token_url:
+            return ""
+        payload = {
+            "source_node_id": str(self.config.get("node_id") or ""),
+            "source_core_id": str(endpoint.get("source_core_id") or endpoint.get("local_core_id") or ""),
+            "target_node_id": str(endpoint.get("remote_node_id") or endpoint.get("node_id") or endpoint.get("ref_id") or ""),
+            "target_core_id": str(endpoint.get("remote_core_id") or endpoint.get("core_id") or ""),
+        }
+        body = json.dumps(payload).encode("utf-8")
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "User-Agent": "DoctorDevNode/PeerToken",
+        }
+        api_key = os.getenv("API_KEY", "")
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+        req = Request(token_url, data=body, headers=headers, method="POST")
+        context = ssl._create_unverified_context() if token_url.startswith("https://") else None
+        with urlopen(req, timeout=PEER_SYNC_TIMEOUT, context=context) as response:  # noqa: S310
+            raw = response.read(1024 * 64).decode("utf-8", errors="replace")
+            data = json.loads(raw) if raw else {}
+        token = str(data.get("token") or "")
+        if token:
+            self._peer_tokens[cache_key] = {
+                "token": token,
+                "fetched_at": now_ts,
+                "refresh_after": float(data.get("refresh_after") or self._endpoint_token_refresh_interval(endpoint)),
+            }
+        return token
+
     def _fetch_peer_export(self, endpoint: dict[str, Any]) -> Optional[dict[str, Any]]:
         urls = endpoint.get("sync_urls") if isinstance(endpoint.get("sync_urls"), list) else []
-        token = str(endpoint.get("secret_token") or "")
+        token = self._fetch_peer_token(endpoint)
         certificate = str(endpoint.get("certificate") or "")
         if not urls or not token:
             return None
@@ -324,6 +376,10 @@ class ForwarderRuntime:
     def validate_config(self, config: dict[str, Any]) -> list[str]:
         errors: list[str] = []
         cores = self._ordered_cores(config.get("cores") if isinstance(config.get("cores"), list) else [])
+        enabled_cores = [core for core in cores if isinstance(core, dict) and core.get("enabled") is not False]
+        if len(enabled_cores) > 1:
+            errors.append("Each node can have only one enabled core.")
+            return errors
         for core in cores:
             if not isinstance(core, dict) or core.get("enabled") is False:
                 continue
@@ -779,3 +835,7 @@ class ForwarderRuntime:
 
 
 runtime = ForwarderRuntime()
+
+
+
+

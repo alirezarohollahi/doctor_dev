@@ -627,8 +627,8 @@
                                         <th scope="col" class="th-num">#</th>
                                         <th scope="col">Name</th>
                                         <th scope="col">Address</th>
-                                        <th scope="col">Port</th>
                                         <th scope="col">API Port</th>
+                                        <th scope="col">Runtime API</th>
                                         <th scope="col">Status</th>
                                         <th scope="col">Enabled</th>
                                         <th scope="col">Usage</th>
@@ -1465,18 +1465,6 @@
                                             spellcheck="false"
                                         />
                                     </div>
-                                    <div class="form-field form-field--short">
-                                        <label for="nodePort">Port</label>
-                                        <input
-                                            id="nodePort"
-                                            type="number"
-                                            name="port"
-                                            placeholder="62050"
-                                            class="input"
-                                            min="1"
-                                            max="65535"
-                                        />
-                                    </div>
                                 </div>
 
                                 <div class="form-row">
@@ -1504,7 +1492,7 @@
                                             max="86400"
                                             step="1"
                                         />
-                                        <p class="form-hint">Seconds between peer config pulls when another node depends on this node.</p>
+                                        <p class="form-hint">Seconds between runtime/config pulls.</p>
                                     </div>
                                 </div>
 
@@ -1532,74 +1520,18 @@
                                     <p class="form-hint">Used by the panel to manage this node.</p>
                                 </div>
 
-                                <div class="form-field">
-                                    <label for="nodeSecretToken">Node Secret Token</label>
-                                    <div class="input-wrap input-suffix">
-                                        <input
-                                            id="nodeSecretToken"
-                                            type="text"
-                                            name="nodeSecretToken"
-                                            placeholder="Peer sync token for other nodes"
-                                            class="input input--mono"
-                                            autocomplete="off"
-                                            spellcheck="false"
-                                        />
-                                        <button
-                                            id="generateSecretToken"
-                                            class="input-suffix-btn"
-                                            type="button"
-                                            aria-label="Generate a new node secret token"
-                                        >
-                                            <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
-                                        </button>
+                                <div class="form-row">
+                                    <div class="form-field form-field--short">
+                                        <label for="peerTokenRefreshInterval">Peer Token Refresh</label>
+                                        <input id="peerTokenRefreshInterval" type="number" name="peerTokenRefreshInterval" placeholder="30" class="input" min="5" max="86400" step="1" />
+                                        <p class="form-hint">Node asks the panel for a fresh peer token every N seconds.</p>
                                     </div>
-                                    <p class="form-hint">Other nodes use this token to pull live random inbound ports from this node.</p>
+                                    <div class="form-field form-field--short">
+                                        <label for="peerTokenTtl">Peer Token TTL</label>
+                                        <input id="peerTokenTtl" type="number" name="peerTokenTtl" placeholder="120" class="input" min="10" max="86400" step="1" />
+                                        <p class="form-hint">Short-lived token expiration time in seconds.</p>
+                                    </div>
                                 </div>
-
-                                <!-- Advanced settings (collapsible) -->
-                                <details class="advanced-details">
-                                    <summary class="advanced-summary">
-                                        <i class="fa-solid fa-sliders" aria-hidden="true"></i>
-                                        Advanced Settings
-                                    </summary>
-                                    <div class="advanced-fields">
-                                        <div class="form-row">
-                                            <div
-                                                class="form-field form-field--grow"
-                                            >
-                                                <label for="connectionType"
-                                                    >Connection Type</label
-                                                >
-                                                <select
-                                                    id="connectionType"
-                                                    name="connectionType"
-                                                    class="select"
-                                                >
-                                                    <option value="grpc">
-                                                        gRPC
-                                                    </option>
-                                                </select>
-                                                <p class="form-hint">
-                                                    The current node agent supports gRPC only.
-                                                </p>
-                                            </div>
-                                            <div
-                                                class="form-field form-field--short"
-                                            >
-                                                <label for="usageRatio"
-                                                    >Usage Ratio</label
-                                                >
-                                                <input
-                                                    id="usageRatio"
-                                                    type="number"
-                                                    name="usageRatio"
-                                                    placeholder="1.0"
-                                                    class="input"
-                                                    min="0"
-                                                    step="0.1"
-                                                />
-                                            </div>
-                                        </div>
 
                                         <div class="form-row">
                                             <div
@@ -1707,8 +1639,7 @@
                                                 autocomplete="off"
                                             />
                                             <p class="form-hint">
-                                                Used only when connection type
-                                                is &ldquo;Via Proxy&rdquo;.
+                                                Reserved for future outbound proxy support.
                                             </p>
                                         </div>
                                     </div>
@@ -1935,3 +1866,7 @@
         <script src="/assets/js/app.js"></script>
     </body>
 </html>
+
+
+
+

@@ -184,3 +184,7 @@ def filter_lines(lines: Iterable[str], *, level: str = 'all', query: str = '') -
             continue
         result.append(line)
     return result
+
+
+
+

@@ -33,9 +33,7 @@ ARG_KEY_PATH=""
 ARG_NODE_CLI_NAME=""
 ARG_API_KEY=""
 ARG_NODE_HOST=""
-ARG_SERVICE_PORT=""
 ARG_API_PORT=""
-ARG_SERVICE_PROTOCOL=""
 ARG_DEBUG=""
 
 BOLD="\033[1m"; DIM="\033[2m"; RED="\033[31m"; GREEN="\033[32m"; YELLOW="\033[33m"; BLUE="\033[34m"; MAGENTA="\033[35m"; CYAN="\033[36m"; RESET="\033[0m"
@@ -70,7 +68,7 @@ usage(){
   cecho "  sudo bash doctor_dev.sh ${GREEN}install-panel${RESET} [--admin-user USER] [--admin-password PASS] [--panel-port PORT] [--public-host HOST] [--yes]"
   cecho "  sudo bash doctor_dev.sh ${GREEN}update-panel${RESET} [--yes]"
   cecho "  sudo bash doctor_dev.sh ${GREEN}uninstall-panel${RESET} [--purge] [--yes]"
-  cecho "  sudo bash doctor_dev.sh ${GREEN}install-node${RESET} [--node-cli-name doctor-node] [--api-port PORT] [--service-port PORT] [--debug true] [--yes]  ${DIM}# gRPC only${RESET}"
+  cecho "  sudo bash doctor_dev.sh ${GREEN}install-node${RESET} [--node-cli-name doctor-node] [--api-port PORT] [--debug true] [--yes]  ${DIM}# single API port${RESET}"
   cecho "  sudo bash doctor_dev.sh ${GREEN}update-node${RESET} [--node-cli-name doctor-node]"
   cecho "  sudo bash doctor_dev.sh ${GREEN}uninstall-node${RESET} [--node-cli-name doctor-node] [--purge] [--yes]"
   echo
@@ -98,9 +96,9 @@ parse_common_args(){
       --node-cli-name|--cli-name) need_arg "$@"; ARG_NODE_CLI_NAME="$2"; shift 2 ;;
       --api-key) need_arg "$@"; ARG_API_KEY="$2"; shift 2 ;;
       --node-host) need_arg "$@"; ARG_NODE_HOST="$2"; shift 2 ;;
-      --service-port|--node-port) need_arg "$@"; ARG_SERVICE_PORT="$2"; shift 2 ;;
+      --service-port|--node-port) need_arg "$@"; warn "--service-port is legacy and ignored. Inbound listener ports are configured in the panel."; shift 2 ;;
       --api-port) need_arg "$@"; ARG_API_PORT="$2"; shift 2 ;;
-      --service-protocol|--protocol) need_arg "$@"; ARG_SERVICE_PROTOCOL="$2"; shift 2 ;;
+      --service-protocol|--protocol) need_arg "$@"; warn "--service-protocol is legacy and ignored. Node uses one HTTP API plus runtime listeners."; shift 2 ;;
       --debug) need_arg "$@"; ARG_DEBUG="$2"; shift 2 ;;
       --help|-h) usage; exit 0 ;;
       *) fail "Unknown parameter: $1" ;;
@@ -735,17 +733,16 @@ prepare_node_dirs(){ mkdir -p "$NODE_CONFIG_DIR" "$NODE_DATA_DIR" "$NODE_LOG_DIR
 install_node_cli(){ info "Installing node CLI: /usr/local/bin/$NODE_CLI_NAME"; install -m 0755 "$NODE_APP_DIR/scripts/doctor-node" "/usr/local/bin/$NODE_CLI_NAME"; ok "Node CLI installed. Try: $NODE_CLI_NAME help"; }
 
 write_node_env(){
-  local api_key="$1" node_host="$2" service_port="$3" api_port="$4" service_protocol="$5" cert_file="$6" key_file="$7"
+  local api_key="$1" node_host="$2" api_port="$3" cert_file="$4" key_file="$5"
   local debug_value="${ARG_DEBUG:-${DEBUG:-false}}"
   case "${debug_value,,}" in 1|true|yes|on|debug|enabled) debug_value="true" ;; *) debug_value="false" ;; esac
   prepare_node_dirs
   info "Writing $NODE_ENV_FILE"
   cat > "$NODE_ENV_FILE" <<ENV
+DOCTOR_DEV_MODE=node
 API_KEY=$api_key
 NODE_HOST=$node_host
-SERVICE_PORT=$service_port
 API_PORT=$api_port
-SERVICE_PROTOCOL=$service_protocol
 SSL_CERT_FILE=$cert_file
 SSL_KEY_FILE=$key_file
 
@@ -792,35 +789,25 @@ install_node_service(){ write_node_service; systemctl enable "$NODE_SERVICE_NAME
 install_node(){
   header "Doctor Dev Node Installer" "Clean node install with validated ports and names"
   need_root; install_packages
-  local cli_name api_default api_key node_host service_port api_port service_protocol tls_choice cert_file key_file
+  local cli_name api_default api_key node_host api_port tls_choice cert_file key_file
   cli_name="${ARG_NODE_CLI_NAME:-${DOCTOR_DEV_NODE_CLI_NAME:-doctor-node}}"; valid_cli_name "$cli_name" || fail "Invalid CLI name."
   node_vars "$cli_name"
   clean_existing_or_fail node "$cli_name"
   clone_or_update_repo "$NODE_APP_DIR" "clean"; validate_project_tree "$NODE_APP_DIR"; setup_venv "$NODE_APP_DIR"
   api_default="$(generate_uuid)"; api_key="${ARG_API_KEY:-$(ask "API_KEY" "$api_default")}"; [[ -n "$api_key" ]] || fail "API_KEY cannot be empty."
   node_host="${ARG_NODE_HOST:-$(ask "NODE_HOST" "127.0.0.1")}"; valid_hostname "$node_host" || fail "Invalid NODE_HOST: $node_host"
-  if [[ -n "$ARG_SERVICE_PORT" ]]; then
-    require_port_available_or_fail "SERVICE_PORT / data-plane port" "$node_host" "$ARG_SERVICE_PORT"
-    service_port="$ARG_SERVICE_PORT"
-  else
-    service_port="$(ask_port_named "SERVICE_PORT / data-plane port" "62050" "$node_host")"
-  fi
   if [[ -n "$ARG_API_PORT" ]]; then
     require_port_available_or_fail "API_PORT / control-plane port" "$node_host" "$ARG_API_PORT"
     api_port="$ARG_API_PORT"
   else
     api_port="$(ask_port_named "API_PORT / control-plane port" "62051" "$node_host")"
   fi
-  service_protocol="grpc"
-  if [[ -n "$ARG_SERVICE_PROTOCOL" && "${ARG_SERVICE_PROTOCOL,,}" != "grpc" ]]; then
-    warn "Only gRPC is supported by this node installer. Ignoring requested protocol: $ARG_SERVICE_PROTOCOL"
-  fi
-  ok "Connection protocol: gRPC"
+  ok "Node uses a single API_PORT. Data-plane listeners are created from inbound runtime config."
   cert_file=""; key_file=""
   tls_choice="${ARG_TLS_MODE:-}"
   if [[ -z "$tls_choice" ]]; then cecho "${BOLD}SSL/TLS Configuration${RESET}"; cecho "  1) No SSL/TLS now"; cecho "  2) I already have certificate/key paths"; tls_choice="$(ask "Choose SSL/TLS mode" "1")"; fi
   if [[ "$tls_choice" == "2" || "${tls_choice,,}" == "manual" ]]; then cert_file="${ARG_CERT_PATH:-$(ask_non_empty "SSL_CERT_FILE")}"; key_file="${ARG_KEY_PATH:-$(ask_non_empty "SSL_KEY_FILE")}"; require_file_readable "$cert_file"; require_file_readable "$key_file"; fi
-  write_node_env "$api_key" "$node_host" "$service_port" "$api_port" "$service_protocol" "$cert_file" "$key_file"
+  write_node_env "$api_key" "$node_host" "$api_port" "$cert_file" "$key_file"
   install_node_cli
   if ask_yes_no "Install and start node systemd service now?" "y"; then install_node_service; else write_node_service; warn "Node service was not started. Start later with: $NODE_CLI_NAME start"; fi
   echo; ok "Doctor Dev Node installation finished."; cecho "${BOLD}CLI:${RESET}   ${GREEN}$NODE_CLI_NAME help${RESET}"; cecho "${BOLD}Health:${RESET} ${GREEN}http://127.0.0.1:${api_port}/health${RESET}"
@@ -876,3 +863,7 @@ main(){
 }
 
 main "$@"
+
+
+
+

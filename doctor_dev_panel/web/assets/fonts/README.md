@@ -8,3 +8,7 @@ The UI CSS already references these files:
 
 Server path after install:
 /opt/doctor-dev-panel/doctor_dev_panel/web/assets/fonts/
+
+
+
+

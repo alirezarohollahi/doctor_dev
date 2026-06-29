@@ -857,10 +857,7 @@ function renderNodes() {
         escapeHtml(String(node.api_port || "\u2014")) +
         "</td>" +
         "<td>" +
-        escapeHtml(node.connection_type || "\u2014") +
-        "</td>" +
-        "<td>" +
-        (node.certificate ? "Yes" : "No") +
+        (node.certificate ? "TLS" : "Plain") +
         "</td>" +
         '<td><span class="badge ' +
         (node.enabled ? "badge-running" : "badge-disabled") +
@@ -921,11 +918,10 @@ function openNodeModal(node) {
     setVal("#nodeName", node.name);
     setVal("#nodeAddress", node.address);
     setVal("#apiPort", node.api_port);
-    setVal("#connectionType", "grpc");
     setVal("#apiKey", node.api_key);
-    setVal("#nodeSecretToken", node.secret_token);
     setVal("#nodeUpdateInterval", node.update_interval || 10);
-    setVal("#nodePort", node.node_port || 62050);
+    setVal("#peerTokenRefreshInterval", node.peer_token_refresh_interval || 30);
+    setVal("#peerTokenTtl", node.peer_token_ttl || 120);
     setVal("#certificate", node.certificate || "");
 
     var tlsEl = null; // TLS is managed via certificate field
@@ -953,6 +949,10 @@ function resetNodeForm() {
   if (form) form.reset();
   var updateIntervalEl = $("#nodeUpdateInterval");
   if (updateIntervalEl && !updateIntervalEl.value) updateIntervalEl.value = "10";
+  var peerRefreshEl = $("#peerTokenRefreshInterval");
+  if (peerRefreshEl && !peerRefreshEl.value) peerRefreshEl.value = "30";
+  var peerTtlEl = $("#peerTokenTtl");
+  if (peerTtlEl && !peerTtlEl.value) peerTtlEl.value = "120";
   setStatusPreview("pending", "Not checked");
 }
 
@@ -968,12 +968,11 @@ function nodePayload() {
   return {
     name: get("#nodeName"),
     address: get("#nodeAddress"),
-    node_port: parseInt(get("#nodePort"), 10) || 62050,
     api_port: parseInt(get("#apiPort"), 10) || 62051,
-    connection_type: "grpc",
     api_key: get("#apiKey"),
-    secret_token: get("#nodeSecretToken"),
     update_interval: parseInt(get("#nodeUpdateInterval"), 10) || 10,
+    peer_token_refresh_interval: parseInt(get("#peerTokenRefreshInterval"), 10) || 30,
+    peer_token_ttl: parseInt(get("#peerTokenTtl"), 10) || 120,
     certificate: get("#certificate"),
     enabled: getChecked("#nodeEnabled"),
   };
@@ -2000,7 +1999,6 @@ function endpointSubTitle(ep) {
 
 function inboundOptionLabel(item) {
   var name = item.inbound_name || item.name || "Unnamed inbound";
-  var coreName = item.core_name || (state.editingCore && state.editingCore.name) || "Current core";
   var ports = "";
   if (Array.isArray(item.ports) && item.ports.length) {
     ports = " · " + item.ports.join(",");
@@ -2009,7 +2007,7 @@ function inboundOptionLabel(item) {
   } else if (item.ports_summary) {
     ports = " · " + item.ports_summary;
   }
-  return coreName + " / " + name + ports;
+  return name + ports;
 }
 
 function endpointInboundOptions(nodeId) {
@@ -3342,3 +3340,7 @@ document.addEventListener("DOMContentLoaded", function () {
 // ============================================================
 
 checkSession();
+
+
+
+

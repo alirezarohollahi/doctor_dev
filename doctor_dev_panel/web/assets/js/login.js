@@ -84,3 +84,7 @@ togglePassword.addEventListener('click', () => {
 });
 
 checkSession();
+
+
+
+

@@ -155,3 +155,7 @@ case "$cmd" in
   help|-h|--help) help_screen ;;
   *) cecho "${RED}Unknown command: $cmd${RESET}"; echo; help_screen; exit 2 ;;
 esac
+
+
+
+

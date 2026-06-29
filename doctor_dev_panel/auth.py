@@ -73,3 +73,7 @@ async def require_admin(request: Request) -> str:
     if not payload:
         raise HTTPException(status_code=401, detail="login required")
     return str(payload.get("sub"))
+
+
+
+

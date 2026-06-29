@@ -13,33 +13,13 @@ class LoginBody(BaseModel):
 class NodeBody(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     address: str = Field(min_length=1, max_length=255)
-    node_port: int = Field(default=62050, ge=1, le=65535)
     api_port: int = Field(default=62051, ge=1, le=65535)
     api_key: str = Field(min_length=1, max_length=255)
-    secret_token: str = Field(default="", max_length=255)
     update_interval: int = Field(default=10, ge=1, le=86400)
+    peer_token_refresh_interval: int = Field(default=30, ge=5, le=86400)
+    peer_token_ttl: int = Field(default=120, ge=10, le=86400)
     certificate: str = Field(default="", max_length=20000)
     enabled: bool = True
-
-    # Node installer/runtime settings. The panel stores them now and uses api_port
-    # for management; node_port is reserved for data-plane/listener traffic.
-    usage_ratio: float = Field(default=1, ge=0)
-    connection_type: str = Field(default="grpc", pattern="^grpc$")
-    keep_alive_value: int = Field(default=60, ge=1)
-    keep_alive_unit: str = Field(default="seconds", pattern="^(seconds|minutes|hours)$")
-    data_limit_gb: Optional[float] = Field(default=None, ge=0)
-    default_timeout: int = Field(default=10, ge=1)
-    internal_timeout: int = Field(default=15, ge=1)
-    proxy_url: str = Field(default="", max_length=500)
-
-    @field_validator("connection_type", mode="before")
-    @classmethod
-    def normalize_connection_type(cls, value: object) -> str:
-        # The current node agent supports gRPC control-plane communication only.
-        # Older UI builds used values like direct/proxy; normalize them so edits
-        # of old records do not fail with a raw Pydantic pattern error.
-        value_text = str(value or "grpc").strip().lower()
-        return "grpc" if value_text in {"", "grpc", "direct", "proxy", "rest"} else value_text
 
 
 class CoreInboundBody(BaseModel):
@@ -143,3 +123,7 @@ class CoreBody(BaseModel):
     balancers: list[CoreBalancerBody] = Field(default_factory=list)
     dependencies: list[CoreDependencyBody] = Field(default_factory=list)
     advanced_config: CoreAdvancedConfigBody = Field(default_factory=CoreAdvancedConfigBody)
+
+
+
+

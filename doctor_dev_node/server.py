@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 import os
@@ -28,17 +29,27 @@ from .logging_utils import (
     tail_file,
 )
 from .runtime import runtime
+from .peer_tokens import verify_peer_token
 
 app = FastAPI(title="Doctor Dev Node", version=__version__, docs_url=None, redoc_url=None)
 logger = logging.getLogger("doctor_dev_node.server")
+
+
+def pydantic_to_dict(model: object) -> dict:
+    """Return a plain dict from Pydantic v1 or v2 models."""
+    if hasattr(model, "model_dump"):
+        return model.model_dump()  # type: ignore[attr-defined]
+    if hasattr(model, "dict"):
+        return model.dict()  # type: ignore[attr-defined]
+    return dict(model)  # type: ignore[arg-type]
 
 
 def api_key() -> str:
     return os.getenv("API_KEY", "")
 
 
-def node_secret_token() -> str:
-    return os.getenv("NODE_SECRET_TOKEN") or os.getenv("DOCTOR_DEV_NODE_SECRET_TOKEN", "")
+def _auth_error(code: str, message: str) -> HTTPException:
+    return HTTPException(status_code=401, detail={"ok": False, "code": code, "message": message})
 
 
 def check_auth(authorization: Optional[str]) -> None:
@@ -46,19 +57,53 @@ def check_auth(authorization: Optional[str]) -> None:
     if not key:
         return
     if authorization != f"Bearer {key}":
-        raise HTTPException(status_code=401, detail="Invalid or missing API key.")
+        raise _auth_error("INVALID_NODE_API_KEY", "Invalid or missing node API key.")
 
 
-def check_export_auth(authorization: Optional[str], x_doctor_node_token: Optional[str]) -> None:
+def _enabled_cores_from_config(cfg: dict[str, Any]) -> list[dict[str, Any]]:
+    cores = cfg.get("cores") if isinstance(cfg.get("cores"), list) else []
+    return [core for core in cores if isinstance(core, dict) and core.get("enabled") is not False]
+
+
+def _active_core_from_config(cfg: dict[str, Any]) -> Optional[dict[str, Any]]:
+    enabled = _enabled_cores_from_config(cfg)
+    return enabled[0] if enabled else None
+
+
+def check_export_auth(authorization: Optional[str], x_doctor_node_token: Optional[str]) -> str:
     key = api_key()
-    secret = node_secret_token()
     if key and authorization == f"Bearer {key}":
-        return
-    if secret and x_doctor_node_token == secret:
-        return
+        return "panel_api_key"
+
+    cfg = read_routing_config()
+    secret = str(cfg.get("peer_verify_secret") or "")
+    target_node_id = str(cfg.get("node_id") or os.getenv("NODE_ID", ""))
+    active_core = _active_core_from_config(cfg)
+    target_core_id = str((active_core or {}).get("id") or "")
+
+    if x_doctor_node_token:
+        if not secret:
+            logger.warning("node export rejected: peer token supplied but peer_verify_secret is missing")
+            raise _auth_error("PEER_SECRET_MISSING", "Peer token auth is not configured on this node.")
+        try:
+            verify_peer_token(
+                x_doctor_node_token,
+                secret=secret,
+                target_node_id=target_node_id,
+                target_core_id=target_core_id,
+            )
+            return "peer_token"
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("node export rejected: peer token failed: %s", exc)
+            raise _auth_error("INVALID_PEER_TOKEN", f"Invalid peer token: {exc}")
+
     if not key and not secret:
-        return
-    raise HTTPException(status_code=401, detail="Invalid or missing node export token.")
+        return "open_dev_no_auth"
+
+    if authorization:
+        logger.warning("node export rejected: invalid Authorization header")
+        raise _auth_error("INVALID_NODE_API_KEY", "Invalid node API key for runtime export.")
+    raise _auth_error("MISSING_NODE_EXPORT_AUTH", "Missing node runtime export auth. Send Authorization: Bearer <API_KEY> or X-Doctor-Node-Token.")
 
 
 def node_data_dir() -> Path:
@@ -113,25 +158,64 @@ def write_routing_config(data: dict[str, Any]) -> None:
                 pass
 
 
+def _config_hash(cfg: dict[str, Any]) -> str:
+    material = json.dumps(cfg, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return hashlib.sha256(material).hexdigest()
+
+
 def runtime_summary() -> dict[str, Any]:
     cfg = read_routing_config()
     cores = cfg.get("cores") if isinstance(cfg.get("cores"), list) else []
+    active_core = _active_core_from_config(cfg)
     inbounds = []
     balancers = []
     for core in cores:
         if isinstance(core, dict):
             for inbound in core.get("inbounds", []) if isinstance(core.get("inbounds"), list) else []:
                 if isinstance(inbound, dict):
-                    inbounds.append({"core": core.get("name"), **inbound})
+                    inbounds.append({"core_id": core.get("id"), "core_name": core.get("name"), **inbound})
             for balancer in core.get("balancers", []) if isinstance(core.get("balancers"), list) else []:
                 if isinstance(balancer, dict):
-                    balancers.append({"core": core.get("name"), **balancer})
+                    balancers.append({"core_id": core.get("id"), "core_name": core.get("name"), **balancer})
     return {
+        "node_id": cfg.get("node_id") or os.getenv("NODE_ID", ""),
+        "config_hash": _config_hash(cfg),
         "cores_total": len(cores),
+        "enabled_cores_total": len(_enabled_cores_from_config(cfg)),
+        "core": {
+            "id": (active_core or {}).get("id", ""),
+            "name": (active_core or {}).get("name", ""),
+            "enabled": bool(active_core) and (active_core or {}).get("enabled") is not False,
+        },
         "inbounds_total": len(inbounds),
         "balancers_total": len(balancers),
         "generated_at": cfg.get("generated_at"),
+        "applied_at": cfg.get("applied_at"),
+        "desired_inbounds": inbounds,
+        "desired_balancers": balancers,
         **runtime.summary(),
+    }
+
+
+def runtime_payload(*, auth_source: str = "") -> dict[str, Any]:
+    cfg = read_routing_config()
+    summary = runtime_summary()
+    listeners = summary.get("listeners") if isinstance(summary.get("listeners"), list) else []
+    return {
+        "ok": True,
+        "source": "node-runtime",
+        "auth_source": auth_source,
+        "node_id": cfg.get("node_id") or os.getenv("NODE_ID", ""),
+        "generated_at": cfg.get("generated_at"),
+        "exported_at": now(),
+        "api": {
+            "host": os.getenv("NODE_HOST", "127.0.0.1"),
+            "api_port": int(os.getenv("API_PORT", "62051")),
+            "tls": bool(os.getenv("SSL_CERT_FILE") and os.getenv("SSL_KEY_FILE")),
+        },
+        "core": summary.get("core") or {},
+        "summary": summary,
+        "listeners": listeners,
     }
 
 
@@ -198,18 +282,20 @@ class ApplyConfigBody(BaseModel):
 @app.get("/health")
 async def health() -> dict:
     logger.info("health check requested")
+    summary = runtime.summary()
     return {
         "status": "ok",
         "app": "Doctor Dev Node",
         "version": __version__,
-        "control_plane": {
+        "api": {
             "host": os.getenv("NODE_HOST", "127.0.0.1"),
             "api_port": int(os.getenv("API_PORT", "62051")),
             "tls": bool(os.getenv("SSL_CERT_FILE") and os.getenv("SSL_KEY_FILE")),
         },
-        "data_plane": {
-            "service_port": int(os.getenv("SERVICE_PORT", "62050")),
-            "service_protocol": os.getenv("SERVICE_PROTOCOL", "grpc"),
+        "runtime": {
+            "active": bool(summary.get("runtime_active")),
+            "listeners_total": int(summary.get("listeners_total") or 0),
+            "last_error": summary.get("last_error") or "",
         },
     }
 
@@ -219,18 +305,16 @@ async def status(authorization: Optional[str] = Header(default=None)) -> dict:
     check_auth(authorization)
     logger.info("status requested")
     if is_debug_enabled():
-        logger.debug("node.status.env %s", debug_json({"NODE_HOST": os.getenv("NODE_HOST"), "API_PORT": os.getenv("API_PORT"), "SERVICE_PORT": os.getenv("SERVICE_PORT"), "SERVICE_PROTOCOL": os.getenv("SERVICE_PROTOCOL"), "SSL_CERT_FILE": os.getenv("SSL_CERT_FILE"), "SSL_KEY_FILE": "***" if os.getenv("SSL_KEY_FILE") else ""}))
+        logger.debug("node.status.env %s", debug_json({"NODE_HOST": os.getenv("NODE_HOST"), "API_PORT": os.getenv("API_PORT"), "SSL_CERT_FILE": os.getenv("SSL_CERT_FILE"), "SSL_KEY_FILE": "***" if os.getenv("SSL_KEY_FILE") else ""}))
     return {
         "status": "running",
         "version": __version__,
         "config": {
             "node_host": os.getenv("NODE_HOST", "127.0.0.1"),
             "api_port": int(os.getenv("API_PORT", "62051")),
-            "service_port": int(os.getenv("SERVICE_PORT", "62050")),
-            "service_protocol": os.getenv("SERVICE_PROTOCOL", "grpc"),
             "ssl_cert_file": os.getenv("SSL_CERT_FILE", ""),
             "ssl_key_file": "***" if os.getenv("SSL_KEY_FILE") else "",
-            "node_secret_token": "***" if node_secret_token() else "",
+            "peer_token_auth": bool(read_routing_config().get("peer_verify_secret")),
         },
         "routing": runtime_summary(),
     }
@@ -244,30 +328,26 @@ async def get_config(authorization: Optional[str] = Header(default=None)) -> dic
 
 
 
+@app.get("/runtime")
+async def get_runtime(
+    authorization: Optional[str] = Header(default=None),
+    x_doctor_node_token: Optional[str] = Header(default=None, alias="X-Doctor-Node-Token"),
+) -> dict:
+    """Return the live desired/actual node runtime state."""
+    auth_source = check_export_auth(authorization, x_doctor_node_token)
+    return runtime_payload(auth_source=auth_source)
+
+
 @app.get("/config/export")
 async def export_config(
     authorization: Optional[str] = Header(default=None),
     x_doctor_node_token: Optional[str] = Header(default=None, alias="X-Doctor-Node-Token"),
 ) -> dict:
-    """Return live runtime state for peer nodes and panel sync.
-
-    This endpoint intentionally exposes only operational routing/listener state.
-    It accepts either the panel API key or NODE_SECRET_TOKEN. Peer nodes should
-    use NODE_SECRET_TOKEN, not the panel API key.
-    """
-    check_export_auth(authorization, x_doctor_node_token)
-    cfg = read_routing_config()
-    summary = runtime_summary()
-    listeners = summary.get("listeners") if isinstance(summary.get("listeners"), list) else []
-    return {
-        "ok": True,
-        "source": "node-runtime-export",
-        "node_id": cfg.get("node_id") or os.getenv("NODE_ID", ""),
-        "generated_at": cfg.get("generated_at"),
-        "exported_at": now(),
-        "summary": summary,
-        "listeners": listeners,
-    }
+    """Backward-compatible alias for /runtime."""
+    auth_source = check_export_auth(authorization, x_doctor_node_token)
+    payload = runtime_payload(auth_source=auth_source)
+    payload["source"] = "node-runtime-export"
+    return payload
 
 
 @app.get("/logs")
@@ -281,7 +361,16 @@ async def logs(limit: int = 300, level: str = "all", q: str = "", authorization:
 @app.post("/config/apply")
 async def apply_config(body: ApplyConfigBody, authorization: Optional[str] = Header(default=None)) -> dict:
     check_auth(authorization)
-    data = body.model_dump()
+    data = pydantic_to_dict(body)
+    enabled_cores = [core for core in (data.get("cores") or []) if isinstance(core, dict) and core.get("enabled") is not False]
+    if len(enabled_cores) > 1:
+        logger.warning("routing config rejected: node_id=%s enabled_cores=%s", data.get("node_id"), len(enabled_cores))
+        return {
+            "ok": False,
+            "message": "Node config is invalid: each node can have only one enabled core.",
+            "errors": ["Each node can have only one enabled core."],
+            "summary": runtime.summary() | {"ok": False, "listener_errors": 1},
+        }
     if is_debug_enabled():
         logger.debug("node.apply.received %s", debug_json(data))
     data["applied_at"] = now()
@@ -342,9 +431,6 @@ def main() -> None:
     logger.info("starting node server env=%s log=%s debug=%s", args.env, log_path, is_debug_enabled())
     host = args.host or os.getenv("NODE_HOST", "127.0.0.1")
     port = args.port or int(os.getenv("API_PORT", "62051"))
-    protocol = os.getenv("SERVICE_PROTOCOL", "grpc").lower()
-    if protocol not in {"grpc", "rest"}:
-        raise SystemExit("SERVICE_PROTOCOL must be grpc or rest")
     ssl_cert = os.getenv("SSL_CERT_FILE") or None
     ssl_key = os.getenv("SSL_KEY_FILE") or None
     use_tls = bool(ssl_cert and ssl_key)
@@ -360,3 +446,7 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+
+

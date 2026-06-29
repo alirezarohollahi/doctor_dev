@@ -176,9 +176,8 @@ def run_node(args: argparse.Namespace, env_path: Optional[Path]) -> None:
 
     host = args.host or os.getenv("NODE_HOST") or os.getenv("HOST", "127.0.0.1")
     port = args.port or int(os.getenv("API_PORT") or os.getenv("PORT") or "62051")
-    protocol = os.getenv("SERVICE_PROTOCOL", "grpc").strip().lower()
-    if protocol not in {"grpc", "rest"}:
-        raise SystemExit("SERVICE_PROTOCOL must be grpc or rest")
+    # Node now exposes one management API port only. Listener/data ports are
+    # created from inbound runtime config; SERVICE_PORT/SERVICE_PROTOCOL are legacy.
 
     log_path = setup_node_logging()
     ssl_cert = os.getenv("SSL_CERT_FILE") or os.getenv("SSL_CERT_PATH") or None
@@ -211,3 +210,7 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+
+

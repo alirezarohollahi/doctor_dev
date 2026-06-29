@@ -20,6 +20,7 @@ EXCLUDED_DIRS = {
     ".vscode",
     ".idea",
     "cert",
+    ".venv"
 }
 
 # پسوندهای باینری (این فایل‌ها وارد نمی‌شوند)
@@ -148,3 +149,7 @@ if __name__ == "__main__":
     print(f"🔍 شروع اسکن پوشه: {target_dir}")
     print(f"📄 فایل خروجی: {output_path}")
     merge_folder(target_dir, output_path)
+
+
+
+

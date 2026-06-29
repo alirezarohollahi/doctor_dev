@@ -50,3 +50,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     password = args.password or getpass.getpass("Password: ")
     print(create_password_hash(password))
+
+
+
+

@@ -13,7 +13,7 @@ from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
 from typing import Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi import Request as FastAPIRequest
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -50,18 +50,29 @@ from .logging_utils import (
 from .node_store import (
     create_node,
     generate_api_key,
-    generate_secret_token,
     get_node,
     list_nodes,
     remove_node,
     set_node_check_result,
     update_node,
 )
-from .node_runtime_cache import update_node_runtime
+from .peer_tokens import issue_peer_token
+from .node_runtime_cache import get_node_runtime, mark_node_runtime_error, update_node_runtime
+from .services.drift_detector import detect_node_drift
+from pydantic import BaseModel
 from .schemas import AdvancedConfigValidateBody, CoreBody, LoginBody, NodeBody
 
 setup_panel_logging()
 logger = logging.getLogger("doctor_dev_panel.app")
+
+
+def pydantic_to_dict(model: object) -> dict:
+    """Return a plain dict from Pydantic v1 or v2 models."""
+    if hasattr(model, "model_dump"):
+        return model.model_dump()  # type: ignore[attr-defined]
+    if hasattr(model, "dict"):
+        return model.dict()  # type: ignore[attr-defined]
+    return dict(model)  # type: ignore[arg-type]
 
 
 def require_node_id(node_id: str) -> str:
@@ -154,7 +165,7 @@ def validate_manual_json_config(raw: str) -> dict:
         if not inbound.get("protocol"):
             warnings.append(f"inbounds[{index}] has no protocol field.")
 
-    port_like_names = {"port", "target_port", "api_port", "node_port", "service_port", "listen_port"}
+    port_like_names = {"port", "target_port", "api_port", "listen_port"}
     for path, value in _walk_json(parsed):
         last = path.rsplit(".", 1)[-1].split("[", 1)[0]
         if last in port_like_names and value not in (None, ""):
@@ -262,14 +273,19 @@ def _read_node_export(node: dict) -> dict:
     port = int(node.get("api_port") or 62051)
     api_key = str(node.get("api_key") or "")
     attempts: list[str] = []
-    for scheme in schemes:
-        url = f"{scheme}://{host}:{port}/config/export"
-        try:
-            _, data = _read_url(url, api_key=api_key, certificate=str(node.get("certificate") or ""), timeout=float(os.getenv("DOCTOR_DEV_PANEL_NODE_SYNC_TIMEOUT", "3")))
-            if isinstance(data, dict):
-                return data
-        except Exception as exc:  # noqa: BLE001
-            attempts.append(f"{url}: {exc}")
+    for path in ("/runtime", "/config/export"):
+        for scheme in schemes:
+            url = f"{scheme}://{host}:{port}{path}"
+            try:
+                _, data = _read_url(url, api_key=api_key, certificate=str(node.get("certificate") or ""), timeout=float(os.getenv("DOCTOR_DEV_PANEL_NODE_SYNC_TIMEOUT", "3")))
+                if isinstance(data, dict):
+                    return data
+            except HTTPError as exc:
+                if exc.code == 401:
+                    raise NodeAPIError(f"Node runtime auth failed for {url}: HTTP 401. Check the node API key stored in panel against API_KEY in node.env.") from exc
+                attempts.append(f"{url}: HTTP {exc.code}")
+            except Exception as exc:  # noqa: BLE001
+                attempts.append(f"{url}: {exc}")
     raise NodeAPIError(_format_attempts(attempts))
 
 
@@ -283,6 +299,9 @@ async def _sync_node_runtime_once(node: dict) -> None:
         set_node_check_result(node_id, ok=True, details={"runtime_synced": True, "exported_at": data.get("exported_at")})
         logger.debug("node runtime synced: node_id=%s", node_id)
     except Exception as exc:  # noqa: BLE001
+        error = str(exc)
+        mark_node_runtime_error(node_id, error, source="panel-periodic-sync")
+        set_node_check_result(node_id, ok=False, error=error, details={"runtime_synced": False, "runtime_error": error})
         logger.debug("node runtime sync failed: node_id=%s error=%s", node_id, exc)
 
 
@@ -307,9 +326,8 @@ async def _node_runtime_sync_loop() -> None:
 def _check_node_sync(payload: dict) -> dict:
     certificate = str(payload.get("certificate") or "").strip()
     host, schemes = _node_scheme_candidates(str(payload.get("address", "")), certificate)
-    # api_port is the node control-plane/management API. node_port/service_port is
-    # reserved for node data-plane traffic and must not be used for /health, /logs,
-    # or /config/apply.
+    # api_port is the node management API. Inbound/listener ports live inside
+    # runtime config and must not be treated as a second fixed node port.
     port = int(payload.get("api_port") or 62051)
     api_key = str(payload.get("api_key") or "")
 
@@ -641,7 +659,7 @@ async def api_list_nodes(user: str = Depends(require_admin)) -> dict:
 
 @app.post("/api/nodes")
 async def api_create_node(body: NodeBody, user: str = Depends(require_admin)) -> dict:
-    node = create_node(body.model_dump())
+    node = create_node(pydantic_to_dict(body))
     return {"ok": True, "node": node}
 
 
@@ -650,7 +668,7 @@ async def api_update_node(
     node_id: str, body: NodeBody, user: str = Depends(require_admin)
 ) -> dict:
     node_id = require_node_id(node_id)
-    node = update_node(node_id, body.model_dump())
+    node = update_node(node_id, pydantic_to_dict(body))
     if not node:
         raise api_error(404, "NODE_NOT_FOUND", "The selected node no longer exists. Refresh the page.")
     return {"ok": True, "node": node}
@@ -674,10 +692,87 @@ async def api_generate_node_key(user: str = Depends(require_admin)) -> dict:
     return {"ok": True, "api_key": generate_api_key()}
 
 
-@app.post("/api/nodes/secret-token")
-async def api_generate_node_secret_token(user: str = Depends(require_admin)) -> dict:
-    return {"ok": True, "secret_token": generate_secret_token()}
+class NodePeerTokenBody(BaseModel):
+    source_node_id: str
+    source_core_id: str
+    target_node_id: str
+    target_core_id: str
 
+
+@app.post("/api/node-peer-token")
+async def api_issue_node_peer_token(
+    body: NodePeerTokenBody,
+    authorization: Optional[str] = Header(default=None),
+) -> dict:
+    source_node_id = require_node_id(body.source_node_id)
+    target_node_id = require_node_id(body.target_node_id)
+    source_core_id = require_core_id(body.source_core_id)
+    target_core_id = require_core_id(body.target_core_id)
+
+    source_node = get_node(source_node_id)
+    target_node = get_node(target_node_id)
+    source_core = get_core(source_core_id)
+    target_core = get_core(target_core_id)
+    if not source_node or not target_node or not source_core or not target_core:
+        raise api_error(404, "PEER_TOKEN_TARGET_NOT_FOUND", "Node or core was not found.")
+    if str(source_core.get("node_id") or "") != source_node_id:
+        raise api_error(403, "PEER_TOKEN_SOURCE_MISMATCH", "Source core does not belong to source node.")
+    if str(target_core.get("node_id") or "") != target_node_id:
+        raise api_error(403, "PEER_TOKEN_TARGET_MISMATCH", "Target core does not belong to target node.")
+    if authorization != f"Bearer {source_node.get('api_key')}":
+        raise api_error(401, "INVALID_NODE_API_KEY", "Invalid source node API key.")
+
+    ttl = int(target_node.get("peer_token_ttl") or 120)
+    token = issue_peer_token(
+        secret=str(target_node.get("peer_verify_secret") or ""),
+        source_node_id=source_node_id,
+        source_core_id=source_core_id,
+        target_node_id=target_node_id,
+        target_core_id=target_core_id,
+        ttl_seconds=ttl,
+    )
+    return {
+        "ok": True,
+        "token": token,
+        "expires_in": ttl,
+        "refresh_after": int(target_node.get("peer_token_refresh_interval") or 30),
+    }
+
+
+
+
+@app.post("/api/nodes/{node_id}/sync-runtime")
+async def api_sync_one_node_runtime(node_id: str, user: str = Depends(require_admin)) -> dict:
+    node_id = require_node_id(node_id)
+    node = get_node(node_id)
+    if not node:
+        raise api_error(404, "NODE_NOT_FOUND", "The selected node no longer exists. Refresh the page.")
+    await _sync_node_runtime_once(node)
+    return {"ok": True, "node_id": node_id, "runtime": get_node_runtime(node_id)}
+
+
+@app.get("/api/nodes/{node_id}/runtime")
+async def api_get_one_node_runtime(node_id: str, refresh: bool = Query(False), user: str = Depends(require_admin)) -> dict:
+    node_id = require_node_id(node_id)
+    node = get_node(node_id)
+    if not node:
+        raise api_error(404, "NODE_NOT_FOUND", "The selected node no longer exists. Refresh the page.")
+    if refresh:
+        await _sync_node_runtime_once(node)
+    return {"ok": True, "node_id": node_id, "runtime": get_node_runtime(node_id)}
+
+
+@app.get("/api/nodes/{node_id}/drift")
+async def api_get_node_drift(node_id: str, refresh: bool = Query(False), user: str = Depends(require_admin)) -> dict:
+    node_id = require_node_id(node_id)
+    node = get_node(node_id)
+    if not node:
+        raise api_error(404, "NODE_NOT_FOUND", "The selected node no longer exists. Refresh the page.")
+    if refresh:
+        await _sync_node_runtime_once(node)
+    desired = build_node_config(node_id)
+    runtime_entry = get_node_runtime(node_id)
+    return {"ok": True, "drift": detect_node_drift(node_id, desired, runtime_entry)}
 
 @app.post("/api/nodes/sync-runtime")
 async def api_sync_all_node_runtime(user: str = Depends(require_admin)) -> dict:
@@ -686,11 +781,18 @@ async def api_sync_all_node_runtime(user: str = Depends(require_admin)) -> dict:
     return {"ok": True, "message": "Node runtime cache sync finished.", "nodes": len(nodes)}
 
 
+@app.get("/api/nodes/runtime-cache")
+async def api_node_runtime_cache(user: str = Depends(require_admin)) -> dict:
+    from .node_runtime_cache import load_cache
+
+    return {"ok": True, "cache": load_cache()}
+
+
 @app.post("/api/nodes/check")
 async def api_check_unsaved_node(
     body: NodeBody, user: str = Depends(require_admin)
 ) -> dict:
-    result = await check_node_payload(body.model_dump())
+    result = await check_node_payload(pydantic_to_dict(body))
     return result
 
 
@@ -781,15 +883,27 @@ def _validate_core_advanced_config(body: CoreBody) -> None:
         raise api_error(400, "INVALID_ADVANCED_JSON", message)
 
 
+def _ensure_single_enabled_core_per_node(node_id: str, *, current_core_id: str = "") -> None:
+    for core in list_cores():
+        if str(core.get("node_id") or "") != str(node_id):
+            continue
+        if current_core_id and str(core.get("id") or "") == str(current_core_id):
+            continue
+        if core.get("enabled") is not False:
+            raise api_error(409, "NODE_ALREADY_HAS_CORE", "Each node can have only one enabled core. Disable or move the existing core before adding another one.")
+
+
 @app.post("/api/cores")
 async def api_create_core(body: CoreBody, user: str = Depends(require_admin)) -> dict:
     if not is_valid_node_id(body.node_id):
         raise api_error(400, "INVALID_NODE_ID", "Select a valid node before creating a core.")
     if not get_node(body.node_id):
         raise api_error(400, "NODE_NOT_FOUND", "The selected node no longer exists. Refresh the page.")
+    if body.enabled:
+        _ensure_single_enabled_core_per_node(body.node_id)
     _validate_core_advanced_config(body)
     _validate_core_forwarding_topology(body)
-    core = create_core(body.model_dump())
+    core = create_core(pydantic_to_dict(body))
     logger.info(
         "core created: id=%s name=%s node_id=%s by=%s",
         core.get("id"),
@@ -809,9 +923,11 @@ async def api_update_core(
         raise api_error(400, "INVALID_NODE_ID", "Select a valid node before saving this core.")
     if not get_node(body.node_id):
         raise api_error(400, "NODE_NOT_FOUND", "The selected node no longer exists. Refresh the page.")
+    if body.enabled:
+        _ensure_single_enabled_core_per_node(body.node_id, current_core_id=core_id)
     _validate_core_advanced_config(body)
     _validate_core_forwarding_topology(body)
-    core = update_core(core_id, body.model_dump())
+    core = update_core(core_id, pydantic_to_dict(body))
     if not core:
         raise api_error(404, "CORE_NOT_FOUND", "The selected core no longer exists. Refresh the page.")
     logger.info(
@@ -1012,3 +1128,7 @@ async def spa_fallback(full_path: str) -> FileResponse:
     if path.startswith("api/"):
         raise HTTPException(status_code=404, detail="API endpoint not found.")
     return FileResponse(str(WEB_DIR / "index.html"))
+
+
+
+
