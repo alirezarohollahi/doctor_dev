@@ -1,306 +1,136 @@
-# Doctor Dev local routing lab
+# Doctor Dev Lab Routing Test Guide
 
-This lab runs one panel and two nodes on one Linux server:
+This guide is for manual routing tests with:
 
-- Panel: `http://SERVER_IP:9000`
-- Node A API: `http://127.0.0.1:9001`
-- Node B API: `http://127.0.0.1:9002`
-- Test TCP listeners: `127.0.0.1:9101`, `9102`, `9103`, `9104`
+- Panel: `9000`
+- Node A: `9001`
+- Node B: `9002`
+- Lab listeners: `9101`, `9102`, `9103`, `9104`
 
-## 1) Copy files
+## Important TCP-balancer rule
 
-Copy these files into the project root, preserving paths:
+Doctor Dev chooses the balancer target **per TCP connection**, not per individual payload inside the same connection.
 
-```text
-env.examples/lab-panel.env
-env.examples/lab-node-a.env
-env.examples/lab-node-b.env
-scripts/lab_make_admin.sh
-scripts/lab_run_stack.sh
-scripts/lab_stop_stack.sh
-scripts/lab_check_stack.sh
-tests/lab_multi_listener.py
-tests/lab_sender.py
-```
+So if you use one persistent TCP connection and send 20 messages, all 20 messages are expected to reach the same backend port.
 
-## 2) Install dependencies
+Use the lab sender default mode, which opens one connection per message:
 
 ```bash
-cd /path/to/doctor_dev
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip setuptools wheel
-pip install --no-cache-dir --only-binary=:all: -r requirements.txt
-python -m compileall doctor_dev_panel doctor_dev_node main.py
+python tests/lab_sender.py --host 127.0.0.1 --port 1201 --message "round-robin" --count 12
 ```
 
-## 3) Create admin
+For a single persistent connection test:
 
 ```bash
-bash scripts/lab_make_admin.sh admin admin12345
+python tests/lab_sender.py --host 127.0.0.1 --port 1201 --message "persistent" --count 12 --mode persistent
 ```
 
-## 4) Start listener terminal
-
-Open a terminal:
+For `least_connections`, use concurrent mode:
 
 ```bash
-source .venv/bin/activate
+python tests/lab_sender.py --host 127.0.0.1 --port 1201 --message "least" --count 12 --mode concurrent --hold 5
+```
+
+## Listener
+
+```bash
 python tests/lab_multi_listener.py --host 127.0.0.1 --ports 9101,9102,9103,9104
 ```
 
-The listener prints each received payload with a different color per port.
+## Scenario 1: A direct to one listener
 
-## 5) Start panel + nodes
+Example:
 
-Open another terminal:
+- Node A inbound fixed port: `1201`
+- Target type: `static`
+- Target host: `127.0.0.1`
+- Target port: `9101`
 
-```bash
-source .venv/bin/activate
-bash scripts/lab_run_stack.sh
-```
-
-Check:
+Send:
 
 ```bash
-bash scripts/lab_check_stack.sh
+python tests/lab_sender.py --host 127.0.0.1 --port 1201 --message "scenario-1 direct" --count 5
 ```
 
-## 6) Add nodes in panel
+Expected: only listener `9101` receives data.
 
-Open:
+## Scenario 2: A to four listeners through balancer
 
-```text
-http://SERVER_IP:9000
-```
+Keep the same inbound port if you want, for example `1201`, but change the inbound target to balancer.
 
-Login:
+Balancer:
 
-```text
-username: admin
-password: admin12345
-```
+- Alias: `a-lab-4-static`
+- Endpoints:
+  - static `127.0.0.1:9101`
+  - static `127.0.0.1:9102`
+  - static `127.0.0.1:9103`
+  - static `127.0.0.1:9104`
 
-Add Node A:
+Inbound:
 
-```text
-Name: Lab Node A
-Address: 127.0.0.1
-API Port: 9001
-API Key: lab-node-a-key-11111111-1111-1111-1111-111111111111
-Update Interval: 3
-Peer Token Refresh: 30
-Peer Token TTL: 120
-Enabled: ON
-```
+- Fixed port: `1201`
+- Target type: `balancer`
+- Target balancer: `a-lab-4-static`
 
-Add Node B:
+### round_robin
 
-```text
-Name: Lab Node B
-Address: 127.0.0.1
-API Port: 9002
-API Key: lab-node-b-key-22222222-2222-2222-2222-222222222222
-Update Interval: 3
-Peer Token Refresh: 30
-Peer Token TTL: 120
-Enabled: ON
-```
-
-After saving each node, click/check:
-
-```text
-Check Status
-Sync Runtime / Refresh Runtime
-```
-
-Expected state:
-
-```text
-reachable=true
-auth_ok=true
-runtime_ok=true
-API port actual = 9001 for A, 9002 for B
-```
-
-## 7) Sender command
-
-Send test payloads to any node inbound/listener port:
+Set strategy to `round_robin`, apply config, sync runtime, then:
 
 ```bash
-python tests/lab_sender.py --host 127.0.0.1 --port PORT --message "scenario-x" --count 5 --interval 0.5
+python tests/lab_sender.py --host 127.0.0.1 --port 1201 --message "scenario-2 round-robin" --count 12 --interval 0.15
 ```
 
-Examples:
+Expected: connections rotate across `9101`, `9102`, `9103`, `9104` according to the endpoint order stored in runtime.
+
+### random
+
+Set strategy to `random`, apply config, sync runtime, then:
 
 ```bash
-python tests/lab_sender.py --host 127.0.0.1 --port 9101 --message direct-listener --count 2
-python tests/lab_sender.py --host 127.0.0.1 --port 12001 --message through-node-a --count 5
+python tests/lab_sender.py --host 127.0.0.1 --port 1201 --message "scenario-2 random" --count 20 --interval 0.1
 ```
 
-## 8) Scenario templates
+Expected: multiple listener ports receive data in non-deterministic order.
 
-Use these later, one by one.
+### failover
 
-### Scenario 1: Direct forward from A to one listener port
-
-On Node A create one core, then one inbound:
-
-```text
-Core name: A Core
-Node: Lab Node A
-Inbound name: a-direct-9101
-Bind IP: 127.0.0.1 or 0.0.0.0
-Port mode: fixed
-Fixed port: 12001
-Target type: static
-Target host: 127.0.0.1
-Target port: 9101
-Enabled: ON
-```
-
-Apply/restart node config from panel. Test:
+Set strategy to `failover`, apply config, sync runtime, then:
 
 ```bash
-python tests/lab_sender.py --host 127.0.0.1 --port 12001 --message "A direct to 9101" --count 5
+python tests/lab_sender.py --host 127.0.0.1 --port 1201 --message "scenario-2 failover" --count 8 --interval 0.15
 ```
 
-Expected listener output: only colored logs for `listener_port=9101`.
+Expected: all connections go to the first enabled reachable endpoint in the runtime endpoint order. If the first endpoint in your stored order is `9102`, then `9102` is the correct failover target.
 
-### Scenario 2: A balancer to all four direct listener ports
-
-On Node A add balancer:
-
-```text
-Alias: a-direct-four
-Strategy: round_robin / random / failover / least_connections
-Endpoints:
-  static 127.0.0.1:9101 enabled
-  static 127.0.0.1:9102 enabled
-  static 127.0.0.1:9103 enabled
-  static 127.0.0.1:9104 enabled
-```
-
-Add inbound:
-
-```text
-Inbound name: a-balance-four
-Fixed port: 12002
-Target type: balancer
-Target balancer: a-direct-four
-Enabled: ON
-```
-
-Test:
+Check endpoint order from runtime:
 
 ```bash
-python tests/lab_sender.py --host 127.0.0.1 --port 12002 --message "A balancer four" --count 12 --interval 0.2
+curl -s -H "Authorization: Bearer lab-node-a-key-11111111-1111-1111-1111-111111111111" \
+  http://127.0.0.1:9001/runtime | python -m json.tool
 ```
 
-Change balancer strategy and apply again for each strategy.
+### least_connections
 
-### Scenario 3: B forwards to A, and A forwards direct to four ports without balancer
-
-On A create four static inbounds:
-
-```text
-a-to-9101 fixed 12101 -> 127.0.0.1:9101
-a-to-9102 fixed 12102 -> 127.0.0.1:9102
-a-to-9103 fixed 12103 -> 127.0.0.1:9103
-a-to-9104 fixed 12104 -> 127.0.0.1:9104
-```
-
-On B create one inbound at a time targeting one A inbound fixed port directly:
-
-```text
-b-to-a-12101 fixed 12201 -> 127.0.0.1:12101
-```
-
-Test:
+Set strategy to `least_connections`, apply config, sync runtime, then:
 
 ```bash
-python tests/lab_sender.py --host 127.0.0.1 --port 12201 --message "B -> A -> 9101" --count 5
+python tests/lab_sender.py --host 127.0.0.1 --port 1201 --message "scenario-2 least" --count 12 --mode concurrent --hold 5
 ```
 
-### Scenario 4: B forwards to A and uses balancer for another endpoint
+Expected: concurrent connections should spread across endpoints.
 
-On A keep `a-balance-four` fixed `12002`. On B create:
+## Diagnostics
 
-```text
-b-to-a-balancer fixed 12202 -> 127.0.0.1:12002
-```
-
-Test:
+Check Node A runtime:
 
 ```bash
-python tests/lab_sender.py --host 127.0.0.1 --port 12202 --message "B -> A balancer" --count 12
+curl -s -H "Authorization: Bearer lab-node-a-key-11111111-1111-1111-1111-111111111111" \
+  http://127.0.0.1:9001/runtime | python -m json.tool
 ```
 
-Expected: listener output across multiple `910x` ports depending on strategy.
-
-### Scenario 5: B forwards to an A inbound that is disabled
-
-Disable an A inbound such as `a-to-9102`, apply A, sync runtime. Then on B try targeting that disabled inbound by direct port or node-inbound endpoint.
-
-Expected: connection should fail or endpoint should not resolve. If it succeeds, disabled inbound filtering is broken.
-
-### Scenario 6: B forwards to two endpoints, two inbounds in A
-
-On A enable two inbounds:
-
-```text
-a-to-9101 fixed 12101 -> 9101
-a-to-9102 fixed 12102 -> 9102
-```
-
-On B create balancer:
-
-```text
-Alias: b-two-a-inbounds
-Strategy: round_robin
-Endpoints:
-  node_inbound -> Lab Node A / A Core / a-to-9101
-  node_inbound -> Lab Node A / A Core / a-to-9102
-```
-
-On B create inbound:
-
-```text
-b-balance-two-a fixed 12203 -> balancer b-two-a-inbounds
-```
-
-Test:
+Check listener port:
 
 ```bash
-python tests/lab_sender.py --host 127.0.0.1 --port 12203 --message "B -> two A inbounds" --count 10
-```
-
-Expected: colored output on `9101` and `9102`.
-
-### Scenario 7: B forwards to A while one A inbound is disabled
-
-Disable `a-to-9102`, apply A, sync runtime, then test B balancer again.
-
-Expected: disabled endpoint should fail cleanly or be skipped. The panel runtime/drift should show the disabled/stale state clearly.
-
-### Scenario 8: Change A inbound port or random/fixed mode after B points to it
-
-Start with A inbound fixed or random, then B points to it via `node_inbound`. Test once. Then change A inbound:
-
-```text
-fixed 12101 -> fixed 12111
-or
-random -> fixed 12111
-or
-fixed -> random count=1
-```
-
-Apply A, sync runtime, then test B again.
-
-Expected: B should use updated A runtime after sync. Old port should not be used after refresh.
-
-## Stop everything
-
-```bash
-bash scripts/lab_stop_stack.sh
+ss -lntp | egrep '1201|9101|9102|9103|9104'
 ```
