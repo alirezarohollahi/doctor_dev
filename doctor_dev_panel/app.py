@@ -5,7 +5,8 @@ import time
 
 from fastapi import FastAPI, HTTPException
 from fastapi import Request as FastAPIRequest
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
+from fastapi.staticfiles import StaticFiles
 
 from .api.auth import router as auth_router
 from .api.cores import router as cores_router
@@ -25,6 +26,13 @@ setup_panel_logging()
 logger = logging.getLogger("doctor_dev_panel.app")
 
 app = FastAPI(title=APP_TITLE, docs_url=None, redoc_url=None)
+
+# Static assets must be mounted before the SPA fallback.
+# Without this, /assets/*.css and /assets/*.js fall through to index.html,
+# so browsers receive HTML for styles/scripts and show NS_ERROR_CORRUPTED_CONTENT.
+ASSETS_DIR = WEB_DIR / "assets"
+if ASSETS_DIR.exists():
+    app.mount("/assets", StaticFiles(directory=str(ASSETS_DIR), html=False), name="assets")
 
 
 async def _capture_request_body(request: FastAPIRequest) -> bytes:
@@ -94,6 +102,12 @@ app.include_router(nodes_router)
 app.include_router(cores_router)
 app.include_router(logs_router)
 
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon() -> FileResponse | Response:
+    favicon_path = WEB_DIR / "favicon.ico"
+    if favicon_path.exists():
+        return FileResponse(str(favicon_path), media_type="image/x-icon")
+    return Response(status_code=204)
 
 @app.get("/")
 async def index() -> FileResponse:
@@ -111,4 +125,6 @@ async def spa_fallback(full_path: str) -> FileResponse:
     path = (full_path or "").strip("/")
     if path.startswith("api/"):
         raise HTTPException(status_code=404, detail="API endpoint not found.")
+    if path.startswith("assets/") or path in {"favicon.ico", "robots.txt", "manifest.json"}:
+        raise HTTPException(status_code=404, detail="Static asset not found.")
     return FileResponse(str(WEB_DIR / "index.html"))
