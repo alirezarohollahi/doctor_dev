@@ -31,6 +31,8 @@ class Target:
     host: str
     port: int
     name: str = ""
+    group_key: str = ""
+    endpoint_weight: float = 1.0
 
     @property
     def key(self) -> str:
@@ -519,21 +521,110 @@ class ForwarderRuntime:
             logger.debug("target balancer has no enabled endpoints: core=%s inbound=%s alias=%s", core.get("name"), inbound.get("name"), alias)
             return []
 
-        targets = [target for endpoint in endpoints for target in [self._target_from_endpoint(endpoint)] if target]
+        groups = self._target_groups_from_endpoints(alias, endpoints)
         strategy = str(balancer.get("strategy") or "round_robin")
-        if strategy == "random":
-            random.shuffle(targets)
-        elif strategy == "failover":
-            pass
-        elif strategy == "least_connections":
-            targets.sort(key=lambda t: self._target_active.get(t.key, 0))
-        else:
-            if targets:
-                idx = self._rr.get(alias, 0) % len(targets)
-                self._rr[alias] = idx + 1
-                targets = targets[idx:] + targets[:idx]
-        logger.debug("resolved balancer targets: core=%s inbound=%s alias=%s strategy=%s targets=%s", core.get("name"), inbound.get("name"), alias, strategy, [t.key for t in targets])
+        targets = self._select_targets_from_groups(alias, strategy, groups)
+        logger.debug(
+            "resolved balancer targets: core=%s inbound=%s alias=%s strategy=%s groups=%s targets=%s",
+            core.get("name"),
+            inbound.get("name"),
+            alias,
+            strategy,
+            [(g.get("key"), g.get("weight"), [t.key for t in g.get("targets", [])]) for g in groups],
+            [t.key for t in targets],
+        )
         return targets
+
+    def _endpoint_weight(self, endpoint: dict[str, Any]) -> float:
+        try:
+            weight = float(endpoint.get("weight") or 1)
+        except (TypeError, ValueError):
+            weight = 1.0
+        return max(0.0, weight)
+
+    def _endpoint_group_key(self, alias: str, endpoint: dict[str, Any], index: int) -> str:
+        if endpoint.get("type") == "node_inbound":
+            return "|".join(
+                [
+                    alias,
+                    "node_inbound",
+                    str(endpoint.get("remote_node_id") or endpoint.get("node_id") or ""),
+                    str(endpoint.get("remote_core_id") or endpoint.get("core_id") or ""),
+                    str(endpoint.get("remote_inbound_name") or endpoint.get("inbound_name") or ""),
+                    str(index),
+                ]
+            )
+        return "|".join([alias, "static", str(endpoint.get("host") or ""), str(endpoint.get("port") or ""), str(index)])
+
+    def _target_with_group(self, target: Target, group_key: str, weight: float) -> Target:
+        return Target(target.host, target.port, target.name, group_key=group_key, endpoint_weight=weight)
+
+    def _target_groups_from_endpoints(self, alias: str, endpoints: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        groups: list[dict[str, Any]] = []
+        for index, endpoint in enumerate(endpoints):
+            if not isinstance(endpoint, dict) or endpoint.get("enabled") is False:
+                continue
+            weight = self._endpoint_weight(endpoint)
+            if weight <= 0:
+                continue
+            group_key = self._endpoint_group_key(alias, endpoint, index)
+            targets = [self._target_with_group(t, group_key, weight) for t in self._targets_from_endpoint(endpoint)]
+            if not targets:
+                continue
+            groups.append({"key": group_key, "weight": weight, "targets": targets, "endpoint": endpoint})
+        return groups
+
+    def _rotate_group_targets(self, alias: str, group: dict[str, Any], *, least_connections: bool = False, randomize: bool = False) -> list[Target]:
+        targets = list(group.get("targets") or [])
+        if not targets:
+            return []
+        if least_connections:
+            targets.sort(key=lambda t: self._target_active.get(t.key, 0))
+            return targets
+        if randomize:
+            random.shuffle(targets)
+            return targets
+        key = f"{alias}::ports::{group.get('key') or ''}"
+        idx = self._rr.get(key, 0) % len(targets)
+        self._rr[key] = idx + 1
+        return targets[idx:] + targets[:idx]
+
+    def _select_targets_from_groups(self, alias: str, strategy: str, groups: list[dict[str, Any]]) -> list[Target]:
+        if not groups:
+            return []
+        if strategy == "failover":
+            ordered: list[Target] = []
+            for group in groups:
+                ordered.extend(self._rotate_group_targets(alias, group))
+            return ordered
+        if strategy == "random":
+            total = sum(float(g.get("weight") or 1) for g in groups)
+            cursor = random.uniform(0, total) if total > 0 else 0
+            selected = groups[-1]
+            upto = 0.0
+            for group in groups:
+                upto += float(group.get("weight") or 1)
+                if cursor <= upto:
+                    selected = group
+                    break
+            return self._rotate_group_targets(alias, selected, randomize=True)
+        if strategy == "least_connections":
+            selected = min(
+                groups,
+                key=lambda g: (sum(self._target_active.get(t.key, 0) for t in g.get("targets", [])) / max(float(g.get("weight") or 1), 0.0001), str(g.get("key") or "")),
+            )
+            return self._rotate_group_targets(alias, selected, least_connections=True)
+
+        weighted: list[dict[str, Any]] = []
+        for group in groups:
+            repeat = max(1, int(round(float(group.get("weight") or 1))))
+            weighted.extend([group] * repeat)
+        if not weighted:
+            return []
+        key = f"{alias}::endpoint"
+        idx = self._rr.get(key, 0) % len(weighted)
+        self._rr[key] = idx + 1
+        return self._rotate_group_targets(alias, weighted[idx])
 
     def _listener_host_for_target(self, bind_ip: str) -> str:
         host = str(bind_ip or "").strip()
@@ -543,7 +634,8 @@ class ForwarderRuntime:
             return "::1"
         return host
 
-    def _target_from_active_listener(self, core_id: str, inbound_name: str) -> Optional[Target]:
+    def _targets_from_active_listener(self, core_id: str, inbound_name: str) -> list[Target]:
+        targets: list[Target] = []
         for listener in self.listeners:
             if listener.get("status") != "listening":
                 continue
@@ -556,16 +648,22 @@ class ForwarderRuntime:
             except (TypeError, ValueError):
                 port = 0
             if 1 <= port <= 65535:
-                return Target(self._listener_host_for_target(str(listener.get("bind_ip") or "127.0.0.1")), port, "node-inbound-listener")
-        return None
+                target = Target(self._listener_host_for_target(str(listener.get("bind_ip") or "127.0.0.1")), port, "node-inbound-listener")
+                if target.key not in {t.key for t in targets}:
+                    targets.append(target)
+        return targets
 
-    def _target_from_cached_peer(self, endpoint: dict[str, Any]) -> Optional[Target]:
+    def _target_from_active_listener(self, core_id: str, inbound_name: str) -> Optional[Target]:
+        targets = self._targets_from_active_listener(core_id, inbound_name)
+        return targets[0] if targets else None
+
+    def _targets_from_cached_peer(self, endpoint: dict[str, Any]) -> list[Target]:
         remote_node_id = str(endpoint.get("remote_node_id") or endpoint.get("node_id") or "")
         if not remote_node_id:
-            return None
+            return []
         cached = self._peer_runtime_cache.get(remote_node_id)
         if not cached:
-            return None
+            return []
         listeners = cached.get("listeners")
         if not isinstance(listeners, list):
             summary = cached.get("summary") if isinstance(cached.get("summary"), dict) else {}
@@ -584,21 +682,58 @@ class ForwarderRuntime:
                 port = int(listener.get("port") or 0)
             except (TypeError, ValueError):
                 port = 0
-            if 1 <= port <= 65535:
+            if 1 <= port <= 65535 and port not in candidates:
                 candidates.append(port)
         if not candidates:
-            return None
+            return []
         host = str(endpoint.get("host") or "").strip() or str(endpoint.get("public_host") or "").strip()
         if not host or host in LOCAL_TARGET_HOSTS:
             # For remote peer cache a localhost-like host is never useful. Keep
             # the explicit fallback host generated by the panel if possible.
             host = str(endpoint.get("peer_host") or "").strip() or host
         if not host:
-            return None
-        port = random.choice(candidates)
-        return Target(host, port, "node-inbound-peer-cache")
+            return []
+        return [Target(host, port, "node-inbound-peer-cache") for port in candidates]
 
-    def _target_from_endpoint(self, endpoint: dict[str, Any]) -> Optional[Target]:
+    def _target_from_cached_peer(self, endpoint: dict[str, Any]) -> Optional[Target]:
+        targets = self._targets_from_cached_peer(endpoint)
+        return random.choice(targets) if targets else None
+
+    def _targets_from_endpoint_live_ports(self, endpoint: dict[str, Any], *, name: str = "node-inbound-live") -> list[Target]:
+        ports = endpoint.get("live_ports") if isinstance(endpoint.get("live_ports"), list) else []
+        cleaned: list[int] = []
+        for item in ports:
+            try:
+                port = int(item)
+            except (TypeError, ValueError):
+                continue
+            if 1 <= port <= 65535 and port not in cleaned:
+                cleaned.append(port)
+        if not cleaned:
+            return []
+        host = str(endpoint.get("host") or "").strip() or str(endpoint.get("public_host") or "").strip() or str(endpoint.get("peer_host") or "").strip()
+        if not host:
+            return []
+        return [Target(host, port, name) for port in cleaned]
+
+    def _endpoint_live_ports_are_newer_than_peer_cache(self, endpoint: dict[str, Any]) -> bool:
+        try:
+            endpoint_ts = float(endpoint.get("live_ports_synced_at_unix") or 0)
+        except (TypeError, ValueError):
+            endpoint_ts = 0.0
+        if endpoint_ts <= 0:
+            return True
+        remote_node_id = str(endpoint.get("remote_node_id") or endpoint.get("node_id") or "")
+        cached = self._peer_runtime_cache.get(remote_node_id) if remote_node_id else None
+        if not isinstance(cached, dict):
+            return True
+        try:
+            cache_ts = float(cached.get("synced_at_unix") or 0)
+        except (TypeError, ValueError):
+            cache_ts = 0.0
+        return endpoint_ts >= cache_ts
+
+    def _targets_from_endpoint(self, endpoint: dict[str, Any]) -> list[Target]:
         etype = str(endpoint.get("type") or "static")
         if etype == "static":
             host = str(endpoint.get("host") or "").strip()
@@ -607,23 +742,28 @@ class ForwarderRuntime:
             except (TypeError, ValueError):
                 port = 0
             if host and 1 <= port <= 65535:
-                return Target(host, port, "static-endpoint")
-            return None
+                return [Target(host, port, "static-endpoint")]
+            return []
 
-        # Node-inbound endpoints are semantic references. Resolve by
-        # core_id/inbound_name first so hidden/default host/port values from the
-        # UI never accidentally send traffic to 127.0.0.1:80. If the panel
-        # enriched a remote node-inbound with explicit host/port and the target
-        # core is not in this node config, we use that explicit fallback.
+        # Node-inbound endpoints are semantic references. Resolve all active
+        # listener ports for the selected inbound, not just the first one. The
+        # endpoint weight is applied to the inbound as a whole; if the inbound
+        # has N live ports, the balancer splits that endpoint's selected traffic
+        # across those N ports.
         core_id = str(endpoint.get("core_id") or "")
         inbound_name = str(endpoint.get("inbound_name") or "")
         current_node_id = str(self.config.get("node_id") or "")
         remote_node_id = str(endpoint.get("remote_node_id") or endpoint.get("node_id") or "")
         is_remote_node_inbound = bool(remote_node_id and current_node_id and remote_node_id != current_node_id)
         if is_remote_node_inbound:
-            cached_target = self._target_from_cached_peer(endpoint)
-            if cached_target:
-                return cached_target
+            live_targets = self._targets_from_endpoint_live_ports(endpoint, name="node-inbound-panel-live-cache")
+            cached_targets = self._targets_from_cached_peer(endpoint)
+            if live_targets and self._endpoint_live_ports_are_newer_than_peer_cache(endpoint):
+                return live_targets
+            if cached_targets:
+                return cached_targets
+            if live_targets:
+                return live_targets
             resolved_from = str(endpoint.get("resolved_from") or "")
             remote_port_mode = str(endpoint.get("remote_port_mode") or endpoint.get("port_mode") or "")
             if resolved_from == "node_inbound_random_peer_sync" or remote_port_mode == "random":
@@ -633,11 +773,11 @@ class ForwarderRuntime:
                     core_id,
                     inbound_name,
                 )
-                return None
+                return []
         if inbound_name or core_id:
-            active = self._target_from_active_listener(core_id, inbound_name)
-            if active:
-                return active
+            active_targets = self._targets_from_active_listener(core_id, inbound_name)
+            if active_targets:
+                return active_targets
             for core in self.config.get("cores", []) if isinstance(self.config.get("cores"), list) else []:
                 if core_id and str(core.get("id")) != core_id:
                     continue
@@ -645,20 +785,35 @@ class ForwarderRuntime:
                     if inbound_name and str(inbound.get("name")) != inbound_name:
                         continue
                     ports = inbound.get("fixed_ports") or []
-                    if ports:
-                        host = str(inbound.get("public_host") or inbound.get("bind_ip") or "127.0.0.1")
-                        if host in {"", "0.0.0.0", "*", "::"}:
-                            host = "127.0.0.1"
-                        return Target(host, int(ports[0]), "node-inbound")
+                    targets: list[Target] = []
+                    host = str(inbound.get("public_host") or inbound.get("bind_ip") or "127.0.0.1")
+                    if host in {"", "0.0.0.0", "*", "::"}:
+                        host = "127.0.0.1"
+                    for item in ports:
+                        try:
+                            port = int(item)
+                        except (TypeError, ValueError):
+                            continue
+                        if 1 <= port <= 65535 and f"{host}:{port}" not in {t.key for t in targets}:
+                            targets.append(Target(host, port, "node-inbound"))
+                    if targets:
+                        return targets
 
+        live_targets = self._targets_from_endpoint_live_ports(endpoint, name="node-inbound-explicit-live")
+        if live_targets:
+            return live_targets
         host = str(endpoint.get("host") or "").strip()
         try:
             port = int(endpoint.get("port") or 0)
         except (TypeError, ValueError):
             port = 0
         if host and 1 <= port <= 65535:
-            return Target(host, port, "node-inbound-explicit")
-        return None
+            return [Target(host, port, "node-inbound-explicit")]
+        return []
+
+    def _target_from_endpoint(self, endpoint: dict[str, Any]) -> Optional[Target]:
+        targets = self._targets_from_endpoint(endpoint)
+        return targets[0] if targets else None
 
     def _is_direct_self_loop(self, target: Target, bind_ip: str, listen_port: int, inbound: dict[str, Any]) -> bool:
         if target.port != listen_port:

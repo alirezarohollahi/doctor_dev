@@ -2042,16 +2042,10 @@ function endpointSubTitle(ep) {
 }
 
 function inboundOptionLabel(item) {
-  var name = item.inbound_name || item.name || "Unnamed inbound";
-  var ports = "";
-  if (Array.isArray(item.ports) && item.ports.length) {
-    ports = " · " + item.ports.join(",");
-  } else if (item.port_mode === "random") {
-    ports = " · random ×" + (Number(item.random_count) || 1);
-  } else if (item.ports_summary) {
-    ports = " · " + item.ports_summary;
-  }
-  return name + ports;
+  // Node Inbound endpoints are semantic references. Do not display the
+  // currently resolved port here, because it may be fixed, random, multi-port,
+  // or changed by runtime sync after the endpoint was selected.
+  return item.inbound_name || item.name || "Unnamed inbound";
 }
 
 function endpointInboundOptions(nodeId) {

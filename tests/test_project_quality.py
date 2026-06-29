@@ -78,6 +78,14 @@ class StaticQualityTests(unittest.TestCase):
         self.assertNotIn("@app.post(\"/api/nodes", app_text)
         self.assertNotIn("@app.post(\"/api/cores", app_text)
 
+
+    def test_node_inbound_endpoint_option_label_hides_runtime_port(self) -> None:
+        app_js = (PROJECT_ROOT / "doctor_dev_panel" / "web" / "assets" / "js" / "app.js").read_text(encoding="utf-8")
+        self.assertIn("function inboundOptionLabel(item)", app_js)
+        label_block = app_js.split("function inboundOptionLabel(item)", 1)[1].split("function endpointInboundOptions", 1)[0]
+        self.assertNotIn("item.ports.join", label_block)
+        self.assertNotIn("random ×", label_block)
+
     def test_legacy_fixed_node_data_port_is_not_in_env_examples(self) -> None:
         for rel in ("env.examples/node.env", "node.env.example"):
             text = (PROJECT_ROOT / rel).read_text(encoding="utf-8")
@@ -106,6 +114,80 @@ class NodeRuntimeContractTests(unittest.TestCase):
                     os.environ.pop(key, None)
                 else:
                     os.environ[key] = value
+
+
+    def test_node_inbound_endpoint_resolves_all_live_ports_with_endpoint_level_weight(self) -> None:
+        from doctor_dev_node.runtime import ForwarderRuntime
+
+        rt = ForwarderRuntime()
+        rt.config = {"node_id": "node-b", "cores": []}
+        core = {
+            "name": "core-b",
+            "balancers": [
+                {
+                    "alias": "b-to-a",
+                    "strategy": "round_robin",
+                    "endpoints": [
+                        {
+                            "type": "node_inbound",
+                            "node_id": "node-a",
+                            "remote_node_id": "node-a",
+                            "core_id": "core-a",
+                            "remote_core_id": "core-a",
+                            "inbound_name": "a-one",
+                            "remote_inbound_name": "a-one",
+                            "host": "127.0.0.1",
+                            "live_ports": [1209, 1210, 1213],
+                            "live_ports_synced_at_unix": 20,
+                            "weight": 1,
+                        },
+                        {
+                            "type": "node_inbound",
+                            "node_id": "node-a",
+                            "remote_node_id": "node-a",
+                            "core_id": "core-a",
+                            "remote_core_id": "core-a",
+                            "inbound_name": "a-two",
+                            "remote_inbound_name": "a-two",
+                            "host": "127.0.0.1",
+                            "live_ports": [1212],
+                            "live_ports_synced_at_unix": 20,
+                            "weight": 1,
+                        },
+                    ],
+                }
+            ],
+        }
+        inbound = {"name": "b-in", "target_type": "balancer", "target_balancer": "b-to-a"}
+        selected_first_ports = [rt._resolve_targets(core, inbound)[0].port for _ in range(6)]
+        self.assertEqual([1209, 1212, 1210, 1212, 1213, 1212], selected_first_ports)
+
+    def test_node_inbound_endpoint_prefers_newer_panel_live_ports_over_stale_peer_cache(self) -> None:
+        from doctor_dev_node.runtime import ForwarderRuntime
+
+        rt = ForwarderRuntime()
+        rt.config = {"node_id": "node-b", "cores": []}
+        endpoint = {
+            "type": "node_inbound",
+            "node_id": "node-a",
+            "remote_node_id": "node-a",
+            "core_id": "core-a",
+            "remote_core_id": "core-a",
+            "inbound_name": "a-one",
+            "remote_inbound_name": "a-one",
+            "host": "127.0.0.1",
+            "live_ports": [1209],
+            "live_ports_synced_at_unix": 20,
+        }
+        rt._peer_runtime_cache["node-a"] = {
+            "synced_at_unix": 10,
+            "listeners": [
+                {"status": "listening", "core_id": "core-a", "inbound_name": "a-one", "port": 1211},
+            ],
+        }
+        self.assertEqual([1209], [t.port for t in rt._targets_from_endpoint(endpoint)])
+        endpoint["live_ports_synced_at_unix"] = 5
+        self.assertEqual([1211], [t.port for t in rt._targets_from_endpoint(endpoint)])
 
     def test_peer_token_target_and_expiry_checks(self) -> None:
         from doctor_dev_node.peer_tokens import issue_peer_token, verify_peer_token

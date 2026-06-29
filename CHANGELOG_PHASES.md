@@ -56,3 +56,12 @@ The original cleanup plan is complete through Phase 8. Future work should only h
 - Prevented API/static paths from falling through to `index.html`.
 - Added a minimal local Font Awesome compatibility stylesheet for dev/lab builds.
 - Included lab env/scripts for panel + two-node routing tests.
+
+## Lab fix: dynamic Node Inbound endpoint resolution
+
+- Fixed Node Inbound balancer endpoints so they resolve all live ports for the selected remote inbound instead of only the first port.
+- Endpoint weight now applies to the selected inbound as a whole; if that inbound has multiple fixed/random live ports, traffic is split across those ports within the endpoint's share.
+- Fixed stale peer-cache behavior: when the panel applies newer live-port data, the node prefers it over older peer-sync cache until peer sync catches up.
+- Remote Node Inbound endpoints still keep themselves updated via peer runtime sync and peer tokens.
+- UI endpoint inbound dropdown no longer appends a transient runtime port such as `. 1209`; it shows only the inbound name.
+- Added tests for multi-port Node Inbound endpoint resolution, stale peer-cache behavior, and UI label cleanup.
