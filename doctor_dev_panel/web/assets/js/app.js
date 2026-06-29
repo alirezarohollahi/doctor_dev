@@ -959,7 +959,6 @@ function openNodeModal(node) {
     setVal("#nodeAddress", node.address);
     setVal("#apiPort", node.api_port);
     setVal("#apiKey", node.api_key);
-    setVal("#nodeUpdateInterval", node.update_interval || 10);
     setVal("#peerTokenRefreshInterval", node.peer_token_refresh_interval || 30);
     setVal("#peerTokenTtl", node.peer_token_ttl || 120);
     setVal("#certificate", node.certificate || "");
@@ -987,8 +986,6 @@ function closeNodeModal() {
 function resetNodeForm() {
   var form = $("#nodeForm");
   if (form) form.reset();
-  var updateIntervalEl = $("#nodeUpdateInterval");
-  if (updateIntervalEl && !updateIntervalEl.value) updateIntervalEl.value = "10";
   var peerRefreshEl = $("#peerTokenRefreshInterval");
   if (peerRefreshEl && !peerRefreshEl.value) peerRefreshEl.value = "30";
   var peerTtlEl = $("#peerTokenTtl");
@@ -1010,7 +1007,6 @@ function nodePayload() {
     address: get("#nodeAddress"),
     api_port: parseInt(get("#apiPort"), 10) || 62051,
     api_key: get("#apiKey"),
-    update_interval: parseInt(get("#nodeUpdateInterval"), 10) || 10,
     peer_token_refresh_interval: parseInt(get("#peerTokenRefreshInterval"), 10) || 30,
     peer_token_ttl: parseInt(get("#peerTokenTtl"), 10) || 120,
     certificate: get("#certificate"),
@@ -1534,7 +1530,7 @@ function defaultEndpoint() {
 }
 
 function defaultDependency() {
-  return { type: "core", ref_id: "", required: true, notes: "" };
+  return { type: "core", ref_id: "", sync_interval: 5, required: true, notes: "" };
 }
 
 function portsToText(ports) {
@@ -2486,6 +2482,16 @@ function renderDependencyEditor() {
         '" data-field="ref_id">' +
         dependencyOptions(dep.type, dep.ref_id) +
         "</select></div>" +
+        '<div class="form-group" data-dep-sync-field="' +
+        i +
+        '"' +
+        (dep.type === "node" ? "" : ' style="display:none"') +
+        '><label>Sync Interval</label>' +
+        '<input type="number" class="form-input" min="1" max="86400" step="1" data-dep-index="' +
+        i +
+        '" data-field="sync_interval" value="' +
+        escapeHtml(String(dep.sync_interval || 5)) +
+        '"><small>Seconds. This node refreshes runtime from the dependency node on this cadence.</small></div>' +
         '<div class="form-group form-group--inline switch-field">' +
         '<label class="toggle-label toggle-label--inline toggle-label--state" for="depReq_' +
         i +
@@ -2528,13 +2534,17 @@ function renderDependencyEditor() {
           var dep = state.editorDraft.dependencies[depIdx];
           if (!dep) return;
           if (el.type === "checkbox") dep[field] = el.checked;
+          else if (field === "sync_interval") dep.sync_interval = Math.max(1, Math.min(86400, parseInt(el.value, 10) || 5));
           else dep[field] = el.value;
           if (field === "type") {
             dep.ref_id = "";
+            if (dep.type === "node" && !dep.sync_interval) dep.sync_interval = 5;
             var card = el.closest("[data-dep-index]");
             if (card) {
               var refSel = card.querySelector(".dep-ref-sel");
               if (refSel) refSel.innerHTML = dependencyOptions(el.value, "");
+              var syncField = card.querySelector('[data-dep-sync-field="' + depIdx + '"]');
+              if (syncField) syncField.style.display = el.value === "node" ? "" : "none";
             }
           }
         }

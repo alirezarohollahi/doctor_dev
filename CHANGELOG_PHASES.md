@@ -65,3 +65,14 @@ The original cleanup plan is complete through Phase 8. Future work should only h
 - Remote Node Inbound endpoints still keep themselves updated via peer runtime sync and peer tokens.
 - UI endpoint inbound dropdown no longer appends a transient runtime port such as `. 1209`; it shows only the inbound name.
 - Added tests for multi-port Node Inbound endpoint resolution, stale peer-cache behavior, and UI label cleanup.
+
+## Dependency-scoped peer runtime sync fix
+
+- Removed node-level runtime update interval from the Node UI/API model.
+- Added dependency-level `sync_interval` for node dependencies.
+- Node-to-node runtime refresh now uses the interval configured on the dependency entry.
+- Node dependencies are enriched with peer token URL, sync URLs, target core id, peer host, and token refresh policy.
+- Node-inbound balancer endpoints inherit their peer sync interval from the matching node dependency.
+- Fixed dynamic node-inbound routing so fixed multi-port and random-port remote inbounds can update without a manual B-side port edit.
+- Node Inbound endpoint dropdown labels show only the inbound name, not the current live port.
+- Added quality tests for dependency-scoped sync interval, node-level interval removal, and token/sync enrichment.

@@ -194,9 +194,14 @@ def normalize_dependency(payload: dict[str, Any], index: int = 0) -> dict[str, A
     dep_type = _clean_name(payload.get("type"), "core").lower()
     if dep_type not in {"core", "node"}:
         dep_type = "core"
+    try:
+        sync_interval = int(payload.get("sync_interval") or payload.get("update_interval") or 5)
+    except (TypeError, ValueError):
+        sync_interval = 5
     return {
         "type": dep_type,
         "ref_id": _clean_name(payload.get("ref_id"), ""),
+        "sync_interval": min(max(sync_interval, 1), 86400),
         "required": bool(payload.get("required", True)),
         "notes": _clean_name(payload.get("notes"), ""),
     }
@@ -374,12 +379,45 @@ def _node_sync_urls(node: dict[str, Any]) -> list[str]:
     return urls
 
 
-def _node_update_interval(node: dict[str, Any]) -> int:
+def _dependency_sync_interval(dep: dict[str, Any]) -> int:
+    """Return the node-to-node runtime sync interval carried by a dependency.
+
+    The interval is intentionally dependency-scoped, not node-scoped. A core on
+    node B can depend on node A every 3 seconds while another core/dependency
+    uses a slower cadence. Legacy configs that still contain update_interval are
+    accepted as a fallback, but new UI/API writes sync_interval only.
+    """
     try:
-        interval = int(node.get("update_interval") or 10)
+        interval = int(dep.get("sync_interval") or dep.get("update_interval") or 5)
     except (TypeError, ValueError):
-        interval = 10
+        interval = 5
     return min(max(interval, 1), 86400)
+
+
+def _dependency_interval_map(core: dict[str, Any]) -> dict[str, int]:
+    result: dict[str, int] = {}
+    dependencies = core.get("dependencies") if isinstance(core.get("dependencies"), list) else []
+    for dep in dependencies:
+        if not isinstance(dep, dict) or dep.get("type") != "node" or dep.get("required") is False:
+            continue
+        ref_id = str(dep.get("ref_id") or "").strip()
+        if ref_id:
+            result[ref_id] = _dependency_sync_interval(dep)
+    return result
+
+
+def _first_enabled_core_for_node(node_id: str, cores: list[dict[str, Any]]) -> Optional[dict[str, Any]]:
+    for core in cores:
+        if not isinstance(core, dict):
+            continue
+        if str(core.get("node_id") or "") == str(node_id) and core.get("enabled") is not False:
+            return core
+    for core in cores:
+        if not isinstance(core, dict):
+            continue
+        if str(core.get("node_id") or "") == str(node_id):
+            return core
+    return None
 
 
 def _peer_token_url() -> str:
@@ -398,15 +436,15 @@ def _node_peer_token_refresh_interval(node: dict[str, Any]) -> int:
     return min(max(interval, 5), 86400)
 
 
-def _attach_peer_sync_fields(endpoint: dict[str, Any], target_node: dict[str, Any], target_node_id: str, target_core_id: str, inbound_name: str) -> None:
+def _attach_peer_sync_fields(endpoint: dict[str, Any], target_node: dict[str, Any], target_node_id: str, target_core_id: str, inbound_name: str, sync_interval: int = 5) -> None:
     endpoint["remote_node_id"] = target_node_id
     endpoint["remote_core_id"] = target_core_id
     endpoint["remote_inbound_name"] = inbound_name
     endpoint["sync_urls"] = _node_sync_urls(target_node)
     endpoint["token_url"] = _peer_token_url()
     endpoint["token_refresh_interval"] = _node_peer_token_refresh_interval(target_node)
-    endpoint["update_interval"] = _node_update_interval(target_node)
-    endpoint["sync_interval"] = _node_update_interval(target_node)
+    endpoint.pop("update_interval", None)
+    endpoint["sync_interval"] = min(max(int(sync_interval or 5), 1), 86400)
     endpoint["api_port"] = int(target_node.get("api_port") or 62051)
     endpoint["peer_host"] = _address_host(target_node.get("address"))
 
@@ -476,6 +514,7 @@ def _enrich_node_inbound_endpoints(config_node_id: str, cores: list[dict[str, An
         return None, None
 
     for core in cores:
+        dependency_intervals = _dependency_interval_map(core)
         for balancer in core.get("balancers", []) if isinstance(core.get("balancers"), list) else []:
             endpoints = balancer.get("endpoints") if isinstance(balancer.get("endpoints"), list) else []
             for endpoint in endpoints:
@@ -492,7 +531,7 @@ def _enrich_node_inbound_endpoints(config_node_id: str, cores: list[dict[str, An
                 endpoint["core_id"] = target_core_id
                 endpoint["inbound_name"] = str(target_inbound.get("name") or inbound_name)
                 target_node = node_map.get(target_node_id, {})
-                _attach_peer_sync_fields(endpoint, target_node, target_node_id, target_core_id, str(endpoint.get("inbound_name") or ""))
+                _attach_peer_sync_fields(endpoint, target_node, target_node_id, target_core_id, str(endpoint.get("inbound_name") or ""), dependency_intervals.get(target_node_id, 5))
                 endpoint["remote_port_mode"] = str(target_inbound.get("port_mode") or "fixed")
                 endpoint["remote_random_count"] = int(target_inbound.get("random_count") or 1)
 
@@ -546,6 +585,7 @@ def _enrich_node_dependencies(config_node_id: str, cores: list[dict[str, Any]]) 
         list_nodes = lambda: []  # type: ignore[assignment]
 
     node_map = {str(node.get("id")): node for node in list_nodes() if isinstance(node, dict)}
+    all_cores = list_cores()
     for core in cores:
         dependencies = core.get("dependencies") if isinstance(core.get("dependencies"), list) else []
         for dep in dependencies:
@@ -558,12 +598,18 @@ def _enrich_node_dependencies(config_node_id: str, cores: list[dict[str, Any]]) 
             if not target_node:
                 dep["resolve_error"] = "Selected dependency node was not found."
                 continue
+            target_core = _first_enabled_core_for_node(target_node_id, all_cores)
+            if not target_core:
+                dep["resolve_error"] = "Selected dependency node has no core to export."
+                continue
+            dep_interval = _dependency_sync_interval(dep)
             dep["remote_node_id"] = target_node_id
+            dep["remote_core_id"] = str(target_core.get("id") or "")
             dep["sync_urls"] = _node_sync_urls(target_node)
             dep["token_url"] = _peer_token_url()
             dep["token_refresh_interval"] = _node_peer_token_refresh_interval(target_node)
-            dep["update_interval"] = _node_update_interval(target_node)
-            dep["sync_interval"] = _node_update_interval(target_node)
+            dep.pop("update_interval", None)
+            dep["sync_interval"] = dep_interval
             dep["peer_host"] = _address_host(target_node.get("address"))
             dep["certificate"] = str(target_node.get("certificate") or "")
     return cores

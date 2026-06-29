@@ -204,7 +204,7 @@ class ForwarderRuntime:
 
     def _endpoint_sync_interval(self, endpoint: dict[str, Any]) -> float:
         try:
-            interval = float(endpoint.get("update_interval") or endpoint.get("sync_interval") or PEER_SYNC_INTERVAL or 10)
+            interval = float(endpoint.get("sync_interval") or endpoint.get("update_interval") or PEER_SYNC_INTERVAL or 10)
         except (TypeError, ValueError):
             interval = 10.0
         return min(max(interval, 1.0), 86400.0)

@@ -15,7 +15,6 @@ class NodeBody(BaseModel):
     address: str = Field(min_length=1, max_length=255)
     api_port: int = Field(default=62051, ge=1, le=65535)
     api_key: str = Field(min_length=1, max_length=255)
-    update_interval: int = Field(default=10, ge=1, le=86400)
     peer_token_refresh_interval: int = Field(default=30, ge=5, le=86400)
     peer_token_ttl: int = Field(default=120, ge=10, le=86400)
     certificate: str = Field(default="", max_length=20000)
@@ -102,6 +101,9 @@ class CoreBalancerBody(BaseModel):
 class CoreDependencyBody(BaseModel):
     type: Literal["core", "node"] = "core"
     ref_id: str = Field(default="", max_length=120)
+    # Only node dependencies use sync_interval. It defines how often this
+    # running node refreshes runtime state from the dependency node.
+    sync_interval: int = Field(default=5, ge=1, le=86400)
     required: bool = True
     notes: str = Field(default="", max_length=500)
 

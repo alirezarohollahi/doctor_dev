@@ -86,6 +86,103 @@ class StaticQualityTests(unittest.TestCase):
         self.assertNotIn("item.ports.join", label_block)
         self.assertNotIn("random ×", label_block)
 
+
+    def test_node_level_runtime_interval_is_removed_from_ui_and_schema(self) -> None:
+        index_html = (PROJECT_ROOT / "doctor_dev_panel" / "web" / "index.html").read_text(encoding="utf-8")
+        app_js = (PROJECT_ROOT / "doctor_dev_panel" / "web" / "assets" / "js" / "app.js").read_text(encoding="utf-8")
+        schemas = (PROJECT_ROOT / "doctor_dev_panel" / "schemas.py").read_text(encoding="utf-8")
+        self.assertNotIn("nodeUpdateInterval", index_html)
+        self.assertNotIn("nodeUpdateInterval", app_js)
+        node_body = schemas.split("class NodeBody", 1)[1].split("class CoreInboundBody", 1)[0]
+        self.assertNotIn("update_interval", node_body)
+
+    def test_dependency_level_sync_interval_is_present(self) -> None:
+        app_js = (PROJECT_ROOT / "doctor_dev_panel" / "web" / "assets" / "js" / "app.js").read_text(encoding="utf-8")
+        schemas = (PROJECT_ROOT / "doctor_dev_panel" / "schemas.py").read_text(encoding="utf-8")
+        dep_body = schemas.split("class CoreDependencyBody", 1)[1].split("class CoreAdvancedConfigBody", 1)[0]
+        self.assertIn("sync_interval", dep_body)
+        self.assertIn("Sync Interval", app_js)
+        self.assertIn("data-field=\"sync_interval\"", app_js)
+
+    def test_build_config_uses_dependency_sync_interval_for_peer_sync(self) -> None:
+        from doctor_dev_panel.stores import core_store, node_store
+        from doctor_dev_panel.stores.core_store import build_node_config, create_core
+        from doctor_dev_panel.stores.node_store import create_node
+
+        with tempfile.TemporaryDirectory() as tmp:
+            old = {
+                "DOCTOR_DEV_NODES_PATH": os.environ.get("DOCTOR_DEV_NODES_PATH"),
+                "DOCTOR_DEV_CORES_PATH": os.environ.get("DOCTOR_DEV_CORES_PATH"),
+                "DOCTOR_DEV_NODE_RUNTIME_CACHE_PATH": os.environ.get("DOCTOR_DEV_NODE_RUNTIME_CACHE_PATH"),
+                "PUBLIC_HOST": os.environ.get("PUBLIC_HOST"),
+                "PUBLIC_SCHEME": os.environ.get("PUBLIC_SCHEME"),
+                "PORT": os.environ.get("PORT"),
+            }
+            try:
+                os.environ["DOCTOR_DEV_NODES_PATH"] = str(Path(tmp) / "nodes.json")
+                os.environ["DOCTOR_DEV_CORES_PATH"] = str(Path(tmp) / "cores.json")
+                os.environ["DOCTOR_DEV_NODE_RUNTIME_CACHE_PATH"] = str(Path(tmp) / "runtime.json")
+                os.environ["PUBLIC_HOST"] = "127.0.0.1"
+                os.environ["PUBLIC_SCHEME"] = "http"
+                os.environ["PORT"] = "9000"
+
+                node_a = create_node({"name": "A", "address": "127.0.0.1", "api_port": 9001, "api_key": "a"})
+                node_b = create_node({"name": "B", "address": "127.0.0.1", "api_port": 9002, "api_key": "b"})
+                core_a = create_core({
+                    "name": "Core A",
+                    "node_id": node_a["id"],
+                    "enabled": True,
+                    "inbounds": [{
+                        "name": "a-in",
+                        "enabled": True,
+                        "bind_ip": "0.0.0.0",
+                        "port_mode": "fixed",
+                        "fixed_ports": [1211, 1212],
+                        "target_type": "static",
+                        "target_host": "127.0.0.1",
+                        "target_port": 9101,
+                    }],
+                    "balancers": [],
+                    "dependencies": [],
+                })
+                create_core({
+                    "name": "Core B",
+                    "node_id": node_b["id"],
+                    "enabled": True,
+                    "dependencies": [{"type": "node", "ref_id": node_a["id"], "sync_interval": 3, "required": True}],
+                    "inbounds": [],
+                    "balancers": [{
+                        "alias": "b-to-a",
+                        "strategy": "round_robin",
+                        "enabled": True,
+                        "endpoints": [{
+                            "type": "node_inbound",
+                            "node_id": node_a["id"],
+                            "core_id": core_a["id"],
+                            "inbound_name": "a-in",
+                            "weight": 1,
+                            "enabled": True,
+                        }],
+                    }],
+                })
+                config = build_node_config(node_b["id"])
+                core_b_cfg = config["cores"][0]
+                dep = core_b_cfg["dependencies"][0]
+                endpoint = core_b_cfg["balancers"][0]["endpoints"][0]
+                self.assertEqual(3, dep["sync_interval"])
+                self.assertEqual(3, endpoint["sync_interval"])
+                self.assertEqual(core_a["id"], dep["remote_core_id"])
+                self.assertIn("token_url", dep)
+                self.assertIn("sync_urls", dep)
+                self.assertNotIn("update_interval", dep)
+                self.assertNotIn("update_interval", endpoint)
+            finally:
+                for key, value in old.items():
+                    if value is None:
+                        os.environ.pop(key, None)
+                    else:
+                        os.environ[key] = value
+
     def test_legacy_fixed_node_data_port_is_not_in_env_examples(self) -> None:
         for rel in ("env.examples/node.env", "node.env.example"):
             text = (PROJECT_ROOT / rel).read_text(encoding="utf-8")

@@ -124,11 +124,10 @@ def normalize_node(payload: dict[str, Any], existing: Optional[dict[str, Any]] =
     if not str(base.get("peer_verify_secret") or "").strip():
         base["peer_verify_secret"] = generate_peer_verify_secret()
 
-    try:
-        update_interval = int(base.get("update_interval") or 10)
-    except (TypeError, ValueError):
-        update_interval = 10
-    base["update_interval"] = min(max(update_interval, 1), 86400)
+    # Node runtime pull interval is no longer a node-level setting.
+    # It belongs to each core dependency, because B may sync A every 3s
+    # while another dependency syncs on a different cadence.
+    base.pop("update_interval", None)
 
     try:
         peer_token_refresh_interval = int(base.get("peer_token_refresh_interval") or 30)
