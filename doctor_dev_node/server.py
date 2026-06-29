@@ -406,18 +406,36 @@ async def apply_config(body: ApplyConfigBody, authorization: Optional[str] = Hea
             "errors": validation_errors,
             "summary": runtime.summary() | {"ok": False, "listener_errors": len(validation_errors)},
         }
+    previous_config = read_routing_config()
+    previous_has_runtime = bool(previous_config.get("cores"))
     summary = await runtime.apply_config(data)
     if not summary.get("ok", True):
         logger.warning("routing config apply finished with errors: node_id=%s summary=%s", data.get("node_id"), summary)
+        rollback_summary: dict[str, Any] = {}
+        rollback_ok = False
+        if previous_has_runtime:
+            try:
+                rollback_summary = await runtime.apply_config(previous_config)
+                rollback_ok = bool(rollback_summary.get("ok", False))
+                if rollback_ok:
+                    logger.warning("previous routing runtime restored after failed apply: node_id=%s", data.get("node_id"))
+                else:
+                    logger.warning("previous routing runtime rollback also failed: node_id=%s summary=%s", data.get("node_id"), rollback_summary)
+            except Exception as rollback_exc:  # noqa: BLE001
+                rollback_summary = {"ok": False, "last_error": str(rollback_exc)}
+                logger.warning("previous routing runtime rollback raised: node_id=%s error=%s", data.get("node_id"), rollback_exc)
         return {
             "ok": False,
+            "applied": False,
+            "previous_runtime_kept": rollback_ok,
             "message": summary.get("last_error") or "Routing config could not start any listener.",
             "errors": summary.get("errors") or [],
             "summary": summary,
+            "rollback_summary": rollback_summary,
         }
     write_routing_config(data)
     logger.info("routing config applied: node_id=%s cores=%s listeners=%s", data.get("node_id"), len(data.get("cores") or []), summary.get("listeners_total"))
-    return {"ok": True, "message": "Routing config saved and runtime reloaded on node.", "summary": runtime_summary()}
+    return {"ok": True, "applied": True, "previous_runtime_kept": True, "message": "Routing config saved and runtime reloaded on node.", "summary": runtime_summary()}
 
 
 
