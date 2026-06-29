@@ -102,26 +102,32 @@ app.include_router(nodes_router)
 app.include_router(cores_router)
 app.include_router(logs_router)
 
-@app.get("/favicon.ico", include_in_schema=False)
-async def favicon() -> FileResponse | Response:
+
+@app.get("/favicon.ico", include_in_schema=False, response_model=None)
+async def favicon():
     favicon_path = WEB_DIR / "favicon.ico"
     if favicon_path.exists():
         return FileResponse(str(favicon_path), media_type="image/x-icon")
     return Response(status_code=204)
 
-@app.get("/")
-async def index() -> FileResponse:
+
+@app.get("/", response_model=None)
+async def index():
     return FileResponse(str(WEB_DIR / "index.html"))
 
 
-@app.get("/admin")
-async def admin() -> FileResponse:
+@app.get("/admin", response_model=None)
+async def admin():
     return FileResponse(str(WEB_DIR / "index.html"))
 
 
-@app.get("/{full_path:path}", include_in_schema=False)
-async def spa_fallback(full_path: str) -> FileResponse:
-    """Serve the single-page app for browser history routes."""
+@app.get("/{full_path:path}", include_in_schema=False, response_model=None)
+async def spa_fallback(full_path: str):
+    """Serve the single-page app for browser history routes only.
+
+    Static/API paths must never fall through to index.html; otherwise browsers
+    receive HTML with text/html for CSS/JS and report corrupted content.
+    """
     path = (full_path or "").strip("/")
     if path.startswith("api/"):
         raise HTTPException(status_code=404, detail="API endpoint not found.")

@@ -7,8 +7,6 @@ This lab runs one panel and two nodes on one Linux server:
 - Node B API: `http://127.0.0.1:9002`
 - Test TCP listeners: `127.0.0.1:9101`, `9102`, `9103`, `9104`
 
-No backup feature is required or used.
-
 ## 1) Copy files
 
 Copy these files into the project root, preserving paths:
