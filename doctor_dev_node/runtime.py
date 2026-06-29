@@ -55,6 +55,7 @@ class ForwarderRuntime:
         self._target_active: dict[str, int] = {}
         self._peer_runtime_cache: dict[str, dict[str, Any]] = {}
         self._peer_sync_last: dict[str, float] = {}
+        self._peer_sync_errors: dict[str, str] = {}
         self._peer_tokens: dict[str, dict[str, Any]] = {}
         self._peer_sync_task: Optional[asyncio.Task] = None
         self.connection_count = 0
@@ -283,19 +284,82 @@ class ForwarderRuntime:
             return
         await asyncio.gather(*(self._sync_peer_endpoint(endpoint) for endpoint in endpoints), return_exceptions=True)
 
-    async def _sync_peer_endpoint(self, endpoint: dict[str, Any]) -> None:
+    def _endpoint_is_due_for_sync(self, endpoint: dict[str, Any], *, force: bool = False) -> bool:
+        if force:
+            return True
         key = self._peer_sync_key(endpoint)
+        if not key:
+            return False
+        remote_node_id = str(endpoint.get("remote_node_id") or endpoint.get("node_id") or "")
+        if remote_node_id and remote_node_id not in self._peer_runtime_cache:
+            return True
+        last = float(self._peer_sync_last.get(key, 0.0) or 0.0)
+        return time.time() - last >= self._endpoint_sync_interval(endpoint)
+
+    def _peer_endpoints_for_inbound(self, core: dict[str, Any], inbound: dict[str, Any]) -> list[dict[str, Any]]:
+        endpoints: list[dict[str, Any]] = []
+        if str(inbound.get("target_type") or "static") != "balancer":
+            return endpoints
+        alias = str(inbound.get("target_balancer") or "").strip()
+        balancer = self._balancers_for_core(core).get(alias)
+        if not balancer:
+            return endpoints
+        for endpoint in balancer.get("endpoints", []) if isinstance(balancer.get("endpoints"), list) else []:
+            if not isinstance(endpoint, dict) or endpoint.get("enabled") is False:
+                continue
+            if endpoint.get("type") != "node_inbound":
+                continue
+            sync_urls = endpoint.get("sync_urls") if isinstance(endpoint.get("sync_urls"), list) else []
+            token_url = str(endpoint.get("token_url") or "")
+            remote_node_id = str(endpoint.get("remote_node_id") or endpoint.get("node_id") or "")
+            if sync_urls and token_url and remote_node_id:
+                endpoint = dict(endpoint)
+                endpoint["source_core_id"] = str(core.get("id") or "")
+                endpoint["remote_node_id"] = remote_node_id
+                endpoints.append(endpoint)
+        return endpoints
+
+    async def _refresh_peer_targets_for_inbound(self, core: dict[str, Any], inbound: dict[str, Any], *, force: bool = False) -> None:
+        endpoints = self._peer_endpoints_for_inbound(core, inbound)
+        if not endpoints:
+            return
+        due = [endpoint for endpoint in endpoints if self._endpoint_is_due_for_sync(endpoint, force=force)]
+        if not due:
+            return
+        await asyncio.gather(*(self._sync_peer_endpoint(endpoint, force=force) for endpoint in due), return_exceptions=True)
+
+    async def _sync_peer_endpoint(self, endpoint: dict[str, Any], *, force: bool = False) -> bool:
+        key = self._peer_sync_key(endpoint)
+        remote_hint = str(endpoint.get("remote_node_id") or endpoint.get("node_id") or "")
         try:
             data = await asyncio.to_thread(self._fetch_peer_export, endpoint)
             if not data:
-                return
+                error = f"peer runtime export returned no data for node={remote_hint or 'unknown'}"
+                if key:
+                    self._peer_sync_errors[key] = error
+                logger.warning(error)
+                return False
             remote_node_id = str(endpoint.get("remote_node_id") or endpoint.get("node_id") or data.get("node_id") or "")
             if not remote_node_id:
-                return
+                error = "peer runtime export did not include a node id"
+                if key:
+                    self._peer_sync_errors[key] = error
+                logger.warning(error)
+                return False
             data["synced_at_unix"] = time.time()
             data["sync_interval"] = self._endpoint_sync_interval(endpoint)
             self._peer_runtime_cache[remote_node_id] = data
-            logger.debug("peer runtime synced: node=%s listeners=%s interval=%ss", remote_node_id, len(data.get("listeners") or []), data["sync_interval"])
+            if key:
+                self._peer_sync_errors.pop(key, None)
+            logger.info("peer runtime synced: node=%s listeners=%s interval=%ss force=%s", remote_node_id, len(data.get("listeners") or []), data["sync_interval"], force)
+            return True
+        except Exception as exc:  # noqa: BLE001
+            error = f"peer runtime sync failed node={remote_hint or 'unknown'}: {exc}"
+            if key:
+                self._peer_sync_errors[key] = error
+            self.last_error = error
+            logger.warning(error)
+            return False
         finally:
             if key:
                 self._peer_sync_last[key] = time.time()
@@ -869,13 +933,26 @@ class ForwarderRuntime:
         target: Optional[Target] = None
         self._tune_stream_writer(client_writer)
         try:
+            # For remote Node Inbound endpoints, refresh dependency runtime before resolving
+            # targets when the dependency interval is due. If the first connection attempt
+            # still fails, force one immediate refresh and retry once. This keeps B updated
+            # when A changes fixed/random live ports without requiring another panel apply.
+            await self._refresh_peer_targets_for_inbound(core, inbound, force=False)
             targets = self._resolve_targets(core, inbound)
+            if not targets:
+                await self._refresh_peer_targets_for_inbound(core, inbound, force=True)
+                targets = self._resolve_targets(core, inbound)
             if not targets:
                 self.last_error = f"No target for inbound {inbound.get('name')}"
                 logger.warning("connection rejected: no target core=%s inbound=%s peer=%s", core.get("name"), inbound.get("name"), peer)
                 return
 
             connected = await self._connect_target(targets, inbound)
+            if not connected:
+                await self._refresh_peer_targets_for_inbound(core, inbound, force=True)
+                refreshed_targets = self._resolve_targets(core, inbound)
+                if refreshed_targets:
+                    connected = await self._connect_target(refreshed_targets, inbound)
             if not connected:
                 logger.warning("connection rejected: all targets failed core=%s inbound=%s peer=%s last_error=%s", core.get("name"), inbound.get("name"), peer, self.last_error)
                 return
@@ -986,6 +1063,9 @@ class ForwarderRuntime:
             "peer_sync_interval": PEER_SYNC_INTERVAL,
             "peer_sync_effective_intervals": [self._endpoint_sync_interval(endpoint) for endpoint in self._peer_sync_endpoints()],
             "peer_sync_nodes": len(self._peer_runtime_cache),
+            "peer_sync_cache_nodes": list(self._peer_runtime_cache.keys()),
+            "peer_sync_errors": dict(self._peer_sync_errors),
+            "peer_sync_last": dict(self._peer_sync_last),
         }
 
 

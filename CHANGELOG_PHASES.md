@@ -76,3 +76,11 @@ The original cleanup plan is complete through Phase 8. Future work should only h
 - Fixed dynamic node-inbound routing so fixed multi-port and random-port remote inbounds can update without a manual B-side port edit.
 - Node Inbound endpoint dropdown labels show only the inbound name, not the current live port.
 - Added quality tests for dependency-scoped sync interval, node-level interval removal, and token/sync enrichment.
+
+
+## Peer Refresh Fix
+
+- Fixed remote Node Inbound endpoints staying on stale live ports after the dependency node changed ports.
+- Node runtime now refreshes due peer runtime before target resolution and force-refreshes once after stale target failures.
+- Added peer sync diagnostics to `/runtime`: `peer_sync_errors`, `peer_sync_cache_nodes`, and `peer_sync_last`.
+- Quality suite passes: `bash scripts/quality_check.sh`.
