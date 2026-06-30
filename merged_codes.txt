@@ -3,7 +3,6 @@
 # فایل: .env.example
 ================================================================================
 
-
 # panel or node; default is panel when omitted
 DOCTOR_DEV_MODE=panel
 APP_NAME=DoctorDevPanel
@@ -19,6 +18,9 @@ SESSION_COOKIE=doctor_dev_session
 SESSION_TTL_SECONDS=43200
 COOKIE_SECURE=0
 
+USE_TLS=0
+SSL_CERT_PATH=
+SSL_KEY_PATH=
 
 ADMIN_STORE_PATH=./data/admins.json
 DOCTOR_DEV_DATA_DIR=./data
@@ -44,10 +46,13 @@ UVICORN_LOG_LEVEL=info
 
 
 
+
+
+
+
 ================================================================================
 # فایل: .gitignore
 ================================================================================
-
 
 __pycache__/
 *.py[cod]
@@ -63,155 +68,19 @@ build/
 .cache/
 .idea/
 .vscode/
-
-
-
-================================================================================
-# فایل: cert/pangshanbebazar.ir/fullchain.pem
-================================================================================
-
------BEGIN CERTIFICATE-----
-MIIDpzCCAy2gAwIBAgISBS9aEZbSmuwYxiC3aSoicEaBMAoGCCqGSM49BAMDMDMx
-CzAJBgNVBAYTAlVTMRYwFAYDVQQKEw1MZXQncyBFbmNyeXB0MQwwCgYDVQQDEwNZ
-RTEwHhcNMjYwNjA0MTczMjM3WhcNMjYwOTAyMTczMjM2WjAdMRswGQYDVQQDExJw
-YW5nc2hhbmJlYmF6YXIuaXIwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAAQV/zWo
-Jqa6IDG/JUwgxK9r3W7ZrOKOfIV1bnFPYDOqfiER37rnyvALYgsKRZoADYsxToog
-cbaQ5eHVrETRu8aIo4ICNTCCAjEwDgYDVR0PAQH/BAQDAgeAMBMGA1UdJQQMMAoG
-CCsGAQUFBwMBMAwGA1UdEwEB/wQCMAAwHQYDVR0OBBYEFDZb/cUA/wjtVxwbgyAD
-hv4WZvJqMB8GA1UdIwQYMBaAFLsgykcL/tflnPmPCSqjjDdFsbzYMDMGCCsGAQUF
-BwEBBCcwJTAjBggrBgEFBQcwAoYXaHR0cDovL3llMS5pLmxlbmNyLm9yZy8wMwYD
-VR0RBCwwKoIUKi5wYW5nc2hhbmJlYmF6YXIuaXKCEnBhbmdzaGFuYmViYXphci5p
-cjATBgNVHSAEDDAKMAgGBmeBDAECATAtBgNVHR8EJjAkMCKgIKAehhxodHRwOi8v
-eWUxLmMubGVuY3Iub3JnLzIuY3JsMIIBDAYKKwYBBAHWeQIEAgSB/QSB+gD4AH4A
-Rq+GPTs+5Z+ld96oJF02sNntIqIj9GF3QSKUUu6VUF8AAAGek+dDQQAIAAAFAAiU
-2xgEAwBHMEUCICYKDu1+w62UwD2loK154cCMChCzh4srMKabGRYdl9S5AiEAm8YP
-Zb/Xw5UCCJRqeivwCFzaadYTXHnbC1hnCnLBpWsAdgDYCVU7lE96/8gWGW+UT4Wr
-sPj8XodVJg8V0S5yu0VLFAAAAZ6T50OQAAAEAwBHMEUCIC2t6HJXqqvRRYzEM3Td
-X6z2dkQmdiH2BBDpRbNvorAfAiEAoxOdRsCdUwe6BJ8iWF2Mx9zLAtU40BM7AXGa
-Gsg2UlUwCgYIKoZIzj0EAwMDaAAwZQIwaRv+6wVLMWjgUSNYvm2+M8MNGzo5mNLM
-v287VmfuefNmCndXD+Uk3dJVPd9ZUbc+AjEAo1WbUR6RmSovhfWnKhfmDYnrFnFR
-A0wZIDUPxYu5WyfGsYgaoB75pzqA9rKMYeLw
------END CERTIFICATE-----
-
------BEGIN CERTIFICATE-----
-MIICizCCAhGgAwIBAgIQXd1w3TH4AchcGGp6BLgK/jAKBggqhkjOPQQDAzAuMQsw
-CQYDVQQGEwJVUzENMAsGA1UEChMESVNSRzEQMA4GA1UEAxMHUm9vdCBZRTAeFw0y
-NTA5MDMwMDAwMDBaFw0yODA5MDIyMzU5NTlaMDMxCzAJBgNVBAYTAlVTMRYwFAYD
-VQQKEw1MZXQncyBFbmNyeXB0MQwwCgYDVQQDEwNZRTEwdjAQBgcqhkjOPQIBBgUr
-gQQAIgNiAAQHZVB1/mimla2hfSurylScjPMZaOJXLz/NnAc2sylm8WDyhU9Ccp+z
-ASQi5vSwGGJjSGklkD9fdPR8GpyDIOIjCEfrnbt/v+ZSEPLLEGbaM6EccDbN7p9x
-teIm2Avf+ryjge4wgeswDgYDVR0PAQH/BAQDAgGGMBMGA1UdJQQMMAoGCCsGAQUF
-BwMBMBIGA1UdEwEB/wQIMAYBAf8CAQAwHQYDVR0OBBYEFLsgykcL/tflnPmPCSqj
-jDdFsbzYMB8GA1UdIwQYMBaAFKPIJlqOoUzQNWP8myPIOq5W809WMDIGCCsGAQUF
-BwEBBCYwJDAiBggrBgEFBQcwAoYWaHR0cDovL3llLmkubGVuY3Iub3JnLzATBgNV
-HSAEDDAKMAgGBmeBDAECATAnBgNVHR8EIDAeMBygGqAYhhZodHRwOi8veWUuYy5s
-ZW5jci5vcmcvMAoGCCqGSM49BAMDA2gAMGUCMQDgjUEahFT/h3DRakqiPZpLvPgf
-Zwkt6K2EOMmh1nvEzl83eMLYcod4GCl3b0J1Nn0CMBNYmEQJb4CEG5WoOe7aRn/L
-VKu6saHmHEynI7ysIPd8zQsK1HdmhlHKlw9Z5GpGvA==
------END CERTIFICATE-----
-
------BEGIN CERTIFICATE-----
-MIICpjCCAiugAwIBAgIRAIchZfw0tuX7qK3Vs3BftTowCgYIKoZIzj0EAwMwTzEL
-MAkGA1UEBhMCVVMxKTAnBgNVBAoTIEludGVybmV0IFNlY3VyaXR5IFJlc2VhcmNo
-IEdyb3VwMRUwEwYDVQQDEwxJU1JHIFJvb3QgWDIwHhcNMjYwNTEzMDAwMDAwWhcN
-MzIwOTAyMjM1OTU5WjAuMQswCQYDVQQGEwJVUzENMAsGA1UEChMESVNSRzEQMA4G
-A1UEAxMHUm9vdCBZRTB2MBAGByqGSM49AgEGBSuBBAAiA2IABDwS/6vhrcVqcbBo
-+wgdI3fwn9x7DNJJOY/lTOti0vkwuRN87RhEhTH17E7XyFjWsPYhIPt/wzOqxTd2
-b+4ZJNy9ID04YywF9U5zasDVyGSNErVNtz8uSGh5izW87j77GaOB6zCB6DAOBgNV
-HQ8BAf8EBAMCAQYwEwYDVR0lBAwwCgYIKwYBBQUHAwEwDwYDVR0TAQH/BAUwAwEB
-/zAdBgNVHQ4EFgQUo8gmWo6hTNA1Y/ybI8g6rlbzT1YwHwYDVR0jBBgwFoAUfEKW
-rt5LSDv6kviejM9ti6lyN5UwMgYIKwYBBQUHAQEEJjAkMCIGCCsGAQUFBzAChhZo
-dHRwOi8veDIuaS5sZW5jci5vcmcvMBMGA1UdIAQMMAowCAYGZ4EMAQIBMCcGA1Ud
-HwQgMB4wHKAaoBiGFmh0dHA6Ly94Mi5jLmxlbmNyLm9yZy8wCgYIKoZIzj0EAwMD
-aQAwZgIxAMU19WCtmxVND8UHBZRoma49Z7jPs64Dma0eTu1OChVbB/2J7GV3nvYK
-Ax54uk1G9QIxAO0miLVJu8PLNiXXXkiE/gsK3CTRTF/aeo4bMX42Zw40csRU6AC2
-6hSW1/IWaas6dg==
------END CERTIFICATE-----
-
-
------BEGIN CERTIFICATE-----
-MIIEcDCCAligAwIBAgIQbI8dxyfHEX97r4U6yYD5zTANBgkqhkiG9w0BAQsFADBP
-MQswCQYDVQQGEwJVUzEpMCcGA1UEChMgSW50ZXJuZXQgU2VjdXJpdHkgUmVzZWFy
-Y2ggR3JvdXAxFTATBgNVBAMTDElTUkcgUm9vdCBYMTAeFw0yNjA1MTMwMDAwMDBa
-Fw0zMjA5MDIyMzU5NTlaME8xCzAJBgNVBAYTAlVTMSkwJwYDVQQKEyBJbnRlcm5l
-dCBTZWN1cml0eSBSZXNlYXJjaCBHcm91cDEVMBMGA1UEAxMMSVNSRyBSb290IFgy
-MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEzZvVn4CDCuwJSvMWSj5cz3es3mcFDR0H
-ttwW+1qLFNvicWDEukWVEYmO6gbf9yoWHKS5xcUy4APgHoIYOIvXRdgKam7mAHf7
-AlF9ItgKbppbd9/w+kHsOdx1ymgHDB/qo4H1MIHyMA4GA1UdDwEB/wQEAwIBBjAd
-BgNVHSUEFjAUBggrBgEFBQcDAQYIKwYBBQUHAwIwDwYDVR0TAQH/BAUwAwEB/zAd
-BgNVHQ4EFgQUfEKWrt5LSDv6kviejM9ti6lyN5UwHwYDVR0jBBgwFoAUebRZ5nu2
-5eQBc4AIiMgaWPbpm24wMgYIKwYBBQUHAQEEJjAkMCIGCCsGAQUFBzAChhZodHRw
-Oi8veDEuaS5sZW5jci5vcmcvMBMGA1UdIAQMMAowCAYGZ4EMAQIBMCcGA1UdHwQg
-MB4wHKAaoBiGFmh0dHA6Ly94MS5jLmxlbmNyLm9yZy8wDQYJKoZIhvcNAQELBQAD
-ggIBAD2/e9frmMxNpCV03qUHegg+MV2wz9644YoXdqtH8RyWYcBO7xfjjGEXdU1e
-/o0OkEFiynUCOSIk/vLLo7ttz6CPAeNlWfC0XNkoGeWgK6jjXvozBaGuGH5n0Ufo
-shMeWTuURqNN5G00sSXDTBrpp2+mgvdZQjb8K11TYMA25QA+YHNfbIEL0BniAhKS
-2gsnJjSzrdZLI+EZ7SEyqdR2rkjd1KutLDU+n3TFyxjniZVGur4YlhMP3mY/dV95
-IruAkkjOZier6hGBdEgZXXvaCz9u9iVEadsIE75pAGL8oHV5vxdARDiotRpul1IN
-/UZwzAbrfUFcw1HkAcYD/mlZfnQ2ieCF2MS7j3Vhv7JPDKp45fmykmzYNSrumRW0
-upFFKDBOoF7hsOb7oLyHS+Uft6jOUfOrogj8YUx38hKb2K20r42OgsSdDdxdeYWc
-MS3Sb6mwJeSZEYxJ2gaXnDSPaKhhrNkYwljyVQyr4Nq+MEJytXNTnHqaAcrNwZlV
-pcJL1KBnMrMjP7eanvUwL3FYj3cF17jtboLt7gLoi4+2rWZFvn+w54jmd/FIuhhZ
-cEaU/wvU6BUNMtcVquVGHp7itQeDth5j+XL3j4WJ2SABwzUl6OeYdgpIt/ITZa+p
-TT0mQ/r5XyA4MEAiabn7XJjvCERlF2dcn2wqJw+CreTkkQ2R
------END CERTIFICATE-----
+*.pem
+*.key
+*.crt
 
 
 
 
-================================================================================
-# فایل: cert/pangshanbebazar.ir/ISRG_Root_X1.pem
-================================================================================
-
------BEGIN CERTIFICATE-----
-MIIFazCCA1OgAwIBAgIRAIIQz7DSQONZRGPgu2OCiwAwDQYJKoZIhvcNAQELBQAw
-TzELMAkGA1UEBhMCVVMxKTAnBgNVBAoTIEludGVybmV0IFNlY3VyaXR5IFJlc2Vh
-cmNoIEdyb3VwMRUwEwYDVQQDEwxJU1JHIFJvb3QgWDEwHhcNMTUwNjA0MTEwNDM4
-WhcNMzUwNjA0MTEwNDM4WjBPMQswCQYDVQQGEwJVUzEpMCcGA1UEChMgSW50ZXJu
-ZXQgU2VjdXJpdHkgUmVzZWFyY2ggR3JvdXAxFTATBgNVBAMTDElTUkcgUm9vdCBY
-MTCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIBAK3oJHP0FDfzm54rVygc
-h77ct984kIxuPOZXoHj3dcKi/vVqbvYATyjb3miGbESTtrFj/RQSa78f0uoxmyF+
-0TM8ukj13Xnfs7j/EvEhmkvBioZxaUpmZmyPfjxwv60pIgbz5MDmgK7iS4+3mX6U
-A5/TR5d8mUgjU+g4rk8Kb4Mu0UlXjIB0ttov0DiNewNwIRt18jA8+o+u3dpjq+sW
-T8KOEUt+zwvo/7V3LvSye0rgTBIlDHCNAymg4VMk7BPZ7hm/ELNKjD+Jo2FR3qyH
-B5T0Y3HsLuJvW5iB4YlcNHlsdu87kGJ55tukmi8mxdAQ4Q7e2RCOFvu396j3x+UC
-B5iPNgiV5+I3lg02dZ77DnKxHZu8A/lJBdiB3QW0KtZB6awBdpUKD9jf1b0SHzUv
-KBds0pjBqAlkd25HN7rOrFleaJ1/ctaJxQZBKT5ZPt0m9STJEadao0xAH0ahmbWn
-OlFuhjuefXKnEgV4We0+UXgVCwOPjdAvBbI+e0ocS3MFEvzG6uBQE3xDk3SzynTn
-jh8BCNAw1FtxNrQHusEwMFxIt4I7mKZ9YIqioymCzLq9gwQbooMDQaHWBfEbwrbw
-qHyGO0aoSCqI3Haadr8faqU9GY/rOPNk3sgrDQoo//fb4hVC1CLQJ13hef4Y53CI
-rU7m2Ys6xt0nUW7/vGT1M0NPAgMBAAGjQjBAMA4GA1UdDwEB/wQEAwIBBjAPBgNV
-HRMBAf8EBTADAQH/MB0GA1UdDgQWBBR5tFnme7bl5AFzgAiIyBpY9umbbjANBgkq
-hkiG9w0BAQsFAAOCAgEAVR9YqbyyqFDQDLHYGmkgJykIrGF1XIpu+ILlaS/V9lZL
-ubhzEFnTIZd+50xx+7LSYK05qAvqFyFWhfFQDlnrzuBZ6brJFe+GnY+EgPbk6ZGQ
-3BebYhtF8GaV0nxvwuo77x/Py9auJ/GpsMiu/X1+mvoiBOv/2X/qkSsisRcOj/KK
-NFtY2PwByVS5uCbMiogziUwthDyC3+6WVwW6LLv3xLfHTjuCvjHIInNzktHCgKQ5
-ORAzI4JMPJ+GslWYHb4phowim57iaztXOoJwTdwJx4nLCgdNbOhdjsnvzqvHu7Ur
-TkXWStAmzOVyyghqpZXjFaH3pO3JLF+l+/+sKAIuvtd7u+Nxe5AW0wdeRlN8NwdC
-jNPElpzVmbUq4JUagEiuTDkHzsxHpFKVK7q4+63SM1N95R1NbdWhscdCb+ZAJzVc
-oyi3B43njTOQ5yOf+1CceWxG1bQVs5ZufpsMljq4Ui0/1lvh+wjChP4kqKOJ2qxq
-4RgqsahDYVvTH9w7jXbyLeiNdd8XM2w9U/t7y0Ff/9yi0GE44Za4rF2LN9d11TPA
-mRGunUHBcnWEvgJBQl9nJEiU0Zsnvgc/ubhPgXRR4Xq37Z0j4r7g1SgEEzwxA57d
-emyPxgcYxn/eR44/KJ4EBs+lVDR3veyJm+kXQ99b21/+jh5Xos1AnX5iItreGCc=
------END CERTIFICATE-----
-
-
-================================================================================
-# فایل: cert/pangshanbebazar.ir/privkey.pem
-================================================================================
-
------BEGIN EC PRIVATE KEY-----
-MHcCAQEEIBbZYFHE3hrShAst46B/sQ3QPRE1n8T4DOczZRT00n7moAoGCCqGSM49
-AwEHoUQDQgAEFf81qCamuiAxvyVMIMSva91u2azijnyFdW5xT2Azqn4hEd+658rw
-C2ILCkWaAA2LMU6KIHG2kOXh1axE0bvGiA==
------END EC PRIVATE KEY-----
 
 
 
 ================================================================================
 # فایل: CHANGELOG_PHASES.md
 ================================================================================
-
 
 # Doctor Dev changelog by phases
 
@@ -300,23 +169,11 @@ The original cleanup plan is complete through Phase 8. Future work should only h
 - Added peer sync diagnostics to `/runtime`: `peer_sync_errors`, `peer_sync_cache_nodes`, and `peer_sync_last`.
 - Quality suite passes: `bash scripts/quality_check.sh`.
 
-## HTTP-only cleanup
-
-- Removed project-managed secure-file settings, storage fields, UI inputs, installer prompts, and custom trust-material verification paths.
-- Panel and node now run HTTP control-plane by default for the current project scope.
-
-## Lab peer token secret migration fix
-
-- Persist missing `peer_verify_secret` for legacy panel node records when nodes are loaded.
-- Prevent transient per-call peer secrets from causing lab peer runtime sync failures.
-- Added regression coverage for legacy node stores without peer verification secrets.
-
 
 
 ================================================================================
 # فایل: docs/ARCHITECTURE.md
 ================================================================================
-
 
 # Doctor Dev clean architecture
 
@@ -365,13 +222,9 @@ large endpoint groups from `app.py` into `api/nodes.py`, `api/cores.py`,
 
 
 
-
-
-
 ================================================================================
 # فایل: docs/CONSISTENCY_AUDIT.md
 ================================================================================
-
 
 # Consistency audit notes
 
@@ -392,13 +245,9 @@ Rules:
 
 
 
-
-
-
 ================================================================================
 # فایل: docs/DEPENDENCY_PEER_SYNC.md
 ================================================================================
-
 
 # Dependency-scoped peer runtime sync
 
@@ -426,13 +275,9 @@ The sync interval lives on the dependency, not on the node record. This lets dif
 
 
 
-
-
-
 ================================================================================
 # فایل: docs/LAB_ROUTING_TEST_GUIDE.md
 ================================================================================
-
 
 # Doctor Dev Lab Routing Test Guide
 
@@ -573,13 +418,9 @@ ss -lntp | egrep '1201|9101|9102|9103|9104'
 
 
 
-
-
-
 ================================================================================
 # فایل: docs/LINUX_MAIN_RUN.md
 ================================================================================
-
 
 # Run Doctor Dev with main.py on Linux
 
@@ -622,13 +463,9 @@ curl -H 'Authorization: Bearer 11111111-1111-1111-1111-111111111111' http://127.
 
 
 
-
-
-
 ================================================================================
 # فایل: docs/LOCAL_TEST.md
 ================================================================================
-
 
 # Local test
 
@@ -650,13 +487,9 @@ and then add both nodes from the panel UI.
 
 
 
-
-
-
 ================================================================================
 # فایل: docs/PEER_REFRESH_FIX.md
 ================================================================================
-
 
 # Peer Refresh Fix
 
@@ -680,13 +513,9 @@ If `B -> NodeInbound(A/a-direct-9101)` and A changes from `1211` to `1209`, B sh
 
 
 
-
-
-
 ================================================================================
 # فایل: docs/PHASE5_SECURITY_AND_STRUCTURE.md
 ================================================================================
-
 
 # Phase 5 — security/auth tests and structure cleanup
 
@@ -764,13 +593,9 @@ Still remaining:
 
 
 
-
-
-
 ================================================================================
 # فایل: docs/PHASE6_STRUCTURE_CLEANUP.md
 ================================================================================
-
 
 # Phase 6 — API module split and composition-root cleanup
 
@@ -816,13 +641,9 @@ The quality suite imports the panel app and checks that key routes are still reg
 
 
 
-
-
-
 ================================================================================
 # فایل: docs/PHASE7_8_FINAL_HARDENING.md
 ================================================================================
-
 
 # Phase 7 and 8 final hardening
 
@@ -862,13 +683,9 @@ bash scripts/quality_check.sh
 
 
 
-
-
-
 ================================================================================
 # فایل: docs/PHASE_PLAN.md
 ================================================================================
-
 
 # Doctor Dev cleanup plan
 
@@ -891,13 +708,9 @@ Do not add new features unless explicitly requested. Use the current codebase fo
 
 
 
-
-
-
 ================================================================================
 # فایل: docs/QUALITY_AND_CLEANUP.md
 ================================================================================
-
 
 # Quality and cleanup checks
 
@@ -911,7 +724,6 @@ This phase focuses on reliability and maintainability without adding product fea
 - Peer token verification rejects wrong signatures and target mismatches.
 - Failed node config apply restores the previous working runtime config when possible.
 - Node env examples expose only `API_PORT`; inbound listener ports are runtime config, not fixed node service ports.
-- Project-managed secure-file fields were removed from panel, node, installer, and runtime config paths.
 
 ## Run all checks
 
@@ -925,13 +737,9 @@ For now the project should only receive fixes and cleanup for the current panel/
 
 
 
-
-
-
 ================================================================================
 # فایل: docs/RUNTIME_CONTRACT.md
 ================================================================================
-
 
 # Node runtime contract
 
@@ -948,7 +756,7 @@ The node exposes one management API port: `API_PORT`. Runtime listener ports are
 ## Runtime export must include
 
 - `node_id`
-- API host/port info
+- API host/port/tls info
 - active core id/name
 - desired inbounds/balancers summary
 - actual listeners with real assigned ports
@@ -981,13 +789,9 @@ then `/health` and `/runtime` must report `port: 9098` and `api_port: 9098`, eve
 
 
 
-
-
-
 ================================================================================
 # فایل: docs/WEB_STATIC_FIX.md
 ================================================================================
-
 
 # Web static asset fix
 
@@ -999,13 +803,9 @@ The SPA fallback now returns 404 for missing API/static paths instead of returni
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_node/__init__.py
 ================================================================================
-
 
 """Doctor Dev Node package."""
 
@@ -1017,18 +817,11 @@ __version__ = "0.9.0-final-polish-runtime"
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_node/api/__init__.py
 ================================================================================
 
-
 """FastAPI endpoints and request/response schemas."""
-
-
-
 
 
 
@@ -1038,11 +831,7 @@ __version__ = "0.9.0-final-polish-runtime"
 # فایل: doctor_dev_node/config/__init__.py
 ================================================================================
 
-
 """routing config persistence and env parsing."""
-
-
-
 
 
 
@@ -1051,7 +840,6 @@ __version__ = "0.9.0-final-polish-runtime"
 ================================================================================
 # فایل: doctor_dev_node/config/routing_store.py
 ================================================================================
-
 
 from __future__ import annotations
 
@@ -1107,13 +895,9 @@ def write_routing_config(data: dict[str, Any]) -> None:
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_node/env_loader.py
 ================================================================================
-
 
 from __future__ import annotations
 
@@ -1142,13 +926,9 @@ def load_env_file(path: Union[str, os.PathLike[str]]) -> None:
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_node/logging_utils.py
 ================================================================================
-
 
 from __future__ import annotations
 
@@ -1171,6 +951,12 @@ _SENSITIVE_KEYS = {
     "access_token",
     "refresh_token",
     "private_key",
+    "ssl_key_file",
+    "ssl_key_path",
+    "key_file",
+    "key_path",
+    "certificate",
+    "cert",
 }
 
 
@@ -1337,13 +1123,9 @@ def filter_lines(lines: Iterable[str], *, level: str = 'all', query: str = '') -
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_node/peer_tokens.py
 ================================================================================
-
 
 from __future__ import annotations
 
@@ -1404,13 +1186,9 @@ def verify_peer_token(token: str, *, secret: str, target_node_id: str = "", targ
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_node/runtime.py
 ================================================================================
-
 
 from __future__ import annotations
 
@@ -1420,6 +1198,7 @@ import json
 import os
 import random
 import socket
+import ssl
 import time
 from urllib.request import Request, urlopen
 from dataclasses import dataclass
@@ -1811,7 +1590,8 @@ class ForwarderRuntime:
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
         req = Request(token_url, data=body, headers=headers, method="POST")
-        with urlopen(req, timeout=PEER_SYNC_TIMEOUT) as response:  # noqa: S310
+        context = ssl._create_unverified_context() if token_url.startswith("https://") else None
+        with urlopen(req, timeout=PEER_SYNC_TIMEOUT, context=context) as response:  # noqa: S310
             raw = response.read(1024 * 64).decode("utf-8", errors="replace")
             data = json.loads(raw) if raw else {}
         token = str(data.get("token") or "")
@@ -1826,6 +1606,7 @@ class ForwarderRuntime:
     def _fetch_peer_export(self, endpoint: dict[str, Any]) -> Optional[dict[str, Any]]:
         urls = endpoint.get("sync_urls") if isinstance(endpoint.get("sync_urls"), list) else []
         token = self._fetch_peer_token(endpoint)
+        certificate = str(endpoint.get("certificate") or "")
         if not urls or not token:
             return None
         last_error = ""
@@ -1833,7 +1614,10 @@ class ForwarderRuntime:
             try:
                 headers = {"Accept": "application/json", "User-Agent": "DoctorDevNode/PeerSync", "X-Doctor-Node-Token": token}
                 req = Request(str(url), headers=headers)
-                with urlopen(req, timeout=PEER_SYNC_TIMEOUT) as response:  # noqa: S310 - admin configured peer URL
+                context = None
+                if str(url).startswith("https://"):
+                    context = ssl.create_default_context(cadata=certificate) if certificate.strip() else ssl._create_unverified_context()
+                with urlopen(req, timeout=PEER_SYNC_TIMEOUT, context=context) as response:  # noqa: S310 - admin configured peer URL
                     raw = response.read(1024 * 512).decode("utf-8", errors="replace")
                     parsed = json.loads(raw) if raw else {}
                     if isinstance(parsed, dict) and parsed.get("ok") is not False:
@@ -2485,18 +2269,11 @@ runtime = ForwarderRuntime()
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_node/security/__init__.py
 ================================================================================
 
-
 """node auth, token verification, and secret redaction."""
-
-
-
 
 
 
@@ -2505,7 +2282,6 @@ runtime = ForwarderRuntime()
 ================================================================================
 # فایل: doctor_dev_node/security/auth.py
 ================================================================================
-
 
 from __future__ import annotations
 
@@ -2530,13 +2306,9 @@ def check_auth(authorization: Optional[str]) -> None:
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_node/server.py
 ================================================================================
-
 
 from __future__ import annotations
 
@@ -2685,10 +2457,12 @@ def api_identity() -> dict[str, Any]:
     """
     host = os.getenv("DOCTOR_DEV_NODE_BOUND_HOST") or os.getenv("NODE_HOST") or "127.0.0.1"
     port = _int_env("DOCTOR_DEV_NODE_BOUND_API_PORT", "API_PORT", default=62051)
+    tls = bool(os.getenv("SSL_CERT_FILE") and os.getenv("SSL_KEY_FILE"))
     return {
         "host": host,
         "port": port,
         "api_port": port,
+        "tls": tls,
     }
 
 
@@ -2841,10 +2615,6 @@ class ApplyConfigBody(BaseModel):
     version: int = 1
     node_id: str = ""
     generated_at: Optional[str] = None
-    # The panel signs peer tokens with the target node's peer_verify_secret.
-    # Keep this top-level field in the node-side routing config; otherwise
-    # Pydantic drops it during /config/apply and peer runtime sync returns 401.
-    peer_verify_secret: str = ""
     cores: list[dict[str, Any]] = []
 
 
@@ -2870,13 +2640,15 @@ async def status(authorization: Optional[str] = Header(default=None)) -> dict:
     check_auth(authorization)
     logger.info("status requested")
     if is_debug_enabled():
-        logger.debug("node.status.env %s", debug_json({"NODE_HOST": os.getenv("NODE_HOST"), "API_PORT": os.getenv("API_PORT")}))
+        logger.debug("node.status.env %s", debug_json({"NODE_HOST": os.getenv("NODE_HOST"), "API_PORT": os.getenv("API_PORT"), "SSL_CERT_FILE": os.getenv("SSL_CERT_FILE"), "SSL_KEY_FILE": "***" if os.getenv("SSL_KEY_FILE") else ""}))
     return {
         "status": "running",
         "version": __version__,
         "config": {
             "node_host": api_identity()["host"],
             "api_port": api_identity()["port"],
+            "ssl_cert_file": os.getenv("SSL_CERT_FILE", ""),
+            "ssl_key_file": "***" if os.getenv("SSL_KEY_FILE") else "",
             "peer_token_auth": bool(read_routing_config().get("peer_verify_secret")),
         },
         "routing": runtime_summary(),
@@ -2925,14 +2697,6 @@ async def logs(limit: int = 300, level: str = "all", q: str = "", authorization:
 async def apply_config(body: ApplyConfigBody, authorization: Optional[str] = Header(default=None)) -> dict:
     check_auth(authorization)
     data = pydantic_to_dict(body)
-    previous_config = read_routing_config()
-    incoming_secret = str(data.get("peer_verify_secret") or "").strip()
-    previous_secret = str(previous_config.get("peer_verify_secret") or "").strip()
-    same_node = str(previous_config.get("node_id") or "") == str(data.get("node_id") or "")
-    if not incoming_secret and previous_secret and same_node:
-        # Backward-compatible safety: do not erase an already-applied peer
-        # verification secret if an older panel/client sends a config without it.
-        data["peer_verify_secret"] = previous_secret
     enabled_cores = [core for core in (data.get("cores") or []) if isinstance(core, dict) and core.get("enabled") is not False]
     if len(enabled_cores) > 1:
         logger.warning("routing config rejected: node_id=%s enabled_cores=%s", data.get("node_id"), len(enabled_cores))
@@ -2954,6 +2718,7 @@ async def apply_config(body: ApplyConfigBody, authorization: Optional[str] = Hea
             "errors": validation_errors,
             "summary": runtime.summary() | {"ok": False, "listener_errors": len(validation_errors)},
         }
+    previous_config = read_routing_config()
     previous_has_runtime = bool(previous_config.get("cores"))
     summary = await runtime.apply_config(data)
     if not summary.get("ok", True):
@@ -3023,11 +2788,16 @@ def main() -> None:
     os.environ["API_PORT"] = str(port)
     os.environ["DOCTOR_DEV_NODE_BOUND_HOST"] = str(host)
     os.environ["DOCTOR_DEV_NODE_BOUND_API_PORT"] = str(port)
+    ssl_cert = os.getenv("SSL_CERT_FILE") or None
+    ssl_key = os.getenv("SSL_KEY_FILE") or None
+    use_tls = bool(ssl_cert and ssl_key)
     uvicorn.run(
         "doctor_dev_node.server:app",
         host=host,
         port=port,
         log_level="debug" if is_debug_enabled() else os.getenv("UVICORN_LOG_LEVEL", "info"),
+        ssl_certfile=ssl_cert if use_tls else None,
+        ssl_keyfile=ssl_key if use_tls else None,
     )
 
 
@@ -3040,18 +2810,11 @@ if __name__ == "__main__":
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_node/services/__init__.py
 ================================================================================
 
-
 """node runtime services such as peer sync and apply orchestration."""
-
-
-
 
 
 
@@ -3060,7 +2823,6 @@ if __name__ == "__main__":
 ================================================================================
 # فایل: doctor_dev_panel/__init__.py
 ================================================================================
-
 
 """Doctor Dev Panel package."""
 
@@ -3072,13 +2834,9 @@ __version__ = "0.9.0-final-polish-runtime"
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_panel/admin_cli.py
 ================================================================================
-
 
 from __future__ import annotations
 
@@ -3174,13 +2932,9 @@ if __name__ == "__main__":
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_panel/admin_store.py
 ================================================================================
-
 
 """Compatibility shim. Use doctor_dev_panel.stores.admin_store."""
 
@@ -3190,13 +2944,9 @@ from .stores.admin_store import *  # noqa: F401,F403
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_panel/api/__init__.py
 ================================================================================
-
 
 """Panel API route modules.
 
@@ -3208,13 +2958,9 @@ registers the current routes while this project is being migrated gradually.
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_panel/api/auth.py
 ================================================================================
-
 
 from __future__ import annotations
 
@@ -3236,7 +2982,7 @@ async def login(body: LoginBody) -> JSONResponse:
         raise HTTPException(status_code=401, detail="Invalid username or password.")
 
     response = JSONResponse({"ok": True, "username": body.username})
-    secure_cookie = os.getenv("COOKIE_SECURE", "0") == "1"
+    secure_cookie = os.getenv("COOKIE_SECURE", "0") == "1" or os.getenv("USE_TLS", "0") == "1"
     response.set_cookie(
         SESSION_COOKIE,
         make_session(body.username),
@@ -3261,13 +3007,9 @@ async def me(user: str = Depends(require_admin)) -> dict:
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_panel/api/cores.py
 ================================================================================
-
 
 from __future__ import annotations
 
@@ -3455,13 +3197,9 @@ async def api_apply_core(core_id: str, user: str = Depends(require_admin)) -> di
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_panel/api/logs.py
 ================================================================================
-
 
 from __future__ import annotations
 
@@ -3540,13 +3278,9 @@ async def api_logs(
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_panel/api/nodes.py
 ================================================================================
-
 
 from __future__ import annotations
 
@@ -3780,13 +3514,9 @@ async def api_apply_node_config(node_id: str, user: str = Depends(require_admin)
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_panel/api/system.py
 ================================================================================
-
 
 from __future__ import annotations
 
@@ -3876,13 +3606,9 @@ async def health() -> dict:
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_panel/api_errors.py
 ================================================================================
-
 
 from __future__ import annotations
 
@@ -3901,13 +3627,9 @@ def api_error(status_code: int, error_code: str, message: str) -> HTTPException:
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_panel/app.py
 ================================================================================
-
 
 from __future__ import annotations
 
@@ -4048,13 +3770,9 @@ async def spa_fallback(full_path: str):
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_panel/auth.py
 ================================================================================
-
 
 from __future__ import annotations
 
@@ -4138,13 +3856,9 @@ async def require_admin(request: Request) -> str:
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_panel/config.py
 ================================================================================
-
 
 from __future__ import annotations
 
@@ -4174,13 +3888,9 @@ SECURITY_HEADERS = {
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_panel/core_store.py
 ================================================================================
-
 
 """Compatibility shim. Use doctor_dev_panel.stores.core_store."""
 
@@ -4190,13 +3900,9 @@ from .stores.core_store import *  # noqa: F401,F403
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_panel/deps.py
 ================================================================================
-
 
 from __future__ import annotations
 
@@ -4326,13 +4032,9 @@ def validate_manual_json_config(raw: str) -> dict[str, Any]:
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_panel/env_loader.py
 ================================================================================
-
 
 from __future__ import annotations
 
@@ -4365,13 +4067,9 @@ def load_env_file(path: Optional[Union[str, os.PathLike[str]]]) -> None:
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_panel/id_utils.py
 ================================================================================
-
 
 from __future__ import annotations
 
@@ -4422,13 +4120,9 @@ def core_id_or_empty(value: Any) -> str:
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_panel/integrity.py
 ================================================================================
-
 
 from __future__ import annotations
 
@@ -4561,13 +4255,9 @@ def repair_integrity() -> dict[str, Any]:
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_panel/logging_utils.py
 ================================================================================
-
 
 from __future__ import annotations
 
@@ -4590,6 +4280,12 @@ _SENSITIVE_KEYS = {
     "access_token",
     "refresh_token",
     "private_key",
+    "ssl_key_file",
+    "ssl_key_path",
+    "key_file",
+    "key_path",
+    "certificate",
+    "cert",
 }
 
 
@@ -4756,13 +4452,9 @@ def filter_lines(lines: Iterable[str], *, level: str = 'all', query: str = '') -
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_panel/node_runtime_cache.py
 ================================================================================
-
 
 """Compatibility shim. Use doctor_dev_panel.stores.node_runtime_cache."""
 
@@ -4772,13 +4464,9 @@ from .stores.node_runtime_cache import *  # noqa: F401,F403
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_panel/node_store.py
 ================================================================================
-
 
 """Compatibility shim. Use doctor_dev_panel.stores.node_store."""
 
@@ -4788,13 +4476,9 @@ from .stores.node_store import *  # noqa: F401,F403
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_panel/peer_tokens.py
 ================================================================================
-
 
 from __future__ import annotations
 
@@ -4855,13 +4539,9 @@ def verify_peer_token(token: str, *, secret: str, target_node_id: str = "", targ
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_panel/schemas.py
 ================================================================================
-
 
 from __future__ import annotations
 
@@ -4882,6 +4562,7 @@ class NodeBody(BaseModel):
     api_key: str = Field(min_length=1, max_length=255)
     peer_token_refresh_interval: int = Field(default=30, ge=5, le=86400)
     peer_token_ttl: int = Field(default=120, ge=10, le=86400)
+    certificate: str = Field(default="", max_length=20000)
     enabled: bool = True
 
 
@@ -4896,6 +4577,7 @@ class CoreInboundBody(BaseModel):
     target_host: str = Field(default="127.0.0.1", max_length=255)
     target_port: int = Field(default=80, ge=1, le=65535)
     target_balancer: str = Field(default="", max_length=120)
+    certificate: str = Field(default="", max_length=20000)
     enabled: bool = True
     notes: str = Field(default="", max_length=500)
 
@@ -4933,6 +4615,7 @@ class CoreBalancerEndpointBody(BaseModel):
     core_id: str = Field(default="", max_length=120)
     inbound_name: str = Field(default="", max_length=120)
     weight: float = Field(default=1, ge=0)
+    certificate: str = Field(default="", max_length=20000)
     enabled: bool = True
     notes: str = Field(default="", max_length=500)
 
@@ -4994,13 +4677,9 @@ class CoreBody(BaseModel):
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_panel/security.py
 ================================================================================
-
 
 from __future__ import annotations
 
@@ -5061,25 +4740,17 @@ if __name__ == "__main__":
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_panel/services/__init__.py
 ================================================================================
 
-
 """Panel service helpers."""
-
-
-
 
 
 
 ================================================================================
 # فایل: doctor_dev_panel/services/drift_detector.py
 ================================================================================
-
 
 from __future__ import annotations
 
@@ -5231,9 +4902,6 @@ def detect_node_drift(node_id: str, desired_config: dict[str, Any], runtime_entr
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_panel/services/node_control.py
 ================================================================================
@@ -5243,6 +4911,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import ssl
 from http.client import RemoteDisconnected
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
@@ -5308,14 +4977,25 @@ def _format_attempts(attempts: list[str]) -> str:
     return " | ".join(cleaned[-4:])
 
 
-def _read_url(url: str, api_key: str = "", *, timeout: float = 4.0) -> tuple[int, dict]:
+def _read_url(
+    url: str, api_key: str = "", *, certificate: str = "", timeout: float = 4.0
+) -> tuple[int, dict]:
     headers = {"Accept": "application/json", "User-Agent": "DoctorDevPanel/NodeCheck"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     req = Request(url, headers=headers)
     if is_debug_enabled():
-        logger.debug("panel.node_api.request %s", debug_json({"method": "GET", "url": url, "headers": headers}))
-    with urlopen(req, timeout=timeout) as response:  # noqa: S310 - admin configured node URL
+        logger.debug(
+            "panel.node_api.request %s",
+            debug_json({"method": "GET", "url": url, "headers": headers, "certificate_supplied": bool(certificate.strip())}),
+        )
+    context = None
+    if url.startswith("https://"):
+        if certificate.strip():
+            context = ssl.create_default_context(cadata=certificate)
+        else:
+            context = ssl._create_unverified_context()  # noqa: SLF001
+    with urlopen(req, timeout=timeout, context=context) as response:  # noqa: S310 - admin configured node URL
         raw = response.read(1024 * 64).decode("utf-8", errors="replace")
         try:
             data = json.loads(raw) if raw else {}
@@ -5326,21 +5006,27 @@ def _read_url(url: str, api_key: str = "", *, timeout: float = 4.0) -> tuple[int
         return int(response.status), data
 
 
-def node_scheme_candidates(address: str) -> tuple[str, list[str]]:
+def node_scheme_candidates(address: str, certificate: str = "") -> tuple[str, list[str]]:
     host, explicit_scheme = _node_host(address)
     if explicit_scheme:
         return host, [explicit_scheme]
-    return host, ["http"]
+    # A stored certificate means "trust this certificate if the control API is HTTPS".
+    # It must not force HTTPS because many nodes expose the control API over HTTP
+    # while using certificates for data-plane or reverse-proxy paths. Try HTTPS
+    # first when a certificate exists, then fall back to HTTP if the TLS handshake
+    # is closed by the remote side.
+    return host, (["https", "http"] if certificate.strip() else ["http", "https"])
 
 
-def node_api_urls(node: dict, path: str) -> list[tuple[str, str]]:
-    host, schemes = node_scheme_candidates(str(node.get("address", "")))
+def node_api_urls(node: dict, path: str) -> list[tuple[str, str, str]]:
+    certificate = str(node.get("certificate") or "").strip()
+    host, schemes = node_scheme_candidates(str(node.get("address", "")), certificate)
     port = int(node.get("api_port") or 62051)
-    return [(f"{scheme}://{host}:{port}{path}", scheme) for scheme in schemes]
+    return [(f"{scheme}://{host}:{port}{path}", scheme, certificate) for scheme in schemes]
 
 
 def read_node_export(node: dict) -> dict:
-    host, schemes = node_scheme_candidates(str(node.get("address", "")))
+    host, schemes = node_scheme_candidates(str(node.get("address", "")), str(node.get("certificate") or ""))
     port = int(node.get("api_port") or 62051)
     api_key = str(node.get("api_key") or "")
     attempts: list[str] = []
@@ -5348,7 +5034,12 @@ def read_node_export(node: dict) -> dict:
         for scheme in schemes:
             url = f"{scheme}://{host}:{port}{path}"
             try:
-                _, data = _read_url(url, api_key=api_key, timeout=_env_float("DOCTOR_DEV_PANEL_NODE_SYNC_TIMEOUT", 3.0))
+                _, data = _read_url(
+                    url,
+                    api_key=api_key,
+                    certificate=str(node.get("certificate") or ""),
+                    timeout=_env_float("DOCTOR_DEV_PANEL_NODE_SYNC_TIMEOUT", 3.0),
+                )
                 if isinstance(data, dict):
                     return data
             except HTTPError as exc:
@@ -5364,7 +5055,8 @@ def read_node_export(node: dict) -> dict:
 
 
 def check_node_sync(payload: dict) -> dict:
-    host, schemes = node_scheme_candidates(str(payload.get("address", "")))
+    certificate = str(payload.get("certificate") or "").strip()
+    host, schemes = node_scheme_candidates(str(payload.get("address", "")), certificate)
     # api_port is the node management API. Inbound/listener ports live inside
     # runtime config and must not be treated as a second fixed node port.
     port = int(payload.get("api_port") or 62051)
@@ -5380,7 +5072,9 @@ def check_node_sync(payload: dict) -> dict:
                 continue
             url = base + endpoint
             try:
-                status_code, data = _read_url(url, key, timeout=_env_float("DOCTOR_DEV_PANEL_NODE_CHECK_TIMEOUT", 4.0))
+                status_code, data = _read_url(
+                    url, key, certificate=certificate if scheme == "https" else "", timeout=_env_float("DOCTOR_DEV_PANEL_NODE_CHECK_TIMEOUT", 4.0)
+                )
                 if 200 <= status_code < 300:
                     return {
                         "ok": True,
@@ -5389,13 +5083,14 @@ def check_node_sync(payload: dict) -> dict:
                         "http_status": status_code,
                         "using_api_port": port,
                         "using_control_scheme": scheme,
+                        "using_tls_certificate": bool(certificate and scheme == "https"),
                         "response": data,
                         "message": "Node connection is healthy.",
                     }
                 last_error = f"{url} returned HTTP {status_code}"
             except HTTPError as exc:
                 last_error = f"{url} returned HTTP {exc.code}"
-            except (RemoteDisconnected, URLError, TimeoutError, OSError, ValueError) as exc:
+            except (RemoteDisconnected, URLError, TimeoutError, OSError, ssl.SSLError, ValueError) as exc:
                 last_error = f"{url} failed: {exc}"
             attempts.append(last_error)
     return {
@@ -5418,9 +5113,14 @@ def read_node_api(node: dict, path: str, *, timeout: float | None = None) -> dic
         timeout = _env_float("DOCTOR_DEV_PANEL_NODE_API_TIMEOUT", 5.0)
     attempts: list[str] = []
     api_key = str(node.get("api_key") or "")
-    for url, scheme in node_api_urls(node, path):
+    for url, scheme, certificate in node_api_urls(node, path):
         try:
-            status_code, data = _read_url(url, api_key, timeout=timeout)
+            status_code, data = _read_url(
+                url,
+                api_key,
+                certificate=certificate if scheme == "https" else "",
+                timeout=timeout,
+            )
             if 200 <= status_code < 300:
                 return data
             attempts.append(f"{url} returned HTTP {status_code}")
@@ -5430,12 +5130,12 @@ def read_node_api(node: dict, path: str, *, timeout: float | None = None) -> dic
                     "This node is running an older agent. Update the node service, restart it, then try again."
                 ) from exc
             raise NodeAPIError(f"Node returned {_http_error_detail(exc)} while handling {path}.") from exc
-        except (RemoteDisconnected, URLError, TimeoutError, OSError, ValueError) as exc:
+        except (RemoteDisconnected, URLError, TimeoutError, OSError, ssl.SSLError, ValueError) as exc:
             attempts.append(f"{url} failed: {exc}")
             continue
     raise NodeAPIError(
         "Node API is unreachable while handling "
-        f"{path}. Check the API port and node service. "
+        f"{path}. Check the API port, TLS/certificate, and node service. "
         f"Attempts: {_format_attempts(attempts)}"
     )
 
@@ -5455,15 +5155,21 @@ def post_node_api(node: dict, path: str, payload: dict, *, timeout: float | None
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     attempts: list[str] = []
-    for url, scheme in node_api_urls(node, path):
+    for url, scheme, certificate in node_api_urls(node, path):
+        context = None
+        if scheme == "https":
+            if certificate.strip():
+                context = ssl.create_default_context(cadata=certificate)
+            else:
+                context = ssl._create_unverified_context()  # noqa: SLF001
         if is_debug_enabled():
             logger.debug(
                 "panel.node_api.request %s",
-                debug_json({"method": "POST", "url": url, "headers": headers, "payload_bytes": len(body)}),
+                debug_json({"method": "POST", "url": url, "headers": headers, "payload_bytes": len(body), "certificate_supplied": bool(certificate.strip())}),
             )
         req = Request(url, data=body, headers=headers, method="POST")
         try:
-            with urlopen(req, timeout=timeout) as response:  # noqa: S310
+            with urlopen(req, timeout=timeout, context=context) as response:  # noqa: S310
                 raw = response.read(1024 * 256).decode("utf-8", errors="replace")
                 data = json.loads(raw) if raw else {}
                 if is_debug_enabled():
@@ -5488,12 +5194,12 @@ def post_node_api(node: dict, path: str, payload: dict, *, timeout: float | None
                     "This node does not support configuration apply yet. Update the node service and restart it."
                 ) from exc
             raise NodeAPIError(f"Node returned {_http_error_detail(exc)} while handling {path}.") from exc
-        except (RemoteDisconnected, URLError, TimeoutError, OSError, ValueError, json.JSONDecodeError) as exc:
+        except (RemoteDisconnected, URLError, TimeoutError, OSError, ssl.SSLError, ValueError, json.JSONDecodeError) as exc:
             attempts.append(f"{url} failed: {exc}")
             continue
     raise NodeAPIError(
         "Node API is unreachable while applying configuration. "
-        "Check that the API port points to the node control-plane and that the node service is running. "
+        "Check that the API port points to the node control-plane and that TLS/certificate settings match the node service. "
         f"Attempts: {_format_attempts(attempts)}"
     )
 
@@ -5502,7 +5208,6 @@ def post_node_api(node: dict, path: str, payload: dict, *, timeout: float | None
 ================================================================================
 # فایل: doctor_dev_panel/services/README.md
 ================================================================================
-
 
 # Panel services
 
@@ -5518,13 +5223,9 @@ The current large `app.py` is kept working, but new code should be placed here f
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_panel/services/runtime_sync.py
 ================================================================================
-
 
 from __future__ import annotations
 
@@ -5615,13 +5316,9 @@ async def sync_all_node_runtime(nodes: list[dict[str, Any]]) -> list[dict[str, A
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_panel/services/topology_validation.py
 ================================================================================
-
 
 from __future__ import annotations
 
@@ -5644,13 +5341,9 @@ def require_core_id(core_id: str) -> str:
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_panel/stores/__init__.py
 ================================================================================
-
 
 """Persistence layer for panel JSON stores.
 
@@ -5662,13 +5355,9 @@ compatibility shims so older imports continue to work.
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_panel/stores/admin_store.py
 ================================================================================
-
 
 from __future__ import annotations
 
@@ -5847,13 +5536,9 @@ def remove_admin(username: str, allow_last: bool = False) -> bool:
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_panel/stores/core_store.py
 ================================================================================
-
 
 from __future__ import annotations
 
@@ -5994,6 +5679,7 @@ def normalize_inbound(payload: dict[str, Any], index: int = 0) -> dict[str, Any]
         "target_host": _clean_name(payload.get("target_host"), "127.0.0.1"),
         "target_port": target_port_int or 80,
         "target_balancer": _clean_name(payload.get("target_balancer"), ""),
+        "certificate": str(payload.get("certificate") or ""),
         "enabled": bool(payload.get("enabled", True)),
         "notes": _clean_name(payload.get("notes"), ""),
     }
@@ -6023,6 +5709,7 @@ def normalize_endpoint(payload: dict[str, Any], index: int = 0) -> dict[str, Any
         "core_id": _clean_name(payload.get("core_id"), ""),
         "inbound_name": _clean_name(payload.get("inbound_name"), ""),
         "weight": max(0, weight_num),
+        "certificate": str(payload.get("certificate") or ""),
         "enabled": bool(payload.get("enabled", True)),
         "notes": _clean_name(payload.get("notes"), ""),
     }
@@ -6103,13 +5790,7 @@ def normalize_core(payload: dict[str, Any], existing: Optional[dict[str, Any]] =
         dependencies_payload = []
     base["inbounds"] = [normalize_inbound(item, idx) for idx, item in enumerate(inbounds_payload)]
     base["balancers"] = [normalize_balancer(item, idx) for idx, item in enumerate(balancers_payload)]
-    dependencies = [normalize_dependency(item, idx) for idx, item in enumerate(dependencies_payload)]
-    # A node dependency must point to a different node. Keeping a self-node
-    # dependency is misleading in the UI and cannot produce peer-sync metadata.
-    base["dependencies"] = [
-        dep for dep in dependencies
-        if not (dep.get("type") == "node" and str(dep.get("ref_id") or "") == str(base.get("node_id") or ""))
-    ]
+    base["dependencies"] = [normalize_dependency(item, idx) for idx, item in enumerate(dependencies_payload)]
     base["advanced_config"] = normalize_advanced_config(base.get("advanced_config"))
     base.setdefault("last_applied_at", None)
     base.setdefault("last_error", "")
@@ -6195,6 +5876,7 @@ def inbound_catalog(node_id: Optional[str] = None) -> list[dict[str, Any]]:
                     "random_count": random_count,
                     "ports_summary": f"random ×{random_count}" if is_random else ",".join(str(p) for p in ports),
                     "enabled": bool(core.get("enabled")) and bool(inbound.get("enabled")),
+                    "certificate": inbound.get("certificate", ""),
                 }
             )
     return catalog
@@ -6229,7 +5911,7 @@ def _node_sync_urls(node: dict[str, Any]) -> list[str]:
     if "://" in raw and parsed.scheme:
         schemes = [parsed.scheme]
     else:
-        schemes = ["http"]
+        schemes = ["https", "http"] if str(node.get("certificate") or "").strip() else ["http", "https"]
     urls: list[str] = []
     for scheme in schemes:
         for path in ("/runtime", "/config/export"):
@@ -6471,6 +6153,7 @@ def _enrich_node_dependencies(config_node_id: str, cores: list[dict[str, Any]]) 
             dep.pop("update_interval", None)
             dep["sync_interval"] = dep_interval
             dep["peer_host"] = _address_host(target_node.get("address"))
+            dep["certificate"] = str(target_node.get("certificate") or "")
     return cores
 
 
@@ -6578,13 +6261,9 @@ def disable_cores_for_node(node_id: str, *, error: str = "Linked node was remove
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_panel/stores/id_utils.py
 ================================================================================
-
 
 """Compatibility shim for store-layer imports."""
 
@@ -6592,13 +6271,9 @@ from ..id_utils import *  # noqa: F401,F403
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_panel/stores/node_runtime_cache.py
 ================================================================================
-
 
 from __future__ import annotations
 
@@ -6764,13 +6439,9 @@ def find_live_inbound_ports(node_id: str, core_id: str = "", inbound_name: str =
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_panel/stores/node_store.py
 ================================================================================
-
 
 from __future__ import annotations
 
@@ -6875,10 +6546,6 @@ def normalize_node(payload: dict[str, Any], existing: Optional[dict[str, Any]] =
     # Core Configuration is intentionally not part of Create Node anymore.
     base.pop("core_configuration", None)
 
-    # Drop old secure-file values during normalization.
-    for old_key in ("cer" + "tificate", "t" + "ls"):
-        base.pop(old_key, None)
-
     # Node has only one management/control port now: API_PORT. Listener/data
     # ports belong to inbound runtime config, not to the node record.
     for legacy_key in (
@@ -6933,36 +6600,12 @@ def normalize_node(payload: dict[str, Any], existing: Optional[dict[str, Any]] =
 
 
 def list_nodes() -> list[dict[str, Any]]:
-    data = load_store()
-    nodes = data.get("nodes", [])
+    nodes = load_store().get("nodes", [])
     cleaned: list[dict[str, Any]] = []
-    changed = False
-    for index, node in enumerate(nodes):
+    for node in nodes:
         if not isinstance(node, dict) or not is_valid_node_id(node.get("id")):
             continue
-        normalized = normalize_node(node, existing=node)
-
-        # One-time migration for older panel stores created before peer-token
-        # verification was introduced. Without persisting this value, each
-        # get_node/list_nodes call could generate a different transient secret:
-        # the node would receive one secret in its applied routing config while
-        # /api/node-peer-token could sign tokens with another one. In lab stacks
-        # this shows up as peer runtime sync 401 / PEER_SECRET_MISSING or bad
-        # peer token signature after reinstalling or reusing old data/lab stores.
-        if not str(node.get("peer_verify_secret") or "").strip() and str(normalized.get("peer_verify_secret") or "").strip():
-            migrated = dict(node)
-            migrated["peer_verify_secret"] = normalized["peer_verify_secret"]
-            migrated["peer_token_refresh_interval"] = normalized.get("peer_token_refresh_interval", 30)
-            migrated["peer_token_ttl"] = normalized.get("peer_token_ttl", 120)
-            migrated["updated_at"] = normalized.get("updated_at")
-            nodes[index] = migrated
-            changed = True
-            normalized = normalize_node(migrated, existing=migrated)
-
-        cleaned.append(normalized)
-    if changed:
-        data["version"] = 4
-        save_store(data)
+        cleaned.append(normalize_node(node, existing=node))
     return cleaned
 
 
@@ -7042,13 +6685,9 @@ def remove_node(node_id: str) -> bool:
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_panel/stores/security.py
 ================================================================================
-
 
 """Compatibility shim for store-layer imports."""
 
@@ -7056,13 +6695,9 @@ from ..security import *  # noqa: F401,F403
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_panel/web/assets/css/app.css
 ================================================================================
-
 
 /* ==========================================================================
    Doctor Dev Control Panel — app.css
@@ -11103,13 +10738,9 @@ input[type="checkbox"].toggle-input {
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_panel/web/assets/css/login.css
 ================================================================================
-
 
 @font-face {
   font-family: "Vazirmatn";
@@ -11524,9 +11155,6 @@ input:focus {
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_panel/web/assets/fonts/.gitkeep
 ================================================================================
@@ -11534,14 +11162,9 @@ input:focus {
 
 
 
-
-
-
-
 ================================================================================
 # فایل: doctor_dev_panel/web/assets/fonts/README.md
 ================================================================================
-
 
 Place the Vazirmatn font files here before pushing to production.
 
@@ -11560,13 +11183,9 @@ Server path after install:
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_panel/web/assets/js/app.js
 ================================================================================
-
 
 "use strict";
 
@@ -12531,7 +12150,11 @@ function openNodeModal(node) {
     setVal("#apiKey", node.api_key);
     setVal("#peerTokenRefreshInterval", node.peer_token_refresh_interval || 30);
     setVal("#peerTokenTtl", node.peer_token_ttl || 120);
+    setVal("#certificate", node.certificate || "");
+
+    var tlsEl = null; // TLS is managed via certificate field
     var enabledEl = $("#nodeEnabled");
+    if (tlsEl) tlsEl.checked = !!node.tls;
     if (enabledEl) enabledEl.checked = !!node.enabled;
   } else {
     if (titleEl) titleEl.textContent = "Add Node";
@@ -12575,6 +12198,7 @@ function nodePayload() {
     api_key: get("#apiKey"),
     peer_token_refresh_interval: parseInt(get("#peerTokenRefreshInterval"), 10) || 30,
     peer_token_ttl: parseInt(get("#peerTokenTtl"), 10) || 120,
+    certificate: get("#certificate"),
     enabled: getChecked("#nodeEnabled"),
   };
 }
@@ -13063,6 +12687,7 @@ function defaultInbound() {
     target_host: "",
     target_port: "",
     target_balancer: "",
+    certificate: "",
     enabled: true,
     notes: "",
   };
@@ -13087,6 +12712,7 @@ function defaultEndpoint() {
     core_id: "",
     inbound_name: "",
     weight: 1,
+    certificate: "",
     enabled: true,
     notes: "",
   };
@@ -13203,6 +12829,13 @@ function renderInboundEditor() {
         '" data-field="random_count" value="' +
         escapeHtml(String(ib.random_count || 1)) +
         '"></div>' +
+        "</div>" +
+        '<div class="form-row"><div class="form-group"><label>Certificate (optional)</label>' +
+        '<textarea class="form-input" rows="2" data-in-index="' +
+        i +
+        '" data-field="certificate">' +
+        escapeHtml(ib.certificate || "") +
+        "</textarea></div>" +
         "</div>" +
         '<div class="form-row"><div class="form-group form-group--inline switch-field">' +
         '<label class="toggle-label toggle-label--inline toggle-label--state" for="inbEnabled_' +
@@ -13824,6 +13457,14 @@ function renderEndpointList(balancerIndex) {
         '" data-field="weight" min="1" value="' +
         escapeHtml(String(ep.weight || 1)) +
         '"></div>' +
+        '<div class="form-group"><label>Certificate</label>' +
+        '<input type="text" class="form-input ep-field" data-ep-bal="' +
+        balancerIndex +
+        '" data-ep-index="' +
+        j +
+        '" data-field="certificate" value="' +
+        escapeHtml(ep.certificate || "") +
+        '"></div>' +
         '<div class="form-group form-group--inline switch-field">' +
         '<label class="toggle-label toggle-label--inline toggle-label--state" for="epEnabled_' +
         balancerIndex +
@@ -14106,11 +13747,7 @@ function renderDependencyEditor() {
 function dependencyOptions(type, selected) {
   selected = selected || "";
   if (type === "node") {
-    var currentNodeId = state.editorDraft ? String(state.editorDraft.node_id || "") : "";
     return state.nodes
-      .filter(function (n) {
-        return String(n.id || "") !== currentNodeId;
-      })
       .map(function (n) {
         return (
           '<option value="' +
@@ -14947,13 +14584,9 @@ checkSession();
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_panel/web/assets/js/login.js
 ================================================================================
-
 
 const loginCard = document.querySelector('.login-card');
 const brandCard = document.querySelector('.brand-card');
@@ -15048,13 +14681,9 @@ checkSession();
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_panel/web/assets/vendor/fontawesome/css/all.min.css
 ================================================================================
-
 
 /* Minimal local Font Awesome compatibility placeholder for lab/dev builds.
    Real production icons can be restored by replacing assets/vendor/fontawesome. */
@@ -15062,13 +14691,9 @@ checkSession();
 
 
 
-
-
-
 ================================================================================
 # فایل: doctor_dev_panel/web/index.html
 ================================================================================
-
 
 <!doctype html>
 <html lang="en" dir="ltr">
@@ -16706,6 +16331,28 @@ checkSession();
                             </div>
                             <!-- /.node-form-left -->
 
+                            <!-- Right column: TLS certificate -->
+                            <div class="node-form-right">
+                                <div class="form-field form-field--full-height">
+                                    <label for="certificate"
+                                        >TLS Certificate</label
+                                    >
+                                    <textarea
+                                        id="certificate"
+                                        name="certificate"
+                                        placeholder="-----BEGIN CERTIFICATE-----&#10;(paste certificate here)&#10;-----END CERTIFICATE-----"
+                                        class="textarea textarea--mono textarea--tall"
+                                        spellcheck="false"
+                                        autocomplete="off"
+                                    ></textarea>
+                                    <p class="form-hint">
+                                        Paste the node&rsquo;s TLS certificate
+                                        for secure gRPC communication. Leave
+                                        blank to skip verification.
+                                    </p>
+                                </div>
+                            </div>
+                            <!-- /.node-form-right -->
                         </div>
                         <!-- /.node-form-grid -->
 
@@ -16909,13 +16556,9 @@ checkSession();
 
 
 
-
-
-
 ================================================================================
 # فایل: env.examples/lab-node-a.env
 ================================================================================
-
 
 DOCTOR_DEV_MODE=node
 
@@ -16926,6 +16569,8 @@ NODE_NAME=Lab Node A
 NODE_HOST=127.0.0.1
 API_PORT=9001
 
+SSL_CERT_FILE=
+SSL_KEY_FILE=
 
 DOCTOR_DEV_NODE_DATA_DIR=./data/lab/node-a
 DOCTOR_DEV_NODE_ROUTING_CONFIG=./data/lab/node-a/routing-config.json
@@ -16952,7 +16597,6 @@ UVICORN_LOG_LEVEL=info
 # فایل: env.examples/lab-node-b.env
 ================================================================================
 
-
 DOCTOR_DEV_MODE=node
 
 API_KEY=lab-node-b-key-22222222-2222-2222-2222-222222222222
@@ -16962,6 +16606,8 @@ NODE_NAME=Lab Node B
 NODE_HOST=127.0.0.1
 API_PORT=9002
 
+SSL_CERT_FILE=
+SSL_KEY_FILE=
 
 DOCTOR_DEV_NODE_DATA_DIR=./data/lab/node-b
 DOCTOR_DEV_NODE_ROUTING_CONFIG=./data/lab/node-b/routing-config.json
@@ -16988,7 +16634,6 @@ UVICORN_LOG_LEVEL=info
 # فایل: env.examples/lab-panel.env
 ================================================================================
 
-
 DOCTOR_DEV_MODE=panel
 APP_NAME=DoctorDevPanelLab
 APP_ENV=development
@@ -17003,6 +16648,9 @@ SESSION_COOKIE=doctor_dev_lab_session
 SESSION_TTL_SECONDS=43200
 COOKIE_SECURE=0
 
+USE_TLS=0
+SSL_CERT_PATH=
+SSL_KEY_PATH=
 
 DOCTOR_DEV_DATA_DIR=./data/lab/panel
 ADMIN_STORE_PATH=./data/lab/panel/admins.json
@@ -17030,7 +16678,6 @@ UVICORN_LOG_LEVEL=info
 # فایل: env.examples/node.env
 ================================================================================
 
-
 DOCTOR_DEV_MODE=node
 
 API_KEY=11111111-1111-1111-1111-111111111111
@@ -17048,13 +16695,9 @@ PYTHON_LOG_LEVEL=INFO
 
 
 
-
-
-
 ================================================================================
 # فایل: env.examples/panel.env
 ================================================================================
-
 
 DOCTOR_DEV_MODE=panel
 APP_NAME=DoctorDevPanel
@@ -17089,13 +16732,9 @@ DOCTOR_DEV_PANEL_NODE_APPLY_TIMEOUT=8
 
 
 
-
-
-
 ================================================================================
 # فایل: main.py
 ================================================================================
-
 
 #!/usr/bin/env python3
 from __future__ import annotations
@@ -17110,6 +16749,7 @@ import uvicorn
 from doctor_dev_panel.env_loader import load_env_file
 
 
+_TRUE_VALUES = {"1", "true", "yes", "on", "enabled"}
 _NODE_MODES = {"node", "doctor-node", "doctor-dev-node", "agent", "worker"}
 _PANEL_MODES = {"panel", "doctor-panel", "doctor-dev-panel", "admin", "web"}
 _MODE_ENV_NAMES = (
@@ -17130,6 +16770,12 @@ def _env_value(*names: str) -> str:
             return str(value).strip()
     return ""
 
+
+def _env_flag(*names: str, default: bool = False) -> bool:
+    value = _env_value(*names)
+    if not value:
+        return default
+    return value.lower() in _TRUE_VALUES
 
 
 def _normalize_mode(value: Optional[str]) -> Optional[str]:
@@ -17244,6 +16890,9 @@ def run_panel(args: argparse.Namespace, env_path: Optional[Path]) -> None:
     log_path = setup_panel_logging()
     log_level = "debug" if is_debug_enabled() else os.getenv("UVICORN_LOG_LEVEL", "info")
 
+    ssl_cert = os.getenv("SSL_CERT_PATH") or os.getenv("SSL_CERT_FILE") or None
+    ssl_key = os.getenv("SSL_KEY_PATH") or os.getenv("SSL_KEY_FILE") or None
+    use_tls = _env_flag("USE_TLS", default=False) and bool(ssl_cert and ssl_key)
 
     print(f"Doctor Dev mode: panel")
     print(f"Doctor Dev env file: {env_path or '(not loaded)'}")
@@ -17255,6 +16904,8 @@ def run_panel(args: argparse.Namespace, env_path: Optional[Path]) -> None:
         port=port,
         log_level=log_level,
         reload=os.getenv("APP_ENV") == "development",
+        ssl_certfile=ssl_cert if use_tls else None,
+        ssl_keyfile=ssl_key if use_tls else None,
     )
 
 
@@ -17274,6 +16925,9 @@ def run_node(args: argparse.Namespace, env_path: Optional[Path]) -> None:
     os.environ["DOCTOR_DEV_NODE_BOUND_API_PORT"] = str(port)
 
     log_path = setup_node_logging()
+    ssl_cert = os.getenv("SSL_CERT_FILE") or os.getenv("SSL_CERT_PATH") or None
+    ssl_key = os.getenv("SSL_KEY_FILE") or os.getenv("SSL_KEY_PATH") or None
+    use_tls = bool(ssl_cert and ssl_key)
 
     print(f"Doctor Dev mode: node")
     print(f"Doctor Dev env file: {env_path or '(not loaded)'}")
@@ -17284,6 +16938,8 @@ def run_node(args: argparse.Namespace, env_path: Optional[Path]) -> None:
         host=host,
         port=port,
         log_level="debug" if is_debug_enabled() else os.getenv("UVICORN_LOG_LEVEL", "info"),
+        ssl_certfile=ssl_cert if use_tls else None,
+        ssl_keyfile=ssl_key if use_tls else None,
     )
 
 
@@ -17306,13 +16962,9 @@ if __name__ == "__main__":
 
 
 
-
-
-
 ================================================================================
 # فایل: merge_folder.py
 ================================================================================
-
 
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
@@ -17335,8 +16987,8 @@ EXCLUDED_DIRS = {
     "out",
     ".vscode",
     ".idea",
-    ".venv",
-    "RUN"
+    "cert",
+    ".venv"
 }
 
 # پسوندهای باینری (این فایل‌ها وارد نمی‌شوند)
@@ -17472,13 +17124,9 @@ if __name__ == "__main__":
 
 
 
-
-
-
 ================================================================================
 # فایل: node.env.example
 ================================================================================
-
 
 DOCTOR_DEV_MODE=node
 
@@ -17488,6 +17136,8 @@ API_KEY=change-me-node-api-key
 
 NODE_HOST=0.0.0.0
 API_PORT=62051
+SSL_CERT_FILE=
+SSL_KEY_FILE=
 
 DOCTOR_DEV_NODE_DATA_DIR=./data/node
 DOCTOR_DEV_NODE_ROUTING_CONFIG=./data/node/routing-config.json
@@ -17507,10 +17157,13 @@ UVICORN_LOG_LEVEL=info
 
 
 
+
+
+
+
 ================================================================================
 # فایل: PROJECT_STRUCTURE.md
 ================================================================================
-
 
 .env.example
 .gitignore
@@ -17600,13 +17253,9 @@ tests/test_project_quality.py
 
 
 
-
-
-
 ================================================================================
 # فایل: README.md
 ================================================================================
-
 
 # Doctor Dev lab test pack
 
@@ -17621,13 +17270,9 @@ Read `docs/LAB_ROUTING_TEST_GUIDE.md`.
 
 
 
-
-
-
 ================================================================================
 # فایل: requirements.txt
 ================================================================================
-
 
 fastapi==0.104.1
 uvicorn==0.23.2
@@ -17637,13 +17282,9 @@ requests==2.31.0
 
 
 
-
-
-
 ================================================================================
 # فایل: scripts/doctor-dev
 ================================================================================
-
 
 #!/usr/bin/env bash
 set -Eeuo pipefail
@@ -17829,7 +17470,9 @@ case "$cmd" in
     ;;
   health)
     port="$(safe_env_get PORT)"; port="${port:-8080}"
-    curl -fsS "http://127.0.0.1:${port}/health" || {
+    use_tls="$(safe_env_get USE_TLS)"; scheme="http"; curl_opts="-fsS"
+    if [[ "$use_tls" == "1" ]]; then scheme="https"; curl_opts="-fkS"; fi
+    curl $curl_opts "${scheme}://127.0.0.1:${port}/health" || {
       cecho "${YELLOW}Local health check failed. Is the service running on port ${port}?${RESET}"; exit 1;
     }
     echo
@@ -17861,13 +17504,9 @@ esac
 
 
 
-
-
-
 ================================================================================
 # فایل: scripts/doctor-node
 ================================================================================
-
 
 #!/usr/bin/env bash
 set -Eeuo pipefail
@@ -17999,7 +17638,10 @@ case "$cmd" in
     elif [[ "$sub" == "show" ]]; then
       port="$(safe_env_get API_PORT)"; port="${port:-62051}"
       key="$(safe_env_get API_KEY)"
-      curl -fsS -H "Authorization: Bearer $key" "http://127.0.0.1:${port}/config" || { cecho "${YELLOW}Cannot read node config from API port ${port}.${RESET}"; exit 1; }
+      cert_file="$(safe_env_get SSL_CERT_FILE)"
+      scheme="http"; curl_opts="-fsS"
+      if [[ -n "$cert_file" ]]; then scheme="https"; curl_opts="-fkS"; fi
+      curl $curl_opts -H "Authorization: Bearer $key" "${scheme}://127.0.0.1:${port}/config" || { cecho "${YELLOW}Cannot read node config from API port ${port}.${RESET}"; exit 1; }
       echo
     else
       cecho "${YELLOW}Usage: ${CLI_NAME} config [edit|show]${RESET}"; exit 2
@@ -18007,7 +17649,10 @@ case "$cmd" in
     ;;
   health)
     port="$(safe_env_get API_PORT)"; port="${port:-62051}"
-    curl -fsS "http://127.0.0.1:${port}/health" || { cecho "${YELLOW}Local health check failed. Is the node API running on API_PORT ${port}?${RESET}"; exit 1; }
+    cert_file="$(safe_env_get SSL_CERT_FILE)"
+    scheme="http"; curl_opts="-fsS"
+    if [[ -n "$cert_file" ]]; then scheme="https"; curl_opts="-fkS"; fi
+    curl $curl_opts "${scheme}://127.0.0.1:${port}/health" || { cecho "${YELLOW}Local health check failed. Is the node API running on API_PORT ${port}?${RESET}"; exit 1; }
     echo
     ;;
   update)
@@ -18027,13 +17672,9 @@ esac
 
 
 
-
-
-
 ================================================================================
 # فایل: scripts/doctor_dev.sh
 ================================================================================
-
 
 #!/usr/bin/env bash
 set -Eeuo pipefail
@@ -18064,6 +17705,9 @@ ARG_PUBLIC_HOST=""
 ARG_PANEL_PORT=""
 ARG_ADMIN_USER=""
 ARG_ADMIN_PASSWORD=""
+ARG_TLS_MODE=""
+ARG_CERT_PATH=""
+ARG_KEY_PATH=""
 ARG_NODE_CLI_NAME=""
 ARG_API_KEY=""
 ARG_NODE_HOST=""
@@ -18124,6 +17768,9 @@ parse_common_args(){
       --panel-port|--port) need_arg "$@"; ARG_PANEL_PORT="$2"; shift 2 ;;
       --admin-user|--admin-username) need_arg "$@"; ARG_ADMIN_USER="$2"; shift 2 ;;
       --admin-password|--password) need_arg "$@"; ARG_ADMIN_PASSWORD="$2"; shift 2 ;;
+      --tls|--tls-mode) need_arg "$@"; ARG_TLS_MODE="$2"; shift 2 ;;
+      --cert-path|--ssl-cert-path) need_arg "$@"; ARG_CERT_PATH="$2"; shift 2 ;;
+      --key-path|--ssl-key-path) need_arg "$@"; ARG_KEY_PATH="$2"; shift 2 ;;
       --node-cli-name|--cli-name) need_arg "$@"; ARG_NODE_CLI_NAME="$2"; shift 2 ;;
       --api-key) need_arg "$@"; ARG_API_KEY="$2"; shift 2 ;;
       --node-host) need_arg "$@"; ARG_NODE_HOST="$2"; shift 2 ;;
@@ -18339,6 +17986,8 @@ require_port_available_or_fail(){
   fail "$label $port is already used. See the process/service details above."
 }
 
+require_file_readable(){ [[ -r "$1" ]] || fail "File is not readable: $1"; }
+
 generate_uuid(){ "$PYTHON_BIN" - <<'PY'
 import uuid
 print(uuid.uuid4())
@@ -18349,9 +17998,9 @@ install_packages(){
   info "Checking OS packages..."
   if command -v apt-get >/dev/null 2>&1; then
     apt-get update -y
-    DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-venv python3-pip git curl nano rsync
+    DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-venv python3-pip git curl ca-certificates openssl nano rsync
   else
-    warn "apt-get not found. Make sure python3, venv, pip, git, curl and rsync are installed."
+    warn "apt-get not found. Make sure python3, venv, pip, git, curl, rsync and openssl are installed."
   fi
 }
 
@@ -18581,7 +18230,7 @@ PY
 }
 
 write_panel_env(){
-  local host="$1" port="$2" public_host="$3" public_scheme="http"
+  local host="$1" port="$2" public_host="$3" public_scheme="$4" use_tls="$5" cert_path="$6" key_path="$7"
   local debug_value="${ARG_DEBUG:-${DEBUG:-false}}"
   case "${debug_value,,}" in 1|true|yes|on|debug|enabled) debug_value="true" ;; *) debug_value="false" ;; esac
   prepare_panel_dirs
@@ -18598,7 +18247,11 @@ PUBLIC_SCHEME=$public_scheme
 
 SESSION_COOKIE=doctor_dev_session
 SESSION_TTL_SECONDS=43200
-COOKIE_SECURE=0
+COOKIE_SECURE=$use_tls
+
+USE_TLS=$use_tls
+SSL_CERT_PATH=$cert_path
+SSL_KEY_PATH=$key_path
 
 ADMIN_STORE_PATH=$ADMIN_STORE_PATH
 DOCTOR_DEV_DATA_DIR=$PANEL_DATA_DIR
@@ -18646,6 +18299,29 @@ SERVICE
 
 install_panel_service(){ write_panel_service; systemctl enable "$PANEL_SERVICE_NAME" >/dev/null; systemctl restart "$PANEL_SERVICE_NAME"; ok "Panel service started."; }
 
+configure_panel_tls(){
+  local install_target="$1" domain="$2" tls_choice cert_path key_path use_tls public_scheme
+  use_tls="0"; public_scheme="http"; cert_path=""; key_path=""
+  tls_choice="${ARG_TLS_MODE:-}"
+  if [[ -z "$tls_choice" ]]; then
+    { echo; cecho "${BOLD}TLS / Certificate mode${RESET}"; cecho "  1) No TLS now; use http or add reverse proxy later"; cecho "  2) I already have certificate/key paths"; cecho "  3) Issue certificate here with certbot standalone"; } >&2
+    tls_choice="$(ask "Choose TLS mode" "1")"
+  fi
+  case "${tls_choice,,}" in
+    2|manual|cert|certificate)
+      cert_path="${ARG_CERT_PATH:-$(ask_non_empty "Fullchain/cert path")}"; key_path="${ARG_KEY_PATH:-$(ask_non_empty "Private key path")}"; require_file_readable "$cert_path"; require_file_readable "$key_path"; use_tls="1"; public_scheme="https" ;;
+    3|certbot|letsencrypt)
+      [[ "$install_target" == "domain" ]] || fail "Certbot mode requires domain install target."
+      command -v apt-get >/dev/null 2>&1 && DEBIAN_FRONTEND=noninteractive apt-get install -y certbot
+      command -v certbot >/dev/null 2>&1 || fail "certbot is not installed."
+      warn "Make sure DNS points to this server and port 80 is open." >&2
+      certbot certonly --standalone -d "$domain" >&2
+      cert_path="/etc/letsencrypt/live/$domain/fullchain.pem"; key_path="/etc/letsencrypt/live/$domain/privkey.pem"; use_tls="1"; public_scheme="https" ;;
+    *) use_tls="0"; public_scheme="http" ;;
+  esac
+  echo "$use_tls|$public_scheme|$cert_path|$key_path"
+}
+
 install_panel(){
   header "Doctor Dev Panel Installer" "Clean install with verified admin and data integrity safeguards"
   need_root
@@ -18660,7 +18336,7 @@ install_panel(){
   setup_venv "$PANEL_APP_DIR"
 
   step "5/8 Configure panel endpoint"
-  local target_choice install_target public_host bind_host port admin_user admin_pass public_scheme
+  local target_choice install_target public_host bind_host port admin_user admin_pass tls_result use_tls public_scheme cert_path key_path
   target_choice="${ARG_TARGET:-}"
   if [[ -z "$target_choice" ]]; then
     cecho "${BOLD}Install target${RESET}"; cecho "  1) Install on IP"; cecho "  2) Install on domain"; cecho "  3) Localhost only"
@@ -18681,9 +18357,9 @@ install_panel(){
   step "6/8 Configure admin account"
   admin_user="${ARG_ADMIN_USER:-$(ask_non_empty "Admin username" "admin")}"; [[ -n "$admin_user" ]] || fail "Admin username cannot be empty."
   admin_pass="$(ask_password)"
-  public_scheme="http"
+  tls_result="$(configure_panel_tls "$install_target" "$public_host")"; IFS='|' read -r use_tls public_scheme cert_path key_path <<< "$tls_result"
   step "7/8 Write environment and verify admin password"
-  write_panel_env "$bind_host" "$port" "$public_host" "$public_scheme"
+  write_panel_env "$bind_host" "$port" "$public_host" "$public_scheme" "$use_tls" "$cert_path" "$key_path"
   create_admin_store "$admin_user" "$admin_pass"
   step "8/8 Install CLI and service"
   install_panel_cli
@@ -18735,7 +18411,7 @@ prepare_node_dirs(){ mkdir -p "$NODE_CONFIG_DIR" "$NODE_DATA_DIR" "$NODE_LOG_DIR
 install_node_cli(){ info "Installing node CLI: /usr/local/bin/$NODE_CLI_NAME"; install -m 0755 "$NODE_APP_DIR/scripts/doctor-node" "/usr/local/bin/$NODE_CLI_NAME"; ok "Node CLI installed. Try: $NODE_CLI_NAME help"; }
 
 write_node_env(){
-  local api_key="$1" node_host="$2" api_port="$3"
+  local api_key="$1" node_host="$2" api_port="$3" cert_file="$4" key_file="$5"
   local debug_value="${ARG_DEBUG:-${DEBUG:-false}}"
   case "${debug_value,,}" in 1|true|yes|on|debug|enabled) debug_value="true" ;; *) debug_value="false" ;; esac
   prepare_node_dirs
@@ -18745,6 +18421,9 @@ DOCTOR_DEV_MODE=node
 API_KEY=$api_key
 NODE_HOST=$node_host
 API_PORT=$api_port
+SSL_CERT_FILE=$cert_file
+SSL_KEY_FILE=$key_file
+
 DOCTOR_DEV_NODE_DATA_DIR=$NODE_DATA_DIR
 DOCTOR_DEV_NODE_LOG_DIR=$NODE_LOG_DIR
 DOCTOR_DEV_NODE_LOG_FILE=$NODE_LOG_DIR/node.log
@@ -18788,7 +18467,7 @@ install_node_service(){ write_node_service; systemctl enable "$NODE_SERVICE_NAME
 install_node(){
   header "Doctor Dev Node Installer" "Clean node install with validated ports and names"
   need_root; install_packages
-  local cli_name api_default api_key node_host api_port
+  local cli_name api_default api_key node_host api_port tls_choice cert_file key_file
   cli_name="${ARG_NODE_CLI_NAME:-${DOCTOR_DEV_NODE_CLI_NAME:-doctor-node}}"; valid_cli_name "$cli_name" || fail "Invalid CLI name."
   node_vars "$cli_name"
   clean_existing_or_fail node "$cli_name"
@@ -18802,7 +18481,11 @@ install_node(){
     api_port="$(ask_port_named "API_PORT / control-plane port" "62051" "$node_host")"
   fi
   ok "Node uses a single API_PORT. Data-plane listeners are created from inbound runtime config."
-  write_node_env "$api_key" "$node_host" "$api_port"
+  cert_file=""; key_file=""
+  tls_choice="${ARG_TLS_MODE:-}"
+  if [[ -z "$tls_choice" ]]; then cecho "${BOLD}SSL/TLS Configuration${RESET}"; cecho "  1) No SSL/TLS now"; cecho "  2) I already have certificate/key paths"; tls_choice="$(ask "Choose SSL/TLS mode" "1")"; fi
+  if [[ "$tls_choice" == "2" || "${tls_choice,,}" == "manual" ]]; then cert_file="${ARG_CERT_PATH:-$(ask_non_empty "SSL_CERT_FILE")}"; key_file="${ARG_KEY_PATH:-$(ask_non_empty "SSL_KEY_FILE")}"; require_file_readable "$cert_file"; require_file_readable "$key_file"; fi
+  write_node_env "$api_key" "$node_host" "$api_port" "$cert_file" "$key_file"
   install_node_cli
   if ask_yes_no "Install and start node systemd service now?" "y"; then install_node_service; else write_node_service; warn "Node service was not started. Start later with: $NODE_CLI_NAME start"; fi
   echo; ok "Doctor Dev Node installation finished."; cecho "${BOLD}CLI:${RESET}   ${GREEN}$NODE_CLI_NAME help${RESET}"; cecho "${BOLD}Health:${RESET} ${GREEN}http://127.0.0.1:${api_port}/health${RESET}"
@@ -18865,13 +18548,9 @@ main "$@"
 
 
 
-
-
-
 ================================================================================
 # فایل: scripts/hash_password.py
 ================================================================================
-
 
 #!/usr/bin/env python3
 from __future__ import annotations
@@ -18899,13 +18578,9 @@ if __name__ == "__main__":
 
 
 
-
-
-
 ================================================================================
 # فایل: scripts/lab_check_stack.sh
 ================================================================================
-
 
 #!/usr/bin/env bash
 set -Eeuo pipefail
@@ -18929,13 +18604,9 @@ curl -fsS -H "Authorization: Bearer ${NODE_B_KEY}" http://127.0.0.1:9002/runtime
 
 
 
-
-
-
 ================================================================================
 # فایل: scripts/lab_make_admin.sh
 ================================================================================
-
 
 #!/usr/bin/env bash
 set -Eeuo pipefail
@@ -18950,13 +18621,9 @@ echo "Admin ready: username=$USER_NAME password=$PASSWORD"
 
 
 
-
-
-
 ================================================================================
 # فایل: scripts/lab_run_stack.sh
 ================================================================================
-
 
 #!/usr/bin/env bash
 set -Eeuo pipefail
@@ -19006,13 +18673,9 @@ echo "Logs: tail -f logs/lab/*.stdout.log logs/lab/*/*.log"
 
 
 
-
-
-
 ================================================================================
 # فایل: scripts/lab_stop_stack.sh
 ================================================================================
-
 
 #!/usr/bin/env bash
 set -Eeuo pipefail
@@ -19036,13 +18699,9 @@ done
 
 
 
-
-
-
 ================================================================================
 # فایل: scripts/quality_check.sh
 ================================================================================
-
 
 #!/usr/bin/env bash
 set -Eeuo pipefail
@@ -19080,13 +18739,9 @@ echo "[PASS] Doctor Dev quality checks passed."
 
 
 
-
-
-
 ================================================================================
 # فایل: scripts/run_node_main.sh
 ================================================================================
-
 
 #!/usr/bin/env bash
 set -Eeuo pipefail
@@ -19096,13 +18751,9 @@ python main.py --mode node --env "${1:-env.examples/node.env}" --host "${NODE_HO
 
 
 
-
-
-
 ================================================================================
 # فایل: scripts/run_panel_main.sh
 ================================================================================
-
 
 #!/usr/bin/env bash
 set -Eeuo pipefail
@@ -19112,13 +18763,9 @@ python main.py --mode panel --env "${1:-env.examples/panel.env}" --host "${PANEL
 
 
 
-
-
-
 ================================================================================
 # فایل: scripts/test_node_api_port_consistency.sh
 ================================================================================
-
 
 #!/usr/bin/env bash
 set -Eeuo pipefail
@@ -19167,13 +18814,9 @@ PY
 
 
 
-
-
-
 ================================================================================
 # فایل: scripts/test_node_runtime.sh
 ================================================================================
-
 
 #!/usr/bin/env bash
 set -Eeuo pipefail
@@ -19188,13 +18831,9 @@ curl -fsS -H "Authorization: Bearer $API_KEY" "$BASE_URL/config/export"; echo
 
 
 
-
-
-
 ================================================================================
 # فایل: tests/lab_multi_listener.py
 ================================================================================
-
 
 #!/usr/bin/env python3
 from __future__ import annotations
@@ -19315,13 +18954,9 @@ if __name__ == "__main__":
 
 
 
-
-
-
 ================================================================================
 # فایل: tests/lab_sender.py
 ================================================================================
-
 
 #!/usr/bin/env python3
 from __future__ import annotations
@@ -19488,13 +19123,9 @@ if __name__ == "__main__":
 
 
 
-
-
-
 ================================================================================
 # فایل: tests/tcp_listener.py
 ================================================================================
-
 
 import socket
 import threading
@@ -19528,13 +19159,9 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
 
 
 
-
-
-
 ================================================================================
 # فایل: tests/tcp_sender.py
 ================================================================================
-
 
 import socket
 import sys
@@ -19561,13 +19188,9 @@ with socket.create_connection((HOST, PORT), timeout=5) as sock:
 
 
 
-
-
-
 ================================================================================
 # فایل: tests/test_node_http_auth.py
 ================================================================================
-
 
 from __future__ import annotations
 
@@ -19625,22 +19248,6 @@ def forged_peer_token(*, secret: str, target_node_id: str, target_core_id: str, 
 
 
 class NodeHttpAuthTests(unittest.TestCase):
-
-    def test_apply_config_body_keeps_peer_verify_secret(self) -> None:
-        from doctor_dev_node.server import ApplyConfigBody, pydantic_to_dict
-
-        data = pydantic_to_dict(
-            ApplyConfigBody(
-                version=1,
-                node_id="node-a",
-                generated_at="unit-test",
-                peer_verify_secret="peer-secret-a",
-                cores=[],
-            )
-        )
-
-        self.assertEqual("peer-secret-a", data.get("peer_verify_secret"))
-
     def test_runtime_http_auth_matrix(self) -> None:
         from doctor_dev_node.peer_tokens import issue_peer_token
 
@@ -19788,13 +19395,9 @@ if __name__ == "__main__":
 
 
 
-
-
-
 ================================================================================
 # فایل: tests/test_panel_node_e2e.py
 ================================================================================
-
 
 from __future__ import annotations
 
@@ -19981,13 +19584,9 @@ if __name__ == "__main__":
 
 
 
-
-
-
 ================================================================================
 # فایل: tests/test_panel_runtime_sync.py
 ================================================================================
-
 
 from __future__ import annotations
 
@@ -20045,13 +19644,9 @@ if __name__ == "__main__":
 
 
 
-
-
-
 ================================================================================
 # فایل: tests/test_project_quality.py
 ================================================================================
-
 
 from __future__ import annotations
 
@@ -20237,48 +19832,6 @@ class StaticQualityTests(unittest.TestCase):
                         os.environ.pop(key, None)
                     else:
                         os.environ[key] = value
-
-
-    def test_self_node_dependency_is_filtered(self) -> None:
-        from doctor_dev_panel.stores.core_store import normalize_core
-
-        core = normalize_core({
-            "name": "Core B",
-            "node_id": "node-b",
-            "dependencies": [
-                {"type": "node", "ref_id": "node-b", "sync_interval": 5, "required": True},
-                {"type": "node", "ref_id": "node-a", "sync_interval": 7, "required": True},
-            ],
-        })
-
-        self.assertEqual(1, len(core["dependencies"]))
-        self.assertEqual("node-a", core["dependencies"][0]["ref_id"])
-
-    def test_legacy_nodes_get_persistent_peer_verify_secret(self) -> None:
-        from doctor_dev_panel.stores.node_store import get_node, list_nodes
-
-        with tempfile.TemporaryDirectory() as tmp:
-            old = os.environ.get("DOCTOR_DEV_NODES_PATH")
-            try:
-                store = Path(tmp) / "nodes.json"
-                os.environ["DOCTOR_DEV_NODES_PATH"] = str(store)
-                store.write_text(
-                    '{"version":4,"nodes":[{"id":"node_1111111111111111","name":"legacy","address":"127.0.0.1","api_port":9001,"api_key":"k","enabled":true}]}\n',
-                    encoding="utf-8",
-                )
-                first = get_node("node_1111111111111111")
-                second = get_node("node_1111111111111111")
-                self.assertTrue(first and first.get("peer_verify_secret"))
-                self.assertEqual(first.get("peer_verify_secret"), second.get("peer_verify_secret"))
-                persisted = store.read_text(encoding="utf-8")
-                self.assertIn("peer_verify_secret", persisted)
-                self.assertEqual(1, len(list_nodes()))
-            finally:
-                if old is None:
-                    os.environ.pop("DOCTOR_DEV_NODES_PATH", None)
-                else:
-                    os.environ["DOCTOR_DEV_NODES_PATH"] = old
-
 
     def test_legacy_fixed_node_data_port_is_not_in_env_examples(self) -> None:
         for rel in ("env.examples/node.env", "node.env.example"):
@@ -20503,13 +20056,9 @@ if __name__ == "__main__":
 
 
 
-
-
-
 ================================================================================
 # فایل: tests/test_web_static_assets.py
 ================================================================================
-
 
 from __future__ import annotations
 
@@ -20554,7 +20103,5 @@ class WebStaticAssetTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
-
 
 
