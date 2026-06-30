@@ -1,3542 +1,1619 @@
+/* ============================================================
+   Doctor Dev Panel — Complete Application
+   ============================================================ */
+(function(){
+'use strict';
 
-"use strict";
-
-// ============================================================
-// 1. UTILITIES
-// ============================================================
-
-const $ = (sel) => document.querySelector(sel);
-const $$ = (sel) => Array.from(document.querySelectorAll(sel));
-
-const UI_TEXT = Object.freeze({
-  invalidNode: "This node has invalid saved data. Refresh the page or run Repair Data.",
-  invalidCore: "This core has invalid saved data. Refresh the page or run Repair Data.",
-  unknownNode: "Unlinked node",
-  missingNode: "Missing linked node",
-  notApplied: "Not applied yet",
-  noNodes: "No server nodes have been added yet.",
-  addFirstNode: "Add First Node",
-  repairSuccess: "Saved data was checked and repaired. Active issues: ",
-  repairFailed: "Data repair could not be completed.",
-  nodeHealthy: "Node connection is healthy.",
-  checkFailed: "Connection check failed.",
-  nodeDeleted: "Node was deleted.",
-  coreDeleted: "Core was deleted.",
-  coreSaved: "Core configuration was saved.",
-  coreCreated: "Core configuration was created.",
-  nodeSaved: "Node was saved.",
-});
-
-function escapeHtml(v) {
-  return String(v ?? "").replace(
-    /[&<>'"]/g,
-    (c) =>
-      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[
-        c
-      ],
-  );
-}
-
-function deepCopy(v) {
-  return JSON.parse(JSON.stringify(v ?? {}));
-}
-function isValidNodeId(id) {
-  return /^node_[A-Za-z0-9_-]{6,96}$/.test(String(id || "").trim());
-}
-function isValidCoreId(id) {
-  return /^core_[A-Za-z0-9_-]{6,96}$/.test(String(id || "").trim());
-}
-function nodeById(id) {
-  if (!isValidNodeId(id)) return null;
-  return state.nodes.find((n) => String(n.id) === String(id)) || null;
-}
-function coreById(id) {
-  if (!isValidCoreId(id)) return null;
-  return state.cores.find((c) => String(c.id) === String(id)) || null;
-}
-function warnInvalidIdentifier(kind) {
-  showToast(
-    kind === "core" ? UI_TEXT.invalidCore : UI_TEXT.invalidNode,
-    "warning",
-  );
-}
-function cleanDisplayName(value, fallback) {
-  var text = String(value || fallback || "").trim();
-  return text || "Unnamed";
-}
-
-function nodeDisplayName(node) {
-  if (!node) return UI_TEXT.unknownNode;
-  return cleanDisplayName(node.name, node.address || UI_TEXT.unknownNode);
-}
-
-function nodeName(id) {
-  const n = nodeById(id);
-  return n ? nodeDisplayName(n) : UI_TEXT.unknownNode;
-}
-
-function runtimeEntryForNode(nodeId) {
-  var cache = state.runtimeCache || {};
-  var nodes = cache.nodes && typeof cache.nodes === "object" ? cache.nodes : cache;
-  var entry = nodes ? nodes[String(nodeId || "")] : null;
-  return entry && typeof entry === "object" ? entry : null;
-}
-
-function runtimeApiLabel(entry, fallbackPort) {
-  if (!entry) return "—";
-  var summary = entry.summary && typeof entry.summary === "object" ? entry.summary : {};
-  var raw = entry.raw && typeof entry.raw === "object" ? entry.raw : {};
-  var api = raw.api && typeof raw.api === "object" ? raw.api : entry.api && typeof entry.api === "object" ? entry.api : {};
-  var port = api.port || api.api_port || summary.api_port || fallbackPort || "—";
-  var host = api.host || "node";
-  return host + ":" + port;
-}
-
-function runtimeBadge(entry) {
-  if (!entry) return '<span class="badge badge-pending">Not synced</span>';
-  if (entry.auth_ok === false) return '<span class="badge badge-error" title="' + escapeHtml(entry.last_error || "Auth failed") + '">Auth failed</span>';
-  if (entry.reachable === false) return '<span class="badge badge-error" title="' + escapeHtml(entry.last_error || "Unreachable") + '">Unreachable</span>';
-  if (entry.runtime_ok === false) return '<span class="badge badge-warning" title="' + escapeHtml(entry.last_error || "Runtime error") + '">Runtime error</span>';
-  return '<span class="badge badge-running">Runtime OK</span>';
-}
-
-function runtimeUsageLabel(entry) {
-  if (!entry) return "—";
-  var summary = entry.summary && typeof entry.summary === "object" ? entry.summary : {};
-  var listeners = Array.isArray(entry.listeners) ? entry.listeners : [];
-  var active = summary.active_connections || 0;
-  var total = listeners.length || summary.listeners_total || 0;
-  var age = timeAgo(entry.last_success_at || entry.last_seen_at || entry.synced_at || "");
-  return String(total) + " listener" + (Number(total) === 1 ? "" : "s") + " · " + String(active) + " active · " + age;
-}
-
-function ensureAdvancedConfig(draft) {
-  if (!draft) return { enabled: false, json_config: "" };
-  if (!draft.advanced_config || typeof draft.advanced_config !== "object") {
-    draft.advanced_config = { enabled: false, json_config: "" };
-  }
-  if (typeof draft.advanced_config.json_config !== "string") {
-    draft.advanced_config.json_config = "";
-  }
-  draft.advanced_config.enabled = !!draft.advanced_config.enabled;
-  return draft.advanced_config;
-}
-
-function timeAgo(iso) {
-  if (!iso) return "Not yet";
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return "Unknown time";
-  const sec = Math.floor((Date.now() - d.getTime()) / 1000);
-  if (sec < 5) return "just now";
-  if (sec < 60) return sec + " seconds ago";
-  const min = Math.floor(sec / 60);
-  if (min < 60) return min + " minute" + (min === 1 ? "" : "s") + " ago";
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return hr + " hour" + (hr === 1 ? "" : "s") + " ago";
-  const day = Math.floor(hr / 24);
-  if (day < 30) return day + " day" + (day === 1 ? "" : "s") + " ago";
-  const mo = Math.floor(day / 30);
-  if (mo < 12) return mo + " month" + (mo === 1 ? "" : "s") + " ago";
-  const yr = Math.floor(mo / 12);
-  return yr + " year" + (yr === 1 ? "" : "s") + " ago";
-}
-
-function formatApiError(data, fallback) {
-  fallback = fallback || "Request could not be completed.";
-  if (!data || typeof data !== "object") return fallback;
-  if (typeof data.detail === "string") return data.detail;
-  if (data.detail && typeof data.detail === "object" && !Array.isArray(data.detail)) {
-    return data.detail.message || data.detail.error || fallback;
-  }
-  if (Array.isArray(data.detail) && data.detail.length) {
-    var first = data.detail[0];
-    var loc = Array.isArray(first.loc) ? first.loc.slice(1).join(" > ") : "";
-    return loc ? loc + ": " + (first.msg || "invalid") : first.msg || fallback;
-  }
-  return data.message || data.error || fallback;
-}
-
-// ============================================================
-// 2. STATE
-// ============================================================
-
-const state = {
-  user: null,
-  nodes: [],
-  cores: [],
-  inboundCatalog: [],
-  runtimeCache: {},
-  stats: null,
-  page: "dashboard",
-  editingNode: null,
-  editingCore: null,
-  editorDraft: null,
-  lastFormCheck: null,
-  currentCoreTab: "inbounds",
-  logSources: [],
-  currentLogSource: "panel",
-  logAutoRefreshTimer: null,
-  logRefreshIntervalSeconds: 10,
-  logsLoading: false,
-  rawLogLines: [],
-  endpointOpen: {},
-  editorCardOpen: {},
-  routingReady: false,
+/* ------------------------------------------------------------
+   SVG ICONS
+   ------------------------------------------------------------ */
+const IC = {
+    logo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4m0 14v4M4.22 4.22l2.83 2.83m9.9 9.9l2.83 2.83M1 12h4m14 0h4M4.22 19.78l2.83-2.83m9.9-9.9l2.83-2.83"/></svg>',
+    dashboard: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>',
+    nodes: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>',
+    cores: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="5" r="3"/><circle cx="5" cy="19" r="3"/><circle cx="19" cy="19" r="3"/><line x1="12" y1="8" x2="5" y2="16"/><line x1="12" y1="8" x2="19" y2="16"/></svg>',
+    logs: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/><line x1="8" y1="9" x2="10" y2="9"/></svg>',
+    diag: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>',
+    plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
+    x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+    edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>',
+    trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
+    check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>',
+    refresh: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>',
+    eye: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>',
+    upload: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>',
+    copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
+    key: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>',
+    sync: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>',
+    wrench: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>',
+    alert: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+    chevDown: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>',
+    search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
+    logout: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>',
 };
 
-const APP_ROUTES = Object.freeze({
-  dashboard: "/dashboard",
-  nodes: "/nodes",
-  cores: "/cores",
-  logs: "/logs",
-});
+/* ------------------------------------------------------------
+   STATE
+   ------------------------------------------------------------ */
+const S = {
+    user: null,
+    route: 'dashboard',
+    nodes: [],
+    cores: [],
+    inboundCatalog: {},
+    runtimeCache: {},
+    summary: null,
+    stats: null,
+    integrity: null,
+    logsSources: [],
+    logsEntries: [],
+    logsFilter: { source: 'panel', limit: 300, level: 'all', q: '' },
+    loading: false,
+    globalLoading: false,
+    nodeEditor: { open: false, node: null, isNew: false },
+    coreEditor: { open: false, core: null, inbounds: [], balancers: [], dependencies: [], advanced: { enabled: false, json_config: '' }, activeTab: 'overview', isNew: false },
+    slidePanel: null, // { type, title, content }
+    inboundSubEditor: null, // { index, data } or { index: -1, data: defaultInbound }
+    balancerSubEditor: null, // { balIdx, epIdx, data }
+    depSubEditor: null, // { index, data }
+    nodeInboundSubEditor: null,
+};
 
-const CORE_TABS = Object.freeze(["inbounds", "routing", "balancers", "dependencies", "advanced"]);
-
-function cleanPath(pathname) {
-  var path = String(pathname || "/").split("?")[0].split("#")[0];
-  if (!path.startsWith("/")) path = "/" + path;
-  path = path.replace(/\/+$/, "");
-  return path || "/";
+/* ------------------------------------------------------------
+   UTILITY FUNCTIONS
+   ------------------------------------------------------------ */
+function esc(s) { if (s == null) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function uid() { return 'dep_' + Math.random().toString(36).slice(2,10); }
+function fmtTime(ts) { if (!ts) return '—'; try { const d = new Date(ts); if (isNaN(d)) return '—'; return d.toLocaleString(); } catch(e) { return '—'; } }
+function fmtRel(ts) { if (!ts) return '—'; const s = Math.floor((Date.now() - new Date(ts).getTime())/1000); if (s < 60) return s+'s ago'; if (s < 3600) return Math.floor(s/60)+'m ago'; if (s < 86400) return Math.floor(s/3600)+'h ago'; return Math.floor(s/86400)+'d ago'; }
+function fmtBytes(b) { if (b == null) return '—'; if (b < 1024) return b+'B'; if (b < 1048576) return (b/1024).toFixed(1)+'KB'; if (b < 1073741824) return (b/1048576).toFixed(1)+'MB'; return (b/1073741824).toFixed(2)+'GB'; }
+function parsePorts(s) { if (!s || !s.trim()) return []; return [...new Set(s.split(',').map(p => parseInt(p.trim(),10)).filter(p => !isNaN(p) && p >= 1 && p <= 65535))]; }
+function portsToStr(arr) { if (!arr || !arr.length) return ''; return arr.slice().sort((a,b)=>a-b).join(', '); }
+function nodeStatusBadge(st) {
+    const m = { running:['success','Running'], pending:['warning','Pending'], error:['error','Error'], disabled:['muted','Disabled'] };
+    const [c,l] = m[st] || ['muted', st || 'Unknown'];
+    const pulse = st === 'running' ? ' pulse' : '';
+    return `<span class="badge badge-${c}"><span class="badge-dot${pulse}"></span>${esc(l)}</span>`;
 }
-
-function pathForPage(page) {
-  return APP_ROUTES[page] || APP_ROUTES.dashboard;
+function runtimeBadge(rt) {
+    if (!rt) return '<span class="badge badge-muted">No Data</span>';
+    if (rt.runtime_ok) return '<span class="badge badge-success"><span class="badge-dot pulse"></span>Active</span>';
+    return '<span class="badge badge-error">Inactive</span>';
 }
+function boolBadge(v) { return v ? '<span class="badge badge-success">Yes</span>' : '<span class="badge badge-muted">No</span>'; }
+function defaultInbound() { return { name:'', bind_ip:'0.0.0.0', public_host:'', port_mode:'fixed', fixed_ports:[], random_count:1, public_ports_mode:'use_inbound_ports', public_fixed_ports:[], public_random_count:1, target_type:'static', target_host:'127.0.0.1', target_port:80, target_balancer:'', enabled:true, notes:'' }; }
+function defaultBalancer() { return { alias:'', strategy:'round_robin', endpoints:[], enabled:true, notes:'' }; }
+function defaultEndpoint() { return { type:'static', host:'127.0.0.1', port:80, dependency_id:'', node_id:'', core_id:'', inbound_name:'', weight:1, enabled:true, notes:'' }; }
+function defaultDependency(i) { return { id:uid(), type:'node', name:'dep '+(i+1), ref_id:'', host:'', sync_interval:5, required:true, notes:'' }; }
+function getNodeById(id) { return S.nodes.find(n => n.id === id); }
+function getCoreById(id) { return S.cores.find(c => c.id === id); }
+function getNodeRuntime(nodeId) { return S.runtimeCache[nodeId] || null; }
+function getCatalogForNode(nodeId) { return S.inboundCatalog[nodeId] || []; }
 
-function pathForCore(coreId, tab) {
-  var safeTab = CORE_TABS.includes(tab) ? tab : "inbounds";
-  return "/cores/" + encodeURIComponent(coreId) + "/" + safeTab;
-}
+/* ------------------------------------------------------------
+   API CLIENT
+   ------------------------------------------------------------ */
+class ApiError extends Error { constructor(status, detail) { super(detail); this.status = status; this.detail = detail; } }
 
-function routeFromPath(pathname) {
-  var path = cleanPath(pathname);
-  if (path === "/" || path === "/admin") return { page: "dashboard" };
-  for (var page in APP_ROUTES) {
-    if (Object.prototype.hasOwnProperty.call(APP_ROUTES, page) && path === APP_ROUTES[page]) {
-      return { page: page };
+async function api(method, path, body) {
+    const opts = { method, credentials: 'same-origin', headers: {} };
+    if (body !== undefined) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+    const res = await fetch(path, opts);
+    if (!res.ok) {
+        let detail;
+        try { const j = await res.json(); detail = j.detail || j.message || JSON.stringify(j); } catch(e) { detail = `HTTP ${res.status}`; }
+        throw new ApiError(res.status, detail);
     }
-  }
-  var coreMatch = path.match(/^\/cores\/(core_[A-Za-z0-9_-]{6,96})(?:\/([A-Za-z0-9_-]+))?$/);
-  if (coreMatch) {
-    return {
-      page: "coreEditor",
-      coreId: decodeURIComponent(coreMatch[1]),
-      tab: CORE_TABS.includes(coreMatch[2]) ? coreMatch[2] : "inbounds",
+    if (res.status === 204) return null;
+    const ct = res.headers.get('content-type') || '';
+    if (ct.includes('json')) return res.json();
+    return res.text();
+}
+
+const API = {
+    auth: {
+        login: (u,p) => api('POST','/api/auth/login',{username:u,password:p}),
+        logout: () => api('POST','/api/auth/logout'),
+        me: () => api('GET','/api/auth/me'),
+    },
+    panel: {
+        summary: () => api('GET','/api/panel/summary'),
+        stats: () => api('GET','/api/panel/stats'),
+        integrity: () => api('GET','/api/panel/integrity'),
+        repair: () => api('POST','/api/panel/repair'),
+    },
+    nodes: {
+        list: () => api('GET','/api/nodes'),
+        create: (d) => api('POST','/api/nodes', d),
+        update: (id,d) => api('PUT','/api/nodes/'+id, d),
+        delete: (id) => api('DELETE','/api/nodes/'+id),
+        genKey: () => api('POST','/api/nodes/api-key'),
+        checkAll: () => api('POST','/api/nodes/check'),
+        checkOne: (id) => api('POST','/api/nodes/'+id+'/check'),
+        syncAll: () => api('POST','/api/nodes/sync-runtime'),
+        syncOne: (id) => api('POST','/api/nodes/'+id+'/sync-runtime'),
+        runtimeCache: () => api('GET','/api/nodes/runtime-cache'),
+        runtime: (id,refresh) => api('GET','/api/nodes/'+id+'/runtime?refresh='+(refresh?'true':'false')),
+        drift: (id,refresh) => api('GET','/api/nodes/'+id+'/drift?refresh='+(refresh?'true':'false')),
+        inbounds: (id) => api('GET','/api/nodes/'+id+'/inbounds'),
+        configPreview: (id) => api('GET','/api/nodes/'+id+'/config-preview'),
+        applyConfig: (id) => api('POST','/api/nodes/'+id+'/apply-config'),
+    },
+    cores: {
+        list: () => api('GET','/api/cores'),
+        create: (d) => api('POST','/api/cores', d),
+        update: (id,d) => api('PUT','/api/cores/'+id, d),
+        delete: (id) => api('DELETE','/api/cores/'+id),
+        preview: (id) => api('GET','/api/cores/'+id+'/preview'),
+        apply: (id) => api('POST','/api/cores/'+id+'/apply'),
+        validateAdv: (d) => api('POST','/api/cores/advanced/validate', d),
+    },
+    logs: {
+        sources: () => api('GET','/api/logs/sources'),
+        list: (params) => api('GET','/api/logs?'+new URLSearchParams(params).toString()),
+    },
+};
+
+/* ------------------------------------------------------------
+   TOAST
+   ------------------------------------------------------------ */
+function toast(msg, type='info') {
+    const root = document.getElementById('toast-root');
+    const icons = { success:IC.check, error:IC.x, warning:IC.alert, info:IC.eye };
+    const el = document.createElement('div');
+    el.className = 'toast ' + type;
+    el.innerHTML = `<span class="toast-icon">${icons[type]||icons.info}</span><span class="toast-msg">${esc(msg)}</span><button class="toast-close">${IC.x}</button>`;
+    root.appendChild(el);
+    el.querySelector('.toast-close').onclick = () => removeToast(el);
+    setTimeout(() => removeToast(el), 5000);
+}
+function removeToast(el) { if (el.classList.contains('removing')) return; el.classList.add('removing'); setTimeout(() => el.remove(), 200); }
+
+/* ------------------------------------------------------------
+   CONFIRM DIALOG
+   ------------------------------------------------------------ */
+function showConfirm({ title, text, icon='danger', confirmText='Confirm', cancelText='Cancel', onConfirm }) {
+    const root = document.getElementById('overlay-root');
+    const iconSvg = icon === 'warning' ? IC.alert : IC.alert;
+    const el = document.createElement('div');
+    el.className = 'modal-overlay';
+    el.innerHTML = `<div class="modal" style="width:420px"><div class="modal-body">
+        <div class="confirm-body">
+            <div class="confirm-icon ${icon}">${iconSvg}</div>
+            <div class="confirm-title">${esc(title)}</div>
+            <div class="confirm-text">${esc(text)}</div>
+            <div class="confirm-actions">
+                <button class="btn btn-outline" data-action="confirm-cancel">${esc(cancelText)}</button>
+                <button class="btn btn-danger" data-action="confirm-ok">${esc(confirmText)}</button>
+            </div>
+        </div>
+    </div></div>`;
+    root.appendChild(el);
+    el.querySelector('[data-action="confirm-cancel"]').onclick = () => el.remove();
+    el.querySelector('[data-action="confirm-ok"]').onclick = () => { el.remove(); onConfirm(); };
+    el.onclick = (e) => { if (e.target === el) el.remove(); };
+}
+
+/* ------------------------------------------------------------
+   MODAL HELPER
+   ------------------------------------------------------------ */
+function openModal(html, cls='') {
+    const root = document.getElementById('overlay-root');
+    const el = document.createElement('div');
+    el.className = 'modal-overlay';
+    el.innerHTML = `<div class="modal ${cls}">${html}</div>`;
+    root.appendChild(el);
+    el.onclick = (e) => { if (e.target === el) closeModal(el); };
+    return el;
+}
+function closeModal(el) { if (el) el.remove(); }
+function closeAllModals() { document.getElementById('overlay-root').innerHTML = ''; }
+
+/* ------------------------------------------------------------
+   SLIDE PANEL
+   ------------------------------------------------------------ */
+function openSlide(title, contentHtml, wide) {
+    S.slidePanel = { title, contentHtml };
+    renderOverlay();
+}
+function closeSlide() { S.slidePanel = null; renderOverlay(); }
+
+/* ------------------------------------------------------------
+   RENDER: OVERLAY ROOT (modals + slide panels)
+   ------------------------------------------------------------ */
+function renderOverlay() {
+    const root = document.getElementById('overlay-root');
+    let html = '';
+    // Node editor modal
+    if (S.nodeEditor.open) html += renderNodeEditorModal();
+    // Core editor full panel
+    if (S.coreEditor.open) html += renderCoreEditorPanel();
+    // Slide panel
+    if (S.slidePanel) html += renderSlidePanel();
+    root.innerHTML = html;
+    bindOverlayEvents();
+}
+
+/* ------------------------------------------------------------
+   ROUTER
+   ------------------------------------------------------------ */
+function navigate(route) {
+    S.route = route;
+    S.inboundSubEditor = null;
+    S.balancerSubEditor = null;
+    S.depSubEditor = null;
+    renderApp();
+}
+
+/* ------------------------------------------------------------
+   MAIN RENDER
+   ------------------------------------------------------------ */
+function renderApp() {
+    const app = document.getElementById('app');
+    if (!S.user) { app.innerHTML = renderLogin(); bindLoginEvents(); return; }
+    app.innerHTML = renderShell();
+    bindShellEvents();
+    renderPageContent();
+}
+
+function renderPageContent() {
+    const content = document.getElementById('page-content');
+    if (!content) return;
+    switch(S.route) {
+        case 'dashboard': content.innerHTML = renderDashboard(); bindDashboardEvents(); break;
+        case 'nodes': content.innerHTML = renderNodes(); bindNodesEvents(); break;
+        case 'cores': content.innerHTML = renderCores(); bindCoresEvents(); break;
+        case 'logs': content.innerHTML = renderLogs(); bindLogsEvents(); break;
+        case 'diagnostics': content.innerHTML = renderDiagnostics(); bindDiagnosticsEvents(); break;
+        default: content.innerHTML = renderDashboard(); bindDashboardEvents();
+    }
+}
+
+/* ------------------------------------------------------------
+   LOGIN PAGE
+   ------------------------------------------------------------ */
+function renderLogin() {
+    return `<div class="login-page">
+        <div class="login-card">
+            <div class="login-brand">${IC.logo}<h1>Doctor Dev</h1><p>Runtime Orchestration Panel</p></div>
+            <div class="login-error" id="login-error"></div>
+            <div class="login-field"><label>Username</label><input type="text" id="login-user" autocomplete="username" maxlength="80"></div>
+            <div class="login-field"><label>Password</label><input type="password" id="login-pass" autocomplete="current-password" maxlength="256"></div>
+            <button class="login-btn" id="login-btn">Sign In</button>
+        </div>
+    </div>`;
+}
+function bindLoginEvents() {
+    const btn = document.getElementById('login-btn');
+    const errEl = document.getElementById('login-error');
+    const userEl = document.getElementById('login-user');
+    const passEl = document.getElementById('login-pass');
+    const doLogin = async () => {
+        const u = userEl.value.trim(), p = passEl.value;
+        if (!u || !p) { errEl.textContent = 'Username and password are required.'; errEl.classList.add('visible'); return; }
+        errEl.classList.remove('visible');
+        btn.disabled = true; btn.textContent = 'Signing in...';
+        try {
+            await API.auth.login(u, p);
+            S.user = await API.auth.me();
+            navigate('dashboard');
+            await loadDashboardData();
+            renderPageContent();
+        } catch(e) {
+            errEl.textContent = e.detail || 'Login failed';
+            errEl.classList.add('visible');
+            btn.disabled = false; btn.textContent = 'Sign In';
+        }
     };
-  }
-  return { page: "dashboard" };
+    btn.onclick = doLogin;
+    passEl.onkeydown = (e) => { if (e.key === 'Enter') doLogin(); };
+    userEl.focus();
 }
 
-function writeRoute(path, replace) {
-  if (!window.history || !window.history.pushState) return;
-  var target = cleanPath(path);
-  var current = cleanPath(window.location.pathname);
-  if (target === current) return;
-  if (replace) window.history.replaceState({}, "", target);
-  else window.history.pushState({}, "", target);
+/* ------------------------------------------------------------
+   APP SHELL
+   ------------------------------------------------------------ */
+function renderShell() {
+    const navItems = [
+        { id:'dashboard', icon:IC.dashboard, label:'Dashboard' },
+        { id:'nodes', icon:IC.nodes, label:'Nodes' },
+        { id:'cores', icon:IC.cores, label:'Cores / Routing' },
+        { id:'logs', icon:IC.logs, label:'Logs' },
+        { id:'diagnostics', icon:IC.diag, label:'Diagnostics' },
+    ];
+    const initials = (S.user?.username || 'A').slice(0,2).toUpperCase();
+    return `<div class="app-shell">
+        <aside class="app-sidebar">
+            <div class="sidebar-brand">${IC.logo}<span>Doctor Dev</span></div>
+            <nav class="sidebar-nav">
+                <div class="sidebar-section-label">Navigation</div>
+                ${navItems.map(n => `<div class="sidebar-item${S.route===n.id?' active':''}" data-nav="${n.id}">${n.icon}<span>${n.label}</span></div>`).join('')}
+            </nav>
+            <div class="sidebar-footer">
+                <div class="sidebar-user">
+                    <div class="sidebar-user-avatar">${esc(initials)}</div>
+                    <div class="sidebar-user-info"><div class="sidebar-user-name">${esc(S.user?.username||'')}</div><div class="sidebar-user-role">Administrator</div></div>
+                    <button class="sidebar-logout" data-action="logout" title="Sign out">${IC.logout}</button>
+                </div>
+            </div>
+        </aside>
+        <header class="app-header">
+            <div class="header-left">
+                <span class="header-title">${esc({dashboard:'Dashboard',nodes:'Nodes',cores:'Cores / Routing',logs:'Logs',diagnostics:'Diagnostics'}[S.route]||'')}</span>
+                ${S.globalLoading ? '<div class="spinner spinner-sm"></div>' : ''}
+            </div>
+            <div class="header-right">
+                <button class="header-btn" data-action="global-refresh">${IC.refresh}<span>Refresh</span></button>
+            </div>
+        </header>
+        <main class="app-content" id="page-content"></main>
+    </div>`;
 }
-
-function applyRouteFromLocation(options) {
-  options = options || {};
-  if (!state.user || !state.routingReady) return;
-  var route = routeFromPath(window.location.pathname);
-  if (route.page === "coreEditor") {
-    var core = coreById(route.coreId);
-    if (!core) {
-      showToast("Core was not found. Showing the cores page instead.", "warning");
-      switchPage("cores", { replaceRoute: true });
-      return;
-    }
-    openCoreEditorPage(core, route.tab || "inbounds", { replaceRoute: !!options.replaceRoute, skipRoute: true });
-    return;
-  }
-  switchPage(route.page || "dashboard", { replaceRoute: !!options.replaceRoute, skipRoute: true });
-}
-
-function editorCardKey(type, index, extra) {
-  return String(type || "card") + ":" + String(index) + (extra ? ":" + String(extra) : "");
-}
-
-function isEditorCardOpen(type, index, extra) {
-  return state.editorCardOpen[editorCardKey(type, index, extra)] !== false;
-}
-
-function editorCollapseButton(type, index, isOpen, label, extra) {
-  return (
-    '<button type="button" class="editor-collapse-btn" data-action="toggle-editor-card" data-card-type="' +
-    escapeHtml(type) +
-    '" data-card-index="' +
-    escapeHtml(String(index)) +
-    '" data-card-extra="' +
-    escapeHtml(extra || "") +
-    '" aria-label="' +
-    escapeHtml(label || "Toggle card") +
-    '" title="' +
-    escapeHtml(label || "Toggle card") +
-    '"><i class="fa-solid ' +
-    (isOpen ? "fa-chevron-down" : "fa-chevron-right") +
-    '" aria-hidden="true"></i></button>'
-  );
-}
-
-function setEditorCardButtonState(btn, isOpen) {
-  if (!btn) return;
-  var type = btn.dataset.cardType || "card";
-  var idx = btn.dataset.cardIndex || "0";
-  var extra = btn.dataset.cardExtra || "";
-  var key = editorCardKey(type, idx, extra);
-  state.editorCardOpen[key] = !!isOpen;
-  var card = btn.closest(".editor-card");
-  if (card) {
-    card.classList.toggle("is-collapsed", !isOpen);
-    card.classList.toggle("is-open", !!isOpen);
-  }
-  var icon = btn.querySelector("i");
-  if (icon) {
-    icon.classList.toggle("fa-chevron-down", !!isOpen);
-    icon.classList.toggle("fa-chevron-right", !isOpen);
-  }
-}
-
-function bindEditorCardToggles(root) {
-  if (!root) return;
-  root.querySelectorAll('[data-action="toggle-editor-card"]').forEach(function (btn) {
-    if (btn.dataset.boundToggle === "1") return;
-    btn.dataset.boundToggle = "1";
-    btn.addEventListener("click", function () {
-      var type = btn.dataset.cardType || "card";
-      var idx = btn.dataset.cardIndex || "0";
-      var extra = btn.dataset.cardExtra || "";
-      var key = editorCardKey(type, idx, extra);
-      setEditorCardButtonState(btn, state.editorCardOpen[key] === false);
+function bindShellEvents() {
+    document.querySelectorAll('[data-nav]').forEach(el => {
+        el.onclick = () => navigate(el.dataset.nav);
     });
-  });
-}
-
-function setSectionCardsOpen(scope, isOpen) {
-  var panel = document.querySelector('.tab-panel[data-core-tab="' + String(scope || "").replace(/"/g, "") + '"]');
-  if (!panel) return;
-  panel.querySelectorAll('[data-action="toggle-editor-card"]').forEach(function (btn) {
-    setEditorCardButtonState(btn, !!isOpen);
-  });
-}
-
-
-// ============================================================
-// 3. API HELPER
-// ============================================================
-
-async function api(path, options) {
-  options = options || {};
-  var res = await fetch(
-    path,
-    Object.assign(
-      {
-        credentials: "same-origin",
-        headers: Object.assign(
-          { "Content-Type": "application/json" },
-          options.headers || {},
-        ),
-      },
-      options,
-    ),
-  );
-  var data = await res.json().catch(function () {
-    return {};
-  });
-  if (!res.ok) throw new Error(formatApiError(data));
-  return data;
-}
-
-// ============================================================
-// 4. TOAST SYSTEM
-// ============================================================
-
-function showToast(message, type, duration) {
-  type = type || "info";
-  duration = duration === undefined ? 4500 : duration;
-
-  var icons = {
-    success:
-      '<i class="fa-solid fa-check" aria-hidden="true"></i>',
-    error:
-      '<i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i>',
-    warning:
-      '<i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>',
-    info: '<i class="fa-solid fa-circle-info" aria-hidden="true"></i>',
-  };
-
-  var container = $("#toastContainer");
-  if (!container) return;
-
-  var toast = document.createElement("div");
-  toast.className = "toast toast--" + type;
-  toast.innerHTML =
-    '<span class="toast-icon">' +
-    (icons[type] || icons.info) +
-    "</span>" +
-    '<span class="toast-message">' +
-    escapeHtml(message) +
-    "</span>" +
-    '<button class="toast-close" aria-label="Dismiss">&times;</button>';
-
-  container.appendChild(toast);
-
-  requestAnimationFrame(function () {
-    requestAnimationFrame(function () {
-      toast.classList.add("toast--visible");
+    document.querySelector('[data-action="logout"]')?.addEventListener('click', async () => {
+        try { await API.auth.logout(); } catch(e) {}
+        S.user = null; S.nodes = []; S.cores = []; S.runtimeCache = {};
+        renderApp();
     });
-  });
-
-  function remove() {
-    toast.classList.remove("toast--visible");
-    setTimeout(function () {
-      if (toast.parentNode) toast.parentNode.removeChild(toast);
-    }, 350);
-  }
-
-  toast.querySelector(".toast-close").addEventListener("click", remove);
-  if (duration > 0) setTimeout(remove, duration);
-}
-
-// ============================================================
-// 5. CONFIRM DIALOG
-// ============================================================
-
-function showConfirm(message, title, confirmText, type) {
-  title = title || "Confirm Action";
-  confirmText = confirmText || "Delete";
-  type = type || "danger";
-
-  return new Promise(function (resolve) {
-    var dialog = $("#confirmDialog");
-    var titleEl = $("#confirmTitle");
-    var messageEl = $("#confirmMessage");
-    var okBtn = $("#confirmOk");
-    var cancelBtn = $("#confirmCancel");
-
-    if (!dialog) {
-      resolve(false);
-      return;
-    }
-
-    if (titleEl) titleEl.textContent = title;
-    if (messageEl) messageEl.textContent = message;
-    if (okBtn) {
-      okBtn.textContent = confirmText;
-      okBtn.className = "btn btn-" + type;
-    }
-
-    dialog.classList.remove("hidden");
-
-    var handled = false;
-    function done(result) {
-      if (handled) return;
-      handled = true;
-      dialog.classList.add("hidden");
-      if (okBtn) okBtn.removeEventListener("click", onOk);
-      if (cancelBtn) cancelBtn.removeEventListener("click", onCancel);
-      resolve(result);
-    }
-
-    function onOk() {
-      done(true);
-    }
-    function onCancel() {
-      done(false);
-    }
-
-    if (okBtn) okBtn.addEventListener("click", onOk);
-    if (cancelBtn) cancelBtn.addEventListener("click", onCancel);
-  });
-}
-
-// ============================================================
-// 6. AUTH
-// ============================================================
-
-async function checkSession() {
-  try {
-    var data = await api("/api/auth/me");
-    if (data.ok) showApp(data.username);
-    else showLogin();
-  } catch (_) {
-    showLogin();
-  }
-}
-
-async function handleLoginSubmit(e) {
-  e.preventDefault();
-  var form = e.target;
-  var unameEl = $("#usernameInput");
-  var pwdEl = $("#passwordInput");
-  var username = unameEl ? unameEl.value.trim() : "";
-  var password = pwdEl ? pwdEl.value : "";
-  var submitBtn = form.querySelector('[type="submit"]');
-  var btnText = $("#loginBtnText");
-  var errorEl = $("#loginMessage");
-
-  if (errorEl) errorEl.textContent = "";
-  var origText = btnText ? btnText.textContent : "Sign In";
-  if (submitBtn) submitBtn.disabled = true;
-  if (btnText) btnText.textContent = "Signing in…";
-
-  try {
-    var data = await api("/api/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ username: username, password: password }),
+    document.querySelector('[data-action="global-refresh"]')?.addEventListener('click', async () => {
+        S.globalLoading = true;
+        const hdr = document.querySelector('.header-left');
+        if (hdr) hdr.innerHTML = `<span class="header-title">${esc({dashboard:'Dashboard',nodes:'Nodes',cores:'Cores / Routing',logs:'Logs',diagnostics:'Diagnostics'}[S.route]||'')}</span><div class="spinner spinner-sm"></div>`;
+        await loadDashboardData();
+        S.globalLoading = false;
+        renderApp();
+        toast('Data refreshed', 'success');
     });
-    if (data.ok) {
-      showApp(data.username);
-    } else {
-      var msg = "Login failed. Please try again.";
-      if (errorEl) errorEl.textContent = msg;
-      showToast(msg, "error");
-    }
-  } catch (err) {
-    var msg2 = err.message || "Login failed.";
-    if (errorEl) errorEl.textContent = msg2;
-    showToast(msg2, "error");
-  } finally {
-    if (submitBtn) submitBtn.disabled = false;
-    if (btnText) btnText.textContent = origText;
-  }
 }
 
-async function handleLogout() {
-  try {
-    await api("/api/auth/logout", { method: "POST" });
-  } catch (_) {}
-  state.user = null;
-  state.nodes = [];
-  state.cores = [];
-  state.stats = null;
-  showLogin();
+/* ------------------------------------------------------------
+   DATA LOADING
+   ------------------------------------------------------------ */
+async function loadDashboardData() {
+    try { S.nodes = await API.nodes.list(); } catch(e) { S.nodes = []; }
+    try { const cr = await API.cores.list(); S.cores = cr.cores || cr || []; S.inboundCatalog = cr.inbound_catalog || {}; } catch(e) { S.cores = []; S.inboundCatalog = {}; }
+    try { S.runtimeCache = await API.nodes.runtimeCache(); } catch(e) { S.runtimeCache = {}; }
+    try { S.summary = await API.panel.summary(); } catch(e) { S.summary = null; }
+    try { S.stats = await API.panel.stats(); } catch(e) { S.stats = null; }
+}
+async function loadIntegrity() { try { S.integrity = await API.panel.integrity(); } catch(e) { S.integrity = null; } }
+async function loadLogsSources() { try { S.logsSources = await API.logs.sources(); } catch(e) { S.logsSources = []; } }
+async function loadLogs() {
+    try {
+        const p = { source: S.logsFilter.source, limit: S.logsFilter.limit, level: S.logsFilter.level };
+        if (S.logsFilter.q) p.q = S.logsFilter.q;
+        S.logsEntries = await API.logs.list(p);
+    } catch(e) { S.logsEntries = []; toast('Failed to load logs: ' + (e.detail||e.message), 'error'); }
 }
 
-function togglePasswordVisibility() {
-  var input = $("#passwordInput");
-  var btn = $("#togglePassword");
-  if (!input) return;
-  input.type = input.type === "password" ? "text" : "password";
-  if (btn)
-    btn.setAttribute(
-      "aria-label",
-      input.type === "password" ? "Show password" : "Hide password",
-    );
-}
-
-// ============================================================
-// 7. NAVIGATION
-// ============================================================
-
-function showApp(username) {
-  state.user = username;
-  var nameEl = $("#adminName");
-  if (nameEl) nameEl.textContent = username;
-  var loginView = $("#loginView");
-  var appView = $("#appView");
-  if (loginView) loginView.classList.add("hidden");
-  if (appView) appView.classList.remove("hidden");
-  refreshAll().then(function () {
-    state.routingReady = true;
-    applyRouteFromLocation({ replaceRoute: cleanPath(window.location.pathname) === "/" || cleanPath(window.location.pathname) === "/admin" });
-  });
-}
-
-function showLogin() {
-  var appView = $("#appView");
-  var loginView = $("#loginView");
-  if (appView) appView.classList.add("hidden");
-  if (loginView) loginView.classList.remove("hidden");
-}
-
-function switchPage(page, options) {
-  options = options || {};
-  if (!options.skipRoute) writeRoute(pathForPage(page), !!options.replaceRoute);
-  if (state.page === "logs" && page !== "logs") {
-    stopLogAutoRefresh(true);
-  }
-
-  state.page = page;
-
-  $$(".nav-item[data-page]").forEach(function (btn) {
-    btn.classList.toggle("active", btn.dataset.page === page);
-  });
-
-  $$(".page").forEach(function (s) {
-    s.classList.remove("active");
-  });
-  var editorPage = $("#coreEditorPage");
-  if (editorPage) editorPage.classList.remove("active");
-
-  var target = $("#" + page + "Page");
-  if (target) target.classList.add("active");
-
-  if (page === "logs")
-    loadLogSources().then(function () {
-      loadLogs();
-    });
-  else if (page === "dashboard") loadStats();
-  else if (page === "nodes") renderNodes();
-  else if (page === "cores") renderCores();
-}
-
-function openCoreEditorPage(core, tab, options) {
-  options = options || {};
-  if (!core || !isValidCoreId(core.id)) { warnInvalidIdentifier("core"); return; }
-  var initialTab = CORE_TABS.includes(tab) ? tab : "inbounds";
-  if (!options.skipRoute) writeRoute(pathForCore(core.id, initialTab), !!options.replaceRoute);
-  state.editingCore = core;
-  state.editorDraft = deepCopy(core);
-
-  if (!Array.isArray(state.editorDraft.inbounds))
-    state.editorDraft.inbounds = [];
-  if (!Array.isArray(state.editorDraft.balancers))
-    state.editorDraft.balancers = [];
-  if (!Array.isArray(state.editorDraft.dependencies))
-    state.editorDraft.dependencies = [];
-  ensureAdvancedConfig(state.editorDraft);
-
-  $$(".nav-item[data-page]").forEach(function (btn) {
-    btn.classList.remove("active");
-  });
-  $$(".page").forEach(function (s) {
-    s.classList.remove("active");
-  });
-
-  state.page = "coreEditor";
-  var ep = $("#coreEditorPage");
-  if (ep) ep.classList.add("active");
-
-  var bc = $("#editorBreadcrumbName");
-  if (bc) bc.textContent = core.name || "Core Editor";
-
-  bindCoreEditorHeader();
-  switchCoreTab(initialTab, { skipRoute: true });
-  renderCoreEditor();
-}
-
-// ============================================================
-// 8. DATA LOADING
-// ============================================================
-
-async function refreshAll() {
-  await Promise.all([loadNodes(), loadCores(), loadRuntimeCache()]);
-  if (state.page === "dashboard") await loadStats();
-}
-
-async function repairPanelData() {
-  var confirmed = await showConfirm(
-    "Repair invalid nodes and cores? Invalid records will be removed and cores linked to missing nodes will be disabled.",
-    "Repair Data",
-    "Repair",
-    "warning",
-  );
-  if (!confirmed) return;
-  try {
-    var data = await api("/api/panel/repair", { method: "POST" });
-    var summary = data.integrity && data.integrity.summary ? data.integrity.summary : {};
-    showToast(
-      UI_TEXT.repairSuccess + String(summary.problems_total || 0),
-      summary.problems_total ? "warning" : "success",
-    );
-    await refreshAll();
-  } catch (err) {
-    showToast(err.message || UI_TEXT.repairFailed, "error");
-  }
-}
-
-async function loadStats() {
-  try {
-    var data = await api("/api/panel/stats");
-    if (data.ok) {
-      state.stats = data;
-      renderDashboard();
-    }
-  } catch (err) {
-    console.error("loadStats:", err);
-  }
-}
-
-async function loadNodes() {
-  try {
-    var data = await api("/api/nodes");
-    if (data.ok) {
-      state.nodes = (data.nodes || []).filter(function (node) { return isValidNodeId(node && node.id); });
-      renderNodes();
-      updateNodesBadge();
-    }
-  } catch (err) {
-    console.error("loadNodes:", err);
-  }
-}
-
-async function loadRuntimeCache() {
-  try {
-    var data = await api("/api/nodes/runtime-cache");
-    if (data.ok) {
-      state.runtimeCache = data.cache || { nodes: {} };
-      renderNodes();
-    }
-  } catch (err) {
-    console.error("loadRuntimeCache:", err);
-  }
-}
-
-async function syncNodeRuntime(id, button) {
-  if (!isValidNodeId(id)) { warnInvalidIdentifier("node"); await refreshAll(); return; }
-  var origHTML = button ? button.innerHTML : "";
-  if (button) button.disabled = true;
-  try {
-    var data = await api("/api/nodes/" + encodeURIComponent(id) + "/sync-runtime", { method: "POST" });
-    if (data.ok) {
-      showToast("Runtime synced for node.", "success");
-      await loadRuntimeCache();
-    }
-  } catch (err) {
-    showToast(err.message || "Runtime sync failed.", "error");
-    await loadRuntimeCache();
-  } finally {
-    if (button) { button.disabled = false; button.innerHTML = origHTML; }
-  }
-}
-
-async function loadCores() {
-  try {
-    var data = await api("/api/cores");
-    if (data.ok) {
-      state.cores = (data.cores || []).filter(function (core) { return isValidCoreId(core && core.id); });
-      state.inboundCatalog = data.inbound_catalog || [];
-      renderCores();
-      updateCoresBadge();
-    }
-  } catch (err) {
-    console.error("loadCores:", err);
-  }
-}
-
-function updateNodesBadge() {
-  var badge = $("#nodesBadge");
-  if (!badge) return;
-  var count = state.nodes.filter(function (n) {
-    return n.enabled && n.status === "error";
-  }).length;
-  badge.textContent = count;
-  badge.classList.toggle("hidden", count === 0);
-}
-
-function updateCoresBadge() {
-  var badge = $("#coresBadge");
-  if (!badge) return;
-  var count = state.cores.filter(function (c) {
-    return !c.enabled;
-  }).length;
-  badge.textContent = count;
-  badge.classList.toggle("hidden", count === 0);
-}
-
-// ============================================================
-// 9. STATUS HELPERS
-// ============================================================
-
-function statusFor(item) {
-  if (!item) return "pending";
-  if (!item.enabled) return "disabled";
-  var s = item.status;
-  if (
-    s === "running" ||
-    s === "error" ||
-    s === "pending" ||
-    s === "ready" ||
-    s === "applied" ||
-    s === "draft"
-  )
-    return s;
-  return "pending";
-}
-
-function statusLabel(status) {
-  var labels = {
-    running: "Running",
-    error: "Error",
-    pending: "Pending",
-    ready: "Ready",
-    applied: "Applied",
-    draft: "Draft",
-    disabled: "Disabled",
-  };
-  return labels[status] || "Unknown";
-}
-
-function statusDotClass(status) {
-  if (status === "running") return "running";
-  if (status === "error") return "error";
-  if (status === "disabled") return "disabled";
-  return "pending";
-}
-
-// ============================================================
-// 10. DASHBOARD
-// ============================================================
-
+/* ------------------------------------------------------------
+   DASHBOARD PAGE
+   ------------------------------------------------------------ */
 function renderDashboard() {
-  var stats = state.stats;
-  if (!stats) return;
-
-  function set(id, val) {
-    var el = $(id);
-    if (el) el.textContent = val !== null && val !== undefined ? val : "\u2014";
-  }
-
-  var nodes = stats.nodes || {};
-  var cores = stats.cores || {};
-  var inbounds = stats.inbounds || {};
-  var balancers = stats.balancers || {};
-
-  set("#statTotalNodes", nodes.total != null ? nodes.total : 0);
-  set("#statRunningNodes", nodes.running != null ? nodes.running : 0);
-  set("#statErrorNodes", nodes.error != null ? nodes.error : 0);
-  set("#statTotalCores", cores.total != null ? cores.total : 0);
-  set("#statEnabledCores", cores.enabled != null ? cores.enabled : 0);
-  set("#statTotalInbounds", inbounds.total != null ? inbounds.total : 0);
-  set("#statEnabledInbounds", inbounds.enabled != null ? inbounds.enabled : 0);
-  set("#statTotalBalancers", balancers.total != null ? balancers.total : 0);
-
-  var errWrap = $("#statErrorNodes");
-  if (errWrap) errWrap.classList.toggle("hidden", !(nodes.error > 0));
-
-  var nodeList = $("#dashboardNodeList");
-  if (!nodeList) return;
-
-  if (!state.nodes.length) {
-    nodeList.innerHTML =
-      '<div class="dashboard-empty">' +
-      "<p>No server nodes have been added yet.</p>" +
-      '<button class="btn btn-primary btn-sm" id="dashEmptyAddNode">Add First Node</button>' +
-      "</div>";
-    var addBtn = $("#dashEmptyAddNode");
-    if (addBtn)
-      addBtn.addEventListener("click", function () {
-        openNodeModal();
-      });
-    return;
-  }
-
-  nodeList.innerHTML = state.nodes
-    .map(function (node) {
-      var st = statusFor(node);
-      var dot = statusDotClass(st);
-      var addr =
-        escapeHtml(node.address || "") +
-        ":" +
-        escapeHtml(String(node.api_port || ""));
-      var tt = node.last_error
-        ? ' title="' + escapeHtml(node.last_error) + '"'
-        : "";
-      return (
-        '<div class="dashboard-node-item"' +
-        tt +
-        ">" +
-        '<span class="status-dot ' +
-        dot +
-        '"></span>' +
-        '<div class="dashboard-node-info">' +
-        '<span class="dashboard-node-name">' +
-        escapeHtml(node.name || node.address) +
-        "</span>" +
-        '<span class="dashboard-node-addr">' +
-        addr +
-        "</span>" +
-        "</div>" +
-        '<div class="dashboard-node-actions">' +
-        '<button class="btn btn-xs btn-ghost" data-action="check" data-id="' +
-        escapeHtml(String(node.id || "")) +
-        '" title="Check node">' +
-        '<i class="fa-solid fa-rotate-right" aria-hidden="true"></i>' +
-        "</button>" +
-        '<button class="btn btn-xs btn-ghost" data-action="edit" data-id="' +
-        escapeHtml(String(node.id || "")) +
-        '" title="Edit node">' +
-        '<i class="fa-solid fa-pen-to-square" aria-hidden="true"></i>' +
-        "</button>" +
-        "</div>" +
-        "</div>"
-      );
-    })
-    .join("");
-
-  nodeList.querySelectorAll("[data-action]").forEach(function (btn) {
-    btn.addEventListener("click", function (e) {
-      e.stopPropagation();
-      var id = btn.dataset.id;
-      if (!isValidNodeId(id)) { warnInvalidIdentifier("node"); return; }
-      if (btn.dataset.action === "edit") openNodeModal(nodeById(id));
-      if (btn.dataset.action === "check") checkSavedNode(id, btn);
+    const nodes = S.nodes || [];
+    const cores = S.cores || [];
+    const rc = S.runtimeCache || {};
+    const enabledNodes = nodes.filter(n => n.enabled);
+    const runningNodes = nodes.filter(n => n.status === 'running');
+    const errorNodes = nodes.filter(n => n.status === 'error');
+    const pendingNodes = nodes.filter(n => n.status === 'pending');
+    const disabledNodes = nodes.filter(n => !n.enabled);
+    const enabledCores = cores.filter(c => c.enabled);
+    const disabledCores = cores.filter(c => !c.enabled);
+    let totalInbounds = 0, enabledInbounds = 0, totalBalancers = 0;
+    cores.forEach(c => {
+        const inbs = c.inbounds || [];
+        totalInbounds += inbs.length;
+        enabledInbounds += inbs.filter(i => i.enabled).length;
+        totalBalancers += (c.balancers || []).length;
     });
-  });
+    const nodesWithErrors = nodes.filter(n => n.last_error);
+    const rtErrors = nodes.filter(n => { const r = rc[n.id]; return r && r.last_error; });
+    const syncOk = nodes.length > 0 && nodes.every(n => { const r = rc[n.id]; return r && r.runtime_ok; });
+
+    return `
+    <div class="stats-grid">
+        <div class="stat-card accent"><div class="stat-value">${nodes.length}</div><div class="stat-label">Total Nodes</div></div>
+        <div class="stat-card accent"><div class="stat-value">${enabledNodes.length}</div><div class="stat-label">Enabled Nodes</div></div>
+        <div class="stat-card info"><div class="stat-value">${runningNodes.length}</div><div class="stat-label">Running</div></div>
+        <div class="stat-card error"><div class="stat-value">${errorNodes.length}</div><div class="stat-label">Error Nodes</div></div>
+        <div class="stat-card warning"><div class="stat-value">${pendingNodes.length}</div><div class="stat-label">Pending</div></div>
+        <div class="stat-card muted"><div class="stat-value">${disabledNodes.length}</div><div class="stat-label">Disabled</div></div>
+        <div class="stat-card info"><div class="stat-value">${cores.length}</div><div class="stat-label">Total Cores</div></div>
+        <div class="stat-card accent"><div class="stat-value">${enabledCores.length}</div><div class="stat-label">Enabled Cores</div></div>
+        <div class="stat-card muted"><div class="stat-value">${disabledCores.length}</div><div class="stat-label">Disabled Cores</div></div>
+        <div class="stat-card accent"><div class="stat-value">${enabledInbounds}</div><div class="stat-label">Enabled Inbounds</div></div>
+        <div class="stat-card info"><div class="stat-value">${totalInbounds}</div><div class="stat-label">Total Inbounds</div></div>
+        <div class="stat-card warning"><div class="stat-value">${totalBalancers}</div><div class="stat-label">Balancers</div></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px">
+        <div class="card">
+            <div class="card-header"><h3>Runtime Health</h3>${syncOk ? '<span class="badge badge-success">Synced</span>' : '<span class="badge badge-warning">Drift Detected</span>'}</div>
+            <div class="card-body compact">
+                <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:0.82rem"><span class="text-secondary">Nodes with runtime data</span><span>${Object.keys(rc).length} / ${nodes.length}</span></div>
+                <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:0.82rem"><span class="text-secondary">Runtime active</span><span class="text-accent">${nodes.filter(n=>rc[n.id]?.runtime_ok).length}</span></div>
+                <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:0.82rem"><span class="text-secondary">Config errors</span><span class="text-error">${nodesWithErrors.length}</span></div>
+                <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:0.82rem"><span class="text-secondary">Runtime errors</span><span class="text-error">${rtErrors.length}</span></div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header"><h3>Quick Actions</h3></div>
+            <div class="card-body compact">
+                <div class="quick-actions">
+                    <button class="quick-action" data-action="add-node">${IC.plus} Add Node</button>
+                    <button class="quick-action" data-action="add-core">${IC.plus} Add Core</button>
+                    <button class="quick-action" data-action="view-logs">${IC.logs} View Logs</button>
+                    <button class="quick-action" data-action="sync-runtime">${IC.sync} Sync Runtime</button>
+                    <button class="quick-action" data-action="repair-data">${IC.wrench} Repair Data</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    ${nodesWithErrors.length ? `<div class="card mb-16">
+        <div class="card-header"><h3>Nodes with Errors</h3></div>
+        <div class="card-body compact">
+            ${nodesWithErrors.map(n => `<div style="display:flex;align-items:center;gap:10px;padding:6px 0;font-size:0.82rem">
+                ${nodeStatusBadge(n.status)} <strong>${esc(n.name)}</strong> <span class="text-muted">${esc(n.address)}</span> <span class="text-error">${esc((n.last_error||'').slice(0,120))}</span>
+            </div>`).join('')}
+        </div>
+    </div>` : ''}
+
+    <div class="card">
+        <div class="card-header"><h3>Recent Nodes</h3></div>
+        ${nodes.length ? `<div class="table-wrap"><table>
+            <thead><tr><th>Status</th><th>Name</th><th>Address</th><th>Port</th><th>Runtime</th><th>Listeners</th><th>Last Checked</th></tr></thead>
+            <tbody>${nodes.slice(0,8).map(n => {
+                const rt = rc[n.id];
+                return `<tr>
+                    <td>${nodeStatusBadge(n.status)}</td>
+                    <td><strong>${esc(n.name)}</strong></td>
+                    <td class="mono">${esc(n.address)}</td>
+                    <td class="mono">${n.api_port||'—'}</td>
+                    <td>${runtimeBadge(rt)}</td>
+                    <td class="mono">${rt?.listeners?.length ?? '—'}</td>
+                    <td class="text-muted text-sm">${fmtRel(n.last_checked_at)}</td>
+                </tr>`;
+            }).join('')}</tbody>
+        </table></div>` : '<div class="card-body"><div class="empty-state"><p>No nodes configured yet. Add your first node to get started.</p><button class="btn btn-primary" data-action="add-node">${IC.plus} Add Node</button></div></div>'}
+    </div>`;
+}
+function bindDashboardEvents() {
+    document.querySelector('[data-action="add-node"]')?.addEventListener('click', () => openNodeEditor(null));
+    document.querySelector('[data-action="add-core"]')?.addEventListener('click', () => openCoreEditor(null));
+    document.querySelector('[data-action="view-logs"]')?.addEventListener('click', () => navigate('logs'));
+    document.querySelector('[data-action="sync-runtime"]')?.addEventListener('click', async () => {
+        try { await API.nodes.syncAll(); toast('Runtime sync initiated', 'success'); await loadDashboardData(); renderPageContent(); } catch(e) { toast(e.detail||'Sync failed','error'); }
+    });
+    document.querySelector('[data-action="repair-data"]')?.addEventListener('click', () => navigate('diagnostics'));
 }
 
-// ============================================================
-// 11. NODES PAGE
-// ============================================================
-
+/* ------------------------------------------------------------
+   NODES PAGE
+   ------------------------------------------------------------ */
 function renderNodes() {
-  var tbody = $("#nodesTableBody");
-  var empty = $("#nodesEmpty");
-  var tableWrap = $("#nodesTableWrap");
-  if (!tbody) return;
-
-  if (!state.nodes.length) {
-    if (empty) empty.classList.remove("hidden");
-    if (tableWrap) tableWrap.classList.add("hidden");
-    return;
-  }
-  if (empty) empty.classList.add("hidden");
-  if (tableWrap) tableWrap.classList.remove("hidden");
-
-  tbody.innerHTML = state.nodes
-    .map(function (node, idx) {
-      var st = statusFor(node);
-      var runtime = runtimeEntryForNode(node.id);
-      var titlePieces = [];
-      if (node.last_error) titlePieces.push(node.last_error);
-      if (runtime && runtime.last_error) titlePieces.push(runtime.last_error);
-      var titleAttr = titlePieces.length ? ' title="' + escapeHtml(titlePieces.join(" | ")) + '"' : "";
-      return (
-        "<tr" + titleAttr + ">" +
-        '<td class="th-num">' + String(idx + 1) + "</td>" +
-        "<td>" + escapeHtml(node.name || "—") + "</td>" +
-        "<td>" + escapeHtml(node.address || "—") + "</td>" +
-        "<td>" + escapeHtml(String(node.api_port || "—")) + "</td>" +
-        "<td>" + escapeHtml(runtimeApiLabel(runtime, node.api_port)) + "</td>" +
-        '<td><div class="stacked-status"><span class="badge badge-' + escapeHtml(st) + '">' + escapeHtml(statusLabel(st)) + "</span>" + runtimeBadge(runtime) + "</div></td>" +
-        '<td><span class="badge ' + (node.enabled ? "badge-running" : "badge-disabled") + '">' + (node.enabled ? "Enabled" : "Disabled") + "</span></td>" +
-        "<td>" + escapeHtml(runtimeUsageLabel(runtime)) + "</td>" +
-        '<td class="actions-cell">' +
-        '<button class="btn btn-xs btn-ghost" data-node-action="check" data-id="' + escapeHtml(String(node.id || "")) + '" title="Check API health"><i class="fa-solid fa-rotate-right" aria-hidden="true"></i></button>' +
-        '<button class="btn btn-xs btn-ghost" data-node-action="sync-runtime" data-id="' + escapeHtml(String(node.id || "")) + '" title="Sync runtime"><i class="fa-solid fa-satellite-dish" aria-hidden="true"></i></button>' +
-        '<button class="btn btn-xs btn-secondary" data-node-action="edit" data-id="' + escapeHtml(String(node.id || "")) + '">Edit</button>' +
-        '<button class="btn btn-xs btn-danger" data-node-action="delete" data-id="' + escapeHtml(String(node.id || "")) + '">Delete</button>' +
-        "</td>" +
-        "</tr>"
-      );
-    })
-    .join("");
-
-  tbody.querySelectorAll("[data-node-action]").forEach(function (btn) {
-    btn.addEventListener("click", function () {
-      var id = btn.dataset.id;
-      var action = btn.dataset.nodeAction;
-      if (!isValidNodeId(id)) { warnInvalidIdentifier("node"); return; }
-      if (action === "check") checkSavedNode(id, btn);
-      if (action === "sync-runtime") syncNodeRuntime(id, btn);
-      if (action === "edit") openNodeModal(nodeById(id));
-      if (action === "delete") deleteNode(id);
+    const nodes = S.nodes || [];
+    const rc = S.runtimeCache || {};
+    if (!nodes.length) return `<div class="card"><div class="card-body"><div class="empty-state">${IC.nodes}<h3>No Nodes Yet</h3><p>Nodes are the runtime instances that forward traffic. Add your first node to begin.</p><button class="btn btn-primary" data-action="add-node">${IC.plus} Add Node</button></div></div></div>`;
+    return `<div style="display:flex;justify-content:flex-end;margin-bottom:14px"><button class="btn btn-primary" data-action="add-node">${IC.plus} Add Node</button></div>
+    <div class="card"><div class="table-wrap"><table>
+        <thead><tr><th>Status</th><th>Name</th><th>Address</th><th>Desired Port</th><th>Runtime Port</th><th>Enabled</th><th>Runtime</th><th>Listeners</th><th>Last Checked</th><th>Last Error</th><th>Actions</th></tr></thead>
+        <tbody>${nodes.map(n => {
+            const rt = rc[n.id];
+            return `<tr>
+                <td>${nodeStatusBadge(n.status)}</td>
+                <td><strong>${esc(n.name)}</strong></td>
+                <td class="mono">${esc(n.address)}</td>
+                <td class="mono">${n.api_port}</td>
+                <td class="mono">${rt?.api?.api_port ?? '—'}</td>
+                <td>${boolBadge(n.enabled)}</td>
+                <td>${runtimeBadge(rt)}</td>
+                <td class="mono">${rt?.listeners?.length ?? '—'}</td>
+                <td class="text-muted text-sm">${fmtRel(n.last_checked_at)}</td>
+                <td class="text-xs" style="max-width:160px" title="${esc(n.last_error||'')}"><span class="text-error">${esc((n.last_error||'').slice(0,50))}</span></td>
+                <td><div class="actions-cell">
+                    <button class="btn btn-xs btn-ghost" data-action="edit-node" data-id="${n.id}" title="Edit">${IC.edit}</button>
+                    <button class="btn btn-xs btn-ghost" data-action="check-node" data-id="${n.id}" title="Check">${IC.eye}</button>
+                    <button class="btn btn-xs btn-ghost" data-action="sync-node" data-id="${n.id}" title="Sync">${IC.sync}</button>
+                    <button class="btn btn-xs btn-ghost" data-action="node-runtime" data-id="${n.id}" title="Runtime">${IC.diag}</button>
+                    <button class="btn btn-xs btn-ghost" data-action="node-drift" data-id="${n.id}" title="Drift">${IC.alert}</button>
+                    <button class="btn btn-xs btn-ghost" data-action="node-preview" data-id="${n.id}" title="Config Preview">${IC.eye}</button>
+                    <button class="btn btn-xs btn-ghost" data-action="node-apply" data-id="${n.id}" title="Apply Config">${IC.upload}</button>
+                    <button class="btn btn-xs btn-ghost text-error" data-action="delete-node" data-id="${n.id}" title="Delete">${IC.trash}</button>
+                </div></td>
+            </tr>`;
+        }).join('')}</tbody>
+    </table></div></div>`;
+}
+function bindNodesEvents() {
+    document.querySelector('[data-action="add-node"]')?.addEventListener('click', () => openNodeEditor(null));
+    document.querySelectorAll('[data-action="edit-node"]').forEach(el => el.onclick = () => { const n = getNodeById(el.dataset.id); if(n) openNodeEditor(n); });
+    document.querySelectorAll('[data-action="delete-node"]').forEach(el => el.onclick = () => {
+        const n = getNodeById(el.dataset.id); if(!n) return;
+        showConfirm({ title:'Delete Node', text:`This will permanently delete "${n.name}". Any cores linked to this node will be affected.`, confirmText:'Delete', onConfirm: async () => {
+            try { await API.nodes.delete(n.id); toast('Node deleted','success'); await loadDashboardData(); renderPageContent(); } catch(e) { toast(e.detail||'Delete failed','error'); }
+        }});
     });
-  });
+    document.querySelectorAll('[data-action="check-node"]').forEach(el => el.onclick = async () => {
+        const id = el.dataset.id; el.disabled = true;
+        try { await API.nodes.checkOne(id); toast('Node check completed','success'); await loadDashboardData(); renderPageContent(); } catch(e) { toast(e.detail||'Check failed','error'); el.disabled = false; }
+    });
+    document.querySelectorAll('[data-action="sync-node"]').forEach(el => el.onclick = async () => {
+        const id = el.dataset.id; el.disabled = true;
+        try { await API.nodes.syncOne(id); toast('Runtime synced','success'); await loadDashboardData(); renderPageContent(); } catch(e) { toast(e.detail||'Sync failed','error'); el.disabled = false; }
+    });
+    document.querySelectorAll('[data-action="node-runtime"]').forEach(el => el.onclick = () => loadNodeRuntime(el.dataset.id));
+    document.querySelectorAll('[data-action="node-drift"]').forEach(el => el.onclick = () => loadNodeDrift(el.dataset.id));
+    document.querySelectorAll('[data-action="node-preview"]').forEach(el => el.onclick = () => loadNodePreview(el.dataset.id));
+    document.querySelectorAll('[data-action="node-apply"]').forEach(el => el.onclick = () => {
+        const n = getNodeById(el.dataset.id); if(!n) return;
+        showConfirm({ title:'Apply Config to Node', text:`Push the current desired configuration to "${n.name}". This will update the node's running config.`, icon:'warning', confirmText:'Apply Config', onConfirm: async () => {
+            try { await API.nodes.applyConfig(n.id); toast('Config applied','success'); await loadDashboardData(); renderPageContent(); } catch(e) { toast(e.detail||'Apply failed','error'); }
+        }});
+    });
 }
 
-function openNodeModal(node) {
-  node = node || null;
-  state.editingNode = node;
-  state.lastFormCheck = null;
-  resetNodeForm();
+/* ------------------------------------------------------------
+   NODE EDITOR MODAL
+   ------------------------------------------------------------ */
+function openNodeEditor(node) {
+    S.nodeEditor = { open: true, node: node ? {...node} : { name:'', address:'', api_port:62051, api_key:'', peer_token_refresh_interval:30, peer_token_ttl:120, enabled:true }, isNew: !node };
+    renderOverlay();
+}
+function renderNodeEditorModal() {
+    const ne = S.nodeEditor;
+    const n = ne.node;
+    return `<div class="modal-overlay"><div class="modal wide">
+        <div class="modal-header"><h2>${ne.isNew ? 'Add Node' : 'Edit Node'}</h2><button class="modal-close" data-action="close-node-editor">${IC.x}</button></div>
+        <div class="modal-body">
+            <div class="form-row">
+                <div class="form-group"><label class="form-label">Name<span class="required">*</span></label><input class="form-input" id="ne-name" value="${esc(n.name)}" maxlength="120"><div class="form-error" id="ne-name-err"></div></div>
+                <div class="form-group"><label class="form-label">Address<span class="required">*</span></label><input class="form-input" id="ne-address" value="${esc(n.address)}" maxlength="255" placeholder="127.0.0.1 or hostname"><div class="form-error" id="ne-address-err"></div></div>
+            </div>
+            <div class="form-row-3">
+                <div class="form-group"><label class="form-label">API Port<span class="required">*</span></label><input type="number" class="form-input" id="ne-port" value="${n.api_port}" min="1" max="65535"><div class="form-error" id="ne-port-err"></div></div>
+                <div class="form-group"><label class="form-label">Peer Token Refresh (s)</label><input type="number" class="form-input" id="ne-ptri" value="${n.peer_token_refresh_interval}" min="5" max="86400"><div class="form-hint">How often dependents refresh tokens</div></div>
+                <div class="form-group"><label class="form-label">Peer Token TTL (s)</label><input type="number" class="form-input" id="ne-pttl" value="${n.peer_token_ttl}" min="10" max="86400"><div class="form-hint">Backend normalizes to ≥ 2× refresh</div></div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">API Key<span class="required">*</span></label>
+                <div style="display:flex;gap:8px"><input class="form-input" id="ne-apikey" value="${esc(n.api_key)}" maxlength="255" type="password" style="flex:1"><button class="btn btn-outline btn-sm" data-action="gen-apikey">${IC.key} Generate</button></div>
+                <div class="form-error" id="ne-apikey-err"></div>
+            </div>
+            <div class="form-group">
+                <label class="form-toggle"><input type="checkbox" id="ne-enabled" ${n.enabled?'checked':''}><span>Enabled</span></label>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-outline" data-action="close-node-editor">Cancel</button>
+            <button class="btn btn-primary" data-action="save-node">${ne.isNew ? 'Create Node' : 'Save Changes'}</button>
+        </div>
+    </div></div>`;
+}
+function bindOverlayEvents() {
+    // Close node editor
+    document.querySelectorAll('[data-action="close-node-editor"]').forEach(el => el.onclick = () => { S.nodeEditor.open = false; renderOverlay(); });
+    // Generate API key
+    document.querySelector('[data-action="gen-apikey"]')?.addEventListener('click', async () => {
+        try { const r = await API.nodes.genKey(); document.getElementById('ne-apikey').value = r.api_key || r.key || r; toast('API key generated','success'); } catch(e) { toast(e.detail||'Failed','error'); }
+    });
+    // Save node
+    document.querySelector('[data-action="save-node"]')?.addEventListener('click', saveNode);
+    // Core editor close
+    document.querySelectorAll('[data-action="close-core-editor"]').forEach(el => el.onclick = () => { S.coreEditor.open = false; renderOverlay(); });
+    // Core editor tabs
+    document.querySelectorAll('.fp-tab').forEach(el => el.onclick = () => { S.coreEditor.activeTab = el.dataset.tab; renderOverlay(); });
+    // Core editor save
+    document.querySelectorAll('[data-action="save-core"]').forEach(el => el.onclick = () => saveCore(false));
+    document.querySelectorAll('[data-action="save-apply-core"]').forEach(el => el.onclick = () => saveCore(true));
+    document.querySelectorAll('[data-action="delete-core"]').forEach(el => el.onclick = deleteCore);
+    document.querySelectorAll('[data-action="preview-core"]').forEach(el => el.onclick = previewCore);
+    document.querySelectorAll('[data-action="apply-core-now"]').forEach(el => el.onclick = applyCoreNow);
+    // Inbound sub-editor
+    document.querySelectorAll('[data-action="add-inbound"]').forEach(el => el.onclick = () => { S.inboundSubEditor = { index: -1, data: defaultInbound() }; renderOverlay(); });
+    document.querySelectorAll('[data-action="edit-inbound"]').forEach(el => el.onclick = () => { const idx = parseInt(el.dataset.idx); S.inboundSubEditor = { index: idx, data: {...S.coreEditor.inbounds[idx]} }; renderOverlay(); });
+    document.querySelectorAll('[data-action="delete-inbound"]').forEach(el => el.onclick = () => { const idx = parseInt(el.dataset.idx); S.coreEditor.inbounds.splice(idx,1); S.inboundSubEditor = null; renderOverlay(); });
+    document.querySelectorAll('[data-action="cancel-inbound"]').forEach(el => el.onclick = () => { S.inboundSubEditor = null; renderOverlay(); });
+    document.querySelectorAll('[data-action="save-inbound"]').forEach(el => el.onclick = saveInbound);
+    // Balancer sub-editor
+    document.querySelectorAll('[data-action="add-balancer"]').forEach(el => el.onclick = () => { S.coreEditor.balancers.push(defaultBalancer()); S.balancerSubEditor = { balIdx: S.coreEditor.balancers.length-1, epIdx: -1 }; renderOverlay(); });
+    document.querySelectorAll('[data-action="edit-balancer"]').forEach(el => el.onclick = () => { S.balancerSubEditor = { balIdx: parseInt(el.dataset.idx), epIdx: -1 }; renderOverlay(); });
+    document.querySelectorAll('[data-action="delete-balancer"]').forEach(el => el.onclick = () => { const idx = parseInt(el.dataset.idx); S.coreEditor.balancers.splice(idx,1); S.balancerSubEditor = null; renderOverlay(); });
+    document.querySelectorAll('[data-action="cancel-balancer"]').forEach(el => el.onclick = () => { S.balancerSubEditor = null; renderOverlay(); });
+    document.querySelectorAll('[data-action="save-balancer"]').forEach(el => el.onclick = saveBalancer);
+    // Endpoint
+    document.querySelectorAll('[data-action="add-endpoint"]').forEach(el => el.onclick = () => { const bi = parseInt(el.dataset.balidx); S.coreEditor.balancers[bi].endpoints.push(defaultEndpoint()); S.balancerSubEditor = { balIdx: bi, epIdx: S.coreEditor.balancers[bi].endpoints.length-1 }; renderOverlay(); });
+    document.querySelectorAll('[data-action="edit-endpoint"]').forEach(el => el.onclick = () => { S.balancerSubEditor = { balIdx: parseInt(el.dataset.balidx), epIdx: parseInt(el.dataset.epidx) }; renderOverlay(); });
+    document.querySelectorAll('[data-action="delete-endpoint"]').forEach(el => el.onclick = () => { const bi = parseInt(el.dataset.balidx), ei = parseInt(el.dataset.epidx); S.coreEditor.balancers[bi].endpoints.splice(ei,1); if(S.balancerSubEditor?.epIdx === ei) S.balancerSubEditor.epIdx = -1; renderOverlay(); });
+    document.querySelectorAll('[data-action="save-endpoint"]').forEach(el => el.onclick = saveEndpoint);
+    document.querySelectorAll('[data-action="cancel-endpoint"]').forEach(el => el.onclick = () => { S.balancerSubEditor = { ...S.balancerSubEditor, epIdx: -1 }; renderOverlay(); });
+    // Dependency sub-editor
+    document.querySelectorAll('[data-action="add-dep"]').forEach(el => el.onclick = () => { S.coreEditor.dependencies.push(defaultDependency(S.coreEditor.dependencies.length)); S.depSubEditor = { index: S.coreEditor.dependencies.length-1, data: null }; renderOverlay(); });
+    document.querySelectorAll('[data-action="edit-dep"]').forEach(el => el.onclick = () => { S.depSubEditor = { index: parseInt(el.dataset.idx), data: null }; renderOverlay(); });
+    document.querySelectorAll('[data-action="delete-dep"]').forEach(el => el.onclick = () => {
+        const idx = parseInt(el.dataset.idx);
+        const dep = S.coreEditor.dependencies[idx];
+        // Check if used by endpoints
+        const used = S.coreEditor.balancers.some(b => b.endpoints.some(ep => ep.dependency_id === dep?.id));
+        const doDelete = async () => { S.coreEditor.dependencies.splice(idx,1); S.depSubEditor = null; renderOverlay(); };
+        if (used) { showConfirm({ title:'Remove Dependency', text:'This dependency is used by one or more balancer endpoints. Removing it will leave those endpoints without a valid reference.', icon:'warning', confirmText:'Remove Anyway', onConfirm: doDelete }); }
+        else doDelete();
+    });
+    document.querySelectorAll('[data-action="cancel-dep"]').forEach(el => el.onclick = () => { S.depSubEditor = null; renderOverlay(); });
+    document.querySelectorAll('[data-action="save-dep"]').forEach(el => el.onclick = saveDependency);
+    // Advanced JSON
+    document.querySelectorAll('[data-action="validate-json-local"]').forEach(el => el.onclick = validateJsonLocal);
+    document.querySelectorAll('[data-action="validate-json-backend"]').forEach(el => el.onclick = validateJsonBackend);
+    // Slide panel close
+    document.querySelectorAll('[data-action="close-slide"]').forEach(el => el.onclick = closeSlide);
+    // Slide panel copy
+    document.querySelectorAll('[data-action="copy-slide-content"]').forEach(el => el.onclick = () => {
+        const pre = document.querySelector('#slide-json-content');
+        if (pre) { navigator.clipboard.writeText(pre.textContent).then(() => toast('Copied','success')).catch(() => toast('Copy failed','error')); }
+    });
+    // Slide panel refresh
+    document.querySelectorAll('[data-action="refresh-slide"]').forEach(el => el.onclick = () => {
+        if (S.slidePanel?.onRefresh) S.slidePanel.onRefresh();
+    });
+    // Inbound port_mode / public_ports_mode / target_type changes
+    document.querySelectorAll('[data-inbound-field="port_mode"]').forEach(el => el.onchange = () => renderOverlay());
+    document.querySelectorAll('[data-inbound-field="public_ports_mode"]').forEach(el => el.onchange = () => renderOverlay());
+    document.querySelectorAll('[data-inbound-field="target_type"]').forEach(el => el.onchange = () => renderOverlay());
+    // Endpoint type change
+    document.querySelectorAll('[data-ep-field="type"]').forEach(el => el.onchange = () => {
+        const bi = S.balancerSubEditor?.balIdx, ei = S.balancerSubEditor?.epIdx;
+        if (bi != null && ei != null && S.coreEditor.balancers[bi]?.endpoints[ei]) {
+            const ep = S.coreEditor.balancers[bi].endpoints[ei];
+            if (el.value === 'static') { ep.dependency_id=''; ep.node_id=''; ep.core_id=''; ep.inbound_name=''; }
+            else { ep.host=''; ep.port=80; }
+        }
+        renderOverlay();
+    });
+    // Dependency node change
+    document.querySelectorAll('[data-dep-field="ref_id"]').forEach(el => el.onchange = () => renderOverlay());
+}
 
-  var modal = $("#nodeModal");
-  var titleEl = $("#nodeModalTitle");
-  var deleteBtn = $("#deleteNodeButton");
+async function saveNode() {
+    const name = document.getElementById('ne-name').value.trim();
+    const address = document.getElementById('ne-address').value.trim();
+    const api_port = parseInt(document.getElementById('ne-port').value);
+    const api_key = document.getElementById('ne-apikey').value.trim();
+    const ptri = parseInt(document.getElementById('ne-ptri').value);
+    const pttl = parseInt(document.getElementById('ne-pttl').value);
+    const enabled = document.getElementById('ne-enabled').checked;
+    let valid = true;
+    const showErr = (id, msg) => { const e = document.getElementById(id); if(e){e.textContent=msg;e.classList.add('visible');} valid=false; };
+    const hideErr = (id) => { const e = document.getElementById(id); if(e){e.textContent='';e.classList.remove('visible');} };
+    hideErr('ne-name-err'); hideErr('ne-address-err'); hideErr('ne-port-err'); hideErr('ne-apikey-err');
+    if (!name || name.length < 1) showErr('ne-name-err','Name is required');
+    else if (name.length > 120) showErr('ne-name-err','Max 120 characters');
+    if (!address || address.length < 1) showErr('ne-address-err','Address is required');
+    else if (address.length > 255) showErr('ne-address-err','Max 255 characters');
+    if (isNaN(api_port) || api_port < 1 || api_port > 65535) showErr('ne-port-err','Port must be 1-65535');
+    if (!api_key) showErr('ne-apikey-err','API key is required');
+    if (!valid) return;
+    const payload = { name, address, api_port, api_key, peer_token_refresh_interval: ptri||30, peer_token_ttl: pttl||120, enabled };
+    try {
+        if (S.nodeEditor.isNew) { await API.nodes.create(payload); toast('Node created','success'); }
+        else { await API.nodes.update(S.nodeEditor.node.id, payload); toast('Node updated','success'); }
+        S.nodeEditor.open = false;
+        await loadDashboardData();
+        renderOverlay();
+        renderPageContent();
+    } catch(e) { toast(e.detail || 'Save failed', 'error'); }
+}
 
-  if (node) {
-    if (titleEl) titleEl.textContent = "Edit Node";
-    if (deleteBtn) deleteBtn.classList.remove("hidden");
-
-    function setVal(sel, val) {
-      var el = $(sel);
-      if (el) el.value = val != null ? val : "";
+/* ------------------------------------------------------------
+   NODE RUNTIME / DRIFT / PREVIEW (Slide Panels)
+   ------------------------------------------------------------ */
+async function loadNodeRuntime(nodeId) {
+    const n = getNodeById(nodeId); if(!n) return;
+    openSlide('Runtime: ' + n.name, '<div style="text-align:center;padding:40px"><div class="spinner"></div></div>');
+    try {
+        const rt = await API.nodes.runtime(nodeId, true);
+        S.slidePanel.contentHtml = renderRuntimeContent(n, rt);
+        S.slidePanel.onRefresh = () => loadNodeRuntime(nodeId);
+        renderOverlay();
+    } catch(e) { S.slidePanel.contentHtml = `<div class="inline-warning">${IC.alert} <span>${esc(e.detail || 'Failed to load runtime')}</span></div>`; renderOverlay(); }
+}
+function renderRuntimeContent(node, rt) {
+    if (!rt) return '<div class="empty-state"><p>No runtime data available.</p></div>';
+    const rows = [
+        ['Runtime OK', boolBadge(rt.runtime_ok)],
+        ['Auth OK', boolBadge(rt.auth_ok)],
+        ['Reachable', boolBadge(rt.reachable)],
+        ['Generated At', fmtTime(rt.generated_at)],
+        ['Exported At', fmtTime(rt.exported_at)],
+        ['Config Hash', rt.config_hash ? `<span class="mono text-xs">${esc(rt.config_hash)}</span>` : '—'],
+        ['API Host', esc(rt.api?.host || '—')],
+        ['API Port', rt.api?.api_port || '—'],
+        ['API Config Port', rt.api?.port || '—'],
+        ['Active Connections', rt.active_connections ?? '—'],
+        ['Connection Count', rt.connection_count ?? '—'],
+        ['Bytes In', fmtBytes(rt.bytes_in)],
+        ['Bytes Out', fmtBytes(rt.bytes_out)],
+        ['Last Error', rt.last_error ? `<span class="text-error">${esc(rt.last_error)}</span>` : '—'],
+    ];
+    if (rt.core) {
+        rows.push(['Core Name', esc(rt.core.name || '—')]);
+        rows.push(['Core Enabled', boolBadge(rt.core.enabled)]);
     }
-    setVal("#nodeName", node.name);
-    setVal("#nodeAddress", node.address);
-    setVal("#apiPort", node.api_port);
-    setVal("#apiKey", node.api_key);
-    setVal("#peerTokenRefreshInterval", node.peer_token_refresh_interval || 30);
-    setVal("#peerTokenTtl", node.peer_token_ttl || 120);
-    var enabledEl = $("#nodeEnabled");
-    if (enabledEl) enabledEl.checked = !!node.enabled;
-  } else {
-    if (titleEl) titleEl.textContent = "Add Node";
-    if (deleteBtn) deleteBtn.classList.add("hidden");
-  }
-
-  updateStatusPreview();
-  if (modal) modal.classList.remove("hidden");
-}
-
-function closeNodeModal() {
-  var modal = $("#nodeModal");
-  if (modal) modal.classList.add("hidden");
-  state.editingNode = null;
-  state.lastFormCheck = null;
-}
-
-function resetNodeForm() {
-  var form = $("#nodeForm");
-  if (form) form.reset();
-  var peerRefreshEl = $("#peerTokenRefreshInterval");
-  if (peerRefreshEl && !peerRefreshEl.value) peerRefreshEl.value = "30";
-  var peerTtlEl = $("#peerTokenTtl");
-  if (peerTtlEl && !peerTtlEl.value) peerTtlEl.value = "120";
-  setStatusPreview("pending", "Not checked");
-}
-
-function nodePayload() {
-  function get(sel) {
-    var el = $(sel);
-    return el ? el.value.trim() : "";
-  }
-  function getChecked(sel) {
-    var el = $(sel);
-    return el ? el.checked : false;
-  }
-  return {
-    name: get("#nodeName"),
-    address: get("#nodeAddress"),
-    api_port: parseInt(get("#apiPort"), 10) || 62051,
-    api_key: get("#apiKey"),
-    peer_token_refresh_interval: parseInt(get("#peerTokenRefreshInterval"), 10) || 30,
-    peer_token_ttl: parseInt(get("#peerTokenTtl"), 10) || 120,
-    enabled: getChecked("#nodeEnabled"),
-  };
-}
-
-function setStatusPreview(status, message) {
-  message = message || "";
-  var dot = $("#nodeStatusDot");
-  var text = $("#nodeStatusText");
-  if (dot) {
-    dot.className = "status-dot " + statusDotClass(status);
-  }
-  if (text) {
-    text.textContent = message || statusLabel(status);
-  }
-}
-
-function updateStatusPreview() {
-  var enabledEl = $("#nodeEnabled");
-  if (enabledEl && !enabledEl.checked) {
-    setStatusPreview("disabled", "Disabled");
-    return;
-  }
-  if (state.lastFormCheck) {
-    setStatusPreview(
-      state.lastFormCheck.status,
-      state.lastFormCheck.message || statusLabel(state.lastFormCheck.status),
-    );
-  } else {
-    setStatusPreview("pending", "Not checked");
-  }
-}
-
-async function saveNode(e) {
-  e.preventDefault();
-  var payload = nodePayload();
-  var submitBtn = $('#nodeForm [type="submit"]') || $("#nodeForm button");
-  var origText = submitBtn ? submitBtn.textContent : "";
-  if (submitBtn) {
-    submitBtn.disabled = true;
-    submitBtn.textContent = "Saving\u2026";
-  }
-
-  try {
-    if (state.editingNode) {
-      if (!isValidNodeId(state.editingNode.id)) { warnInvalidIdentifier("node"); await refreshAll(); return; }
-      await api("/api/nodes/" + encodeURIComponent(state.editingNode.id), {
-        method: "PUT",
-        body: JSON.stringify(payload),
-      });
-      showToast("Node updated successfully.", "success");
-    } else {
-      await api("/api/nodes", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      });
-      showToast("Node created successfully.", "success");
+    if (rt.peer_sync_errors) rows.push(['Peer Sync Errors', rt.peer_sync_errors]);
+    if (rt.peer_sync_cache_nodes != null) rows.push(['Peer Sync Cache Nodes', rt.peer_sync_cache_nodes]);
+    if (rt.peer_sync_last) rows.push(['Peer Sync Last', fmtTime(rt.peer_sync_last)]);
+    let html = '<div style="display:grid;gap:2px;margin-bottom:20px">';
+    rows.forEach(([k,v]) => { html += `<div style="display:flex;justify-content:space-between;padding:8px 12px;background:var(--bg-deep);font-size:0.82rem"><span class="text-secondary">${k}</span><span>${v}</span></div>`; });
+    html += '</div>';
+    if (rt.listeners?.length) {
+        html += '<h4 style="font-size:0.85rem;font-weight:700;margin-bottom:8px">Listeners</h4>';
+        rt.listeners.forEach(l => {
+            html += `<div style="background:var(--bg-deep);padding:8px 12px;margin-bottom:4px;font-size:0.8rem;font-family:var(--font-mono);border-radius:var(--radius-xs)">${esc(l.bind_ip||'*')}:${esc(l.port||'')} → ${esc(l.target_host||'')}:${esc(l.target_port||'')}</div>`;
+        });
     }
-    closeNodeModal();
-    await refreshAll();
-  } catch (err) {
-    showToast(err.message || "Failed to save node.", "error");
-  } finally {
-    if (submitBtn) submitBtn.disabled = false;
-    if (btnText) btnText.textContent = origText;
-  }
-}
-
-async function deleteNode(id) {
-  if (!isValidNodeId(id)) { warnInvalidIdentifier("node"); await refreshAll(); return; }
-  var node = nodeById(id);
-  var name = node ? node.name || node.address : "Node #" + id;
-  var confirmed = await showConfirm(
-    'Are you sure you want to delete "' + name + '"? This cannot be undone.',
-    "Delete Node",
-    "Delete",
-    "danger",
-  );
-  if (!confirmed) return;
-
-  try {
-    await api("/api/nodes/" + encodeURIComponent(id), { method: "DELETE" });
-    showToast("Node deleted.", "success");
-    closeNodeModal();
-    await refreshAll();
-  } catch (err) {
-    if ((err.message || "").toLowerCase().includes("node not found")) {
-      showToast("Node was already removed. The list was refreshed.", "warning");
-      closeNodeModal();
-      await refreshAll();
-      return;
+    if (rt.advertised_inbounds?.length) {
+        html += '<h4 style="font-size:0.85rem;font-weight:700;margin:16px 0 8px">Advertised Inbounds</h4>';
+        rt.advertised_inbounds.forEach(ai => {
+            html += `<div style="background:var(--bg-deep);padding:8px 12px;margin-bottom:4px;font-size:0.8rem;font-family:var(--font-mono);border-radius:var(--radius-xs)">${esc(ai.name||'')} — ${esc(ai.public_host||'')}:${esc(ai.public_ports?.join(', ')||'')}</div>`;
+        });
     }
-    showToast(err.message || "Failed to delete node.", "error");
-  }
+    return html;
 }
 
-async function checkSavedNode(id, button) {
-  if (!isValidNodeId(id)) { warnInvalidIdentifier("node"); await refreshAll(); return; }
-  var origHTML = button ? button.innerHTML : "";
-  if (button) button.disabled = true;
-
-  try {
-    var data = await api("/api/nodes/" + encodeURIComponent(id) + "/check", { method: "POST" });
-    var status = data.status || "unknown";
-    var msg = data.message || statusLabel(status);
-    showToast(
-      "Node check: " + msg,
-      status === "running" ? "success" : status === "error" ? "error" : "info",
-    );
-    await refreshAll();
-  } catch (err) {
-    showToast(err.message || "Node check failed.", "error");
-  } finally {
-    if (button) {
-      button.disabled = false;
-      button.innerHTML = origHTML;
+async function loadNodeDrift(nodeId) {
+    const n = getNodeById(nodeId); if(!n) return;
+    openSlide('Drift: ' + n.name, '<div style="text-align:center;padding:40px"><div class="spinner"></div></div>');
+    try {
+        const d = await API.nodes.drift(nodeId, true);
+        S.slidePanel.contentHtml = renderDriftContent(d);
+        S.slidePanel.onRefresh = () => loadNodeDrift(nodeId);
+        renderOverlay();
+    } catch(e) { S.slidePanel.contentHtml = `<div class="inline-warning">${IC.alert} <span>${esc(e.detail || 'Failed to load drift')}</span></div>`; renderOverlay(); }
+}
+function renderDriftContent(d) {
+    if (!d) return '<div class="empty-state"><p>No drift data available.</p></div>';
+    let html = `<div style="margin-bottom:16px">${nodeStatusBadge(d.status || 'unknown')}</div>`;
+    html += `<div style="font-size:0.82rem;margin-bottom:16px"><span class="text-secondary">Last Sync:</span> ${fmtTime(d.last_sync)}</div>`;
+    if (d.desired_inbounds?.length) {
+        html += '<div class="drift-section"><h4>Desired Inbounds</h4>';
+        d.desired_inbounds.forEach(i => { html += `<div class="drift-item ok">${IC.check} ${esc(i.name||'')} ${esc(i.bind_ip||'')}:${esc((i.fixed_ports||[]).join(','))}</div>`; });
+        html += '</div>';
     }
-  }
-}
-
-async function checkFormNode() {
-  var checkBtn = $("#checkNodeStatus");
-  var origText = checkBtn ? checkBtn.textContent : "";
-  if (checkBtn) {
-    checkBtn.disabled = true;
-    checkBtn.textContent = "Checking…";
-  }
-
-  try {
-    if (state.editingNode) {
-      if (!isValidNodeId(state.editingNode.id)) { warnInvalidIdentifier("node"); await refreshAll(); return; }
-      var payload = nodePayload();
-      await api("/api/nodes/" + encodeURIComponent(state.editingNode.id), {
-        method: "PUT",
-        body: JSON.stringify(payload),
-      });
-      var data = await api("/api/nodes/" + encodeURIComponent(state.editingNode.id) + "/check", {
-        method: "POST",
-      });
-      state.lastFormCheck = {
-        status: data.status || "unknown",
-        message: data.message,
-      };
-      updateStatusPreview();
-      showToast(
-        "Node check: " +
-          (data.message || statusLabel(state.lastFormCheck.status)),
-        data.status === "running"
-          ? "success"
-          : data.status === "error"
-            ? "error"
-            : "info",
-      );
-      await refreshAll();
-    } else {
-      var payload2 = nodePayload();
-      var data2 = await api("/api/nodes/check", {
-        method: "POST",
-        body: JSON.stringify(payload2),
-      });
-      state.lastFormCheck = {
-        status: data2.status || "unknown",
-        message: data2.message,
-      };
-      updateStatusPreview();
-      showToast(
-        "Node check: " +
-          (data2.message || statusLabel(state.lastFormCheck.status)),
-        data2.status === "running"
-          ? "success"
-          : data2.status === "error"
-            ? "error"
-            : "info",
-      );
+    if (d.runtime_listeners?.length) {
+        html += '<div class="drift-section"><h4>Runtime Listeners</h4>';
+        d.runtime_listeners.forEach(l => { html += `<div class="drift-item ok">${IC.check} ${esc(l.bind_ip||'*')}:${esc(l.port||'')}</div>`; });
+        html += '</div>';
     }
-  } catch (err) {
-    state.lastFormCheck = { status: "error", message: err.message };
-    updateStatusPreview();
-    showToast(err.message || UI_TEXT.checkFailed, "error");
-  } finally {
-    if (checkBtn) {
-      checkBtn.disabled = false;
-      checkBtn.textContent = origText;
+    if (d.missing_listeners?.length) {
+        html += '<div class="drift-section"><h4 class="text-error">Missing Listeners</h4>';
+        d.missing_listeners.forEach(m => { html += `<div class="drift-item missing">${IC.x} ${esc(m)}</div>`; });
+        html += '</div>';
     }
-  }
+    if (d.extra_listeners?.length) {
+        html += '<div class="drift-section"><h4 class="text-warning">Extra Listeners</h4>';
+        d.extra_listeners.forEach(e => { html += `<div class="drift-item extra">${IC.alert} ${esc(e)}</div>`; });
+        html += '</div>';
+    }
+    if (d.mismatch_messages?.length) {
+        html += '<div class="drift-section"><h4 class="text-error">Mismatches</h4>';
+        d.mismatch_messages.forEach(m => { html += `<div class="drift-item missing">${esc(m)}</div>`; });
+        html += '</div>';
+    }
+    if (!d.missing_listeners?.length && !d.extra_listeners?.length && !d.mismatch_messages?.length) {
+        html += '<div class="inline-info" style="margin-top:8px">' + IC.check + ' <span>No drift detected. Desired config matches runtime.</span></div>';
+    }
+    return html;
 }
 
-function fillNodeSelect(select, value) {
-  value = value || "";
-  if (!select) return;
-  select.innerHTML =
-    '<option value="">— Select Node —</option>' +
-    state.nodes
-      .filter(function (n) { return isValidNodeId(n && n.id); })
-      .map(function (n) {
-        var v = String(n.id);
-        var sel = v === String(value) ? " selected" : "";
-        var label = escapeHtml(nodeDisplayName(n));
-        return '<option value="' + v + '"' + sel + ">" + label + "</option>";
-      })
-      .join("");
+async function loadNodePreview(nodeId) {
+    const n = getNodeById(nodeId); if(!n) return;
+    openSlide('Config Preview: ' + n.name, '<div style="text-align:center;padding:40px"><div class="spinner"></div></div>');
+    try {
+        const data = await API.nodes.configPreview(nodeId);
+        const json = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+        S.slidePanel.contentHtml = `<div class="code-block-header"><span>Configuration JSON</span><button class="copy-btn" data-action="copy-slide-content">${IC.copy} Copy</button></div><pre class="code-block" id="slide-json-content">${esc(json)}</pre>`;
+        S.slidePanel.onRefresh = () => loadNodePreview(nodeId);
+        renderOverlay();
+    } catch(e) { S.slidePanel.contentHtml = `<div class="inline-warning">${IC.alert} <span>${esc(e.detail || 'Failed to load preview')}</span></div>`; renderOverlay(); }
 }
 
-// ============================================================
-// 12. CORES PAGE
-// ============================================================
+function renderSlidePanel() {
+    const sp = S.slidePanel;
+    return `<div class="slide-overlay" data-action="close-slide"></div>
+    <div class="slide-panel">
+        <div class="slide-header">
+            <h2>${esc(sp.title)}</h2>
+            <div style="display:flex;gap:6px">
+                ${sp.onRefresh ? `<button class="btn btn-xs btn-outline" data-action="refresh-slide">${IC.refresh}</button>` : ''}
+                <button class="modal-close" data-action="close-slide">${IC.x}</button>
+            </div>
+        </div>
+        <div class="slide-body">${sp.contentHtml}</div>
+    </div>`;
+}
 
+/* ------------------------------------------------------------
+   CORES PAGE
+   ------------------------------------------------------------ */
 function renderCores() {
-  var grid = $("#coresGrid");
-  var empty = $("#coresEmpty");
-  if (!grid) return;
-
-  if (!state.cores.length) {
-    if (empty) empty.classList.remove("hidden");
-    grid.classList.add("hidden");
-    return;
-  }
-  if (empty) empty.classList.add("hidden");
-  grid.classList.remove("hidden");
-
-  grid.innerHTML = state.cores
-    .map(function (core) {
-      var st = statusFor(core);
-      var inCnt = Array.isArray(core.inbounds) ? core.inbounds.length : 0;
-      var enabledInbounds = Array.isArray(core.inbounds)
-        ? core.inbounds.filter(function (ib) { return ib.enabled !== false; }).length
-        : 0;
-      var blCnt = Array.isArray(core.balancers) ? core.balancers.length : 0;
-      var dpCnt = Array.isArray(core.dependencies) ? core.dependencies.length : 0;
-      var upd = core.updated_at ? timeAgo(core.updated_at) : "unknown";
-      var applied = core.last_applied_at ? timeAgo(core.last_applied_at) : UI_TEXT.notApplied;
-      var coreIdOk = isValidCoreId(core.id);
-      var node = nodeById(core.node_id);
-      var nodeMissing = !node;
-      var nName = nodeMissing ? UI_TEXT.missingNode : nodeName(core.node_id);
-      var nodeStatus = nodeMissing ? "error" : statusFor(node);
-      var healthClass = nodeStatus === "running" ? "ok" : nodeStatus === "error" ? "bad" : "warn";
-      var actionDisabled = !coreIdOk || nodeMissing;
-      var disabledAttr = actionDisabled ? ' disabled title="This core has invalid or missing linked data. Run Repair Data."' : "";
-      return (
-        '<article class="core-card core-card-v2" data-id="' + escapeHtml(String(core.id)) + '">' +
-          '<div class="core-card-topline">' +
-            '<span class="badge badge-' + escapeHtml(st) + '">' + escapeHtml(statusLabel(st)) + '</span>' +
-            '<span class="core-health core-health-' + healthClass + '">' +
-              '<span class="status-dot-mini"></span>' + escapeHtml(nodeMissing ? "Broken Link" : nodeStatus === "running" ? "Node online" : nodeStatus === "error" ? "Node issue" : "Pending node") +
-            '</span>' +
-          '</div>' +
-          '<div class="core-card-main">' +
-            '<h3 class="core-card-name">' + escapeHtml(core.name || "Unnamed Core") + '</h3>' +
-            '<div class="core-card-node-line">' +
-              '<span class="tiny-icon"><i class="fa-solid fa-desktop" aria-hidden="true"></i></span>' +
-              '<span>' + escapeHtml(nName) + '</span>' +
-            '</div>' +
-          '</div>' +
-          '<div class="core-metrics-grid">' +
-            '<div class="core-metric"><strong>' + inCnt + '</strong><span>Inbounds</span><small>' + enabledInbounds + ' enabled</small></div>' +
-            '<div class="core-metric"><strong>' + blCnt + '</strong><span>Balancers</span><small>routing groups</small></div>' +
-            '<div class="core-metric"><strong>' + dpCnt + '</strong><span>Deps</span><small>apply order</small></div>' +
-          '</div>' +
-          '<div class="core-card-footer core-card-footer-v2">' +
-            '<div class="core-time-stack">' +
-              '<span>Updated ' + escapeHtml(upd) + '</span>' +
-              '<span>Applied: ' + escapeHtml(applied) + '</span>' +
-              (core.last_error ? '<span class="core-error-inline">' + escapeHtml(core.last_error) + '</span>' : '') +
-            '</div>' +
-            '<div class="core-card-actions">' +
-              '<button class="btn btn-sm btn-ghost" data-core-action="open" data-id="' + escapeHtml(String(core.id || "")) + '"' + (coreIdOk ? "" : disabledAttr) + '>Open</button>' +
-              '<button class="btn btn-sm btn-primary" data-core-action="apply" data-id="' + escapeHtml(String(core.id || "")) + '"' + disabledAttr + '>Apply</button>' +
-              '<button class="btn btn-sm btn-danger" data-core-action="delete" data-id="' + escapeHtml(String(core.id || "")) + '"' + (coreIdOk ? "" : disabledAttr) + '>Delete</button>' +
-            '</div>' +
-          '</div>' +
-        '</article>'
-      );
-    })
-    .join("");
-
-  grid.querySelectorAll("[data-core-action]").forEach(function (btn) {
-    btn.addEventListener("click", function (e) {
-      e.stopPropagation();
-      var id = btn.dataset.id;
-      if (!isValidCoreId(id)) { warnInvalidIdentifier("core"); return; }
-      if (btn.disabled) { warnInvalidIdentifier("core"); return; }
-      if (btn.dataset.coreAction === "open") openCoreEditorPage(coreById(id));
-      if (btn.dataset.coreAction === "apply") applyCore(id, btn);
-      if (btn.dataset.coreAction === "delete") deleteCore(id);
+    const cores = S.cores || [];
+    if (!cores.length) return `<div class="card"><div class="card-body"><div class="empty-state">${IC.cores}<h3>No Cores Yet</h3><p>Cores define routing configurations for nodes. Create a core to configure inbounds and balancers.</p><button class="btn btn-primary" data-action="add-core">${IC.plus} Add Core</button></div></div></div>`;
+    return `<div style="display:flex;justify-content:flex-end;margin-bottom:14px"><button class="btn btn-primary" data-action="add-core">${IC.plus} Add Core</button></div>
+    <div class="card"><div class="table-wrap"><table>
+        <thead><tr><th>Name</th><th>Node</th><th>Enabled</th><th>Inbounds</th><th>Balancers</th><th>Deps</th><th>Advanced</th><th>Actions</th></tr></thead>
+        <tbody>${cores.map(c => {
+            const n = getNodeById(c.node_id);
+            const inbs = c.inbounds || [];
+            const bals = c.balancers || [];
+            const deps = c.dependencies || [];
+            return `<tr>
+                <td><strong>${esc(c.name)}</strong></td>
+                <td>${n ? esc(n.name) : '<span class="text-error">Missing Node</span>'}</td>
+                <td>${boolBadge(c.enabled)}</td>
+                <td class="mono">${inbs.length} (${inbs.filter(i=>i.enabled).length} on)</td>
+                <td class="mono">${bals.length} (${bals.filter(b=>b.enabled).length} on)</td>
+                <td class="mono">${deps.length}</td>
+                <td>${c.advanced?.enabled ? '<span class="badge badge-warning">On</span>' : '<span class="badge badge-muted">Off</span>'}</td>
+                <td><div class="actions-cell">
+                    <button class="btn btn-xs btn-primary" data-action="edit-core" data-id="${c.id}">${IC.edit} Edit</button>
+                    <button class="btn btn-xs btn-ghost text-error" data-action="delete-core-inline" data-id="${c.id}">${IC.trash}</button>
+                </div></td>
+            </tr>`;
+        }).join('')}</tbody>
+    </table></div></div>`;
+}
+function bindCoresEvents() {
+    document.querySelector('[data-action="add-core"]')?.addEventListener('click', () => openCoreEditor(null));
+    document.querySelectorAll('[data-action="edit-core"]').forEach(el => el.onclick = () => { const c = getCoreById(el.dataset.id); if(c) openCoreEditor(c); });
+    document.querySelectorAll('[data-action="delete-core-inline"]').forEach(el => el.onclick = () => {
+        const c = getCoreById(el.dataset.id); if(!c) return;
+        showConfirm({ title:'Delete Core', text:`This will permanently delete "${c.name}" and all its inbounds, balancers, and dependencies.`, confirmText:'Delete', onConfirm: async () => {
+            try { await API.cores.delete(c.id); toast('Core deleted','success'); await loadDashboardData(); renderPageContent(); } catch(e) { toast(e.detail||'Delete failed','error'); }
+        }});
     });
-  });
-
-  grid.querySelectorAll(".core-card").forEach(function (card) {
-    card.addEventListener("dblclick", function () {
-      var id = card.dataset.id;
-      if (!isValidCoreId(id)) { warnInvalidIdentifier("core"); return; }
-      openCoreEditorPage(coreById(id));
-    });
-  });
 }
 
-async function applyCore(id, button) {
-  if (!isValidCoreId(id)) { warnInvalidIdentifier("core"); await refreshAll(); return; }
-  var core = coreById(id);
-  if (core && !nodeById(core.node_id)) { warnInvalidIdentifier("core"); await refreshAll(); return; }
-  var orig = button ? button.textContent : "";
-  if (button) {
-    button.disabled = true;
-    button.textContent = "Applying…";
-  }
-  try {
-    var data = await api("/api/cores/" + encodeURIComponent(id) + "/apply", { method: "POST" });
-    showToast(data.message || "Core applied to node.", "success");
-    await refreshAll();
-  } catch (err) {
-    showToast(err.message || "Failed to apply core.", "error");
-    await refreshAll();
-  } finally {
-    if (button) {
-      button.disabled = false;
-      button.textContent = orig;
+/* ------------------------------------------------------------
+   CORE EDITOR (Full Panel)
+   ------------------------------------------------------------ */
+function openCoreEditor(core) {
+    const isNew = !core;
+    const c = core ? JSON.parse(JSON.stringify(core)) : { name:'', node_id:'', enabled:true };
+    S.coreEditor = {
+        open: true,
+        core: c,
+        inbounds: c.inbounds ? JSON.parse(JSON.stringify(c.inbounds)) : [],
+        balancers: c.balancers ? JSON.parse(JSON.stringify(c.balancers)) : [],
+        dependencies: c.dependencies ? JSON.parse(JSON.stringify(c.dependencies)) : [],
+        advanced: c.advanced ? {...c.advanced} : { enabled: false, json_config: '' },
+        activeTab: 'overview',
+        isNew: isNew,
+    };
+    S.inboundSubEditor = null;
+    S.balancerSubEditor = null;
+    S.depSubEditor = null;
+    renderOverlay();
+}
+
+function renderCoreEditorPanel() {
+    const ce = S.coreEditor;
+    const c = ce.core;
+    const tabs = ['overview','inbounds','balancers','dependencies','advanced','preview'];
+    const tabLabels = { overview:'Overview', inbounds:'Inbounds', balancers:'Balancers', dependencies:'Dependencies', advanced:'Advanced JSON', preview:'Preview / Apply' };
+    let contentHtml = '';
+    switch(ce.activeTab) {
+        case 'overview': contentHtml = renderCoreOverviewTab(); break;
+        case 'inbounds': contentHtml = renderCoreInboundsTab(); break;
+        case 'balancers': contentHtml = renderCoreBalancersTab(); break;
+        case 'dependencies': contentHtml = renderCoreDepsTab(); break;
+        case 'advanced': contentHtml = renderCoreAdvancedTab(); break;
+        case 'preview': contentHtml = renderCorePreviewTab(); break;
     }
-  }
+    return `<div class="full-panel">
+        <div class="full-panel-header">
+            <h2>${ce.isNew ? 'Create Core' : 'Edit Core: ' + esc(c.name)}</h2>
+            <div style="display:flex;gap:8px">
+                <button class="btn btn-outline btn-sm" data-action="save-core">Save</button>
+                <button class="btn btn-primary btn-sm" data-action="save-apply-core">Save & Apply</button>
+                ${!ce.isNew ? '<button class="btn btn-danger btn-sm" data-action="delete-core">Delete</button>' : ''}
+                <button class="btn btn-ghost btn-sm" data-action="close-core-editor">${IC.x}</button>
+            </div>
+        </div>
+        <div class="full-panel-body">
+            <div class="full-panel-tabs">
+                ${tabs.map(t => `<div class="fp-tab${ce.activeTab===t?' active':''}" data-tab="${t}">${tabLabels[t]}${t==='inbounds'?' ('+ce.inbounds.length+')':''}${t==='balancers'?' ('+ce.balancers.length+')':''}${t==='dependencies'?' ('+ce.dependencies.length+')':''}</div>`).join('')}
+            </div>
+            <div class="full-panel-content">${contentHtml}</div>
+        </div>
+    </div>`;
 }
 
-async function openCoreCreateModal() {
-  if (!state.nodes.length) {
-    await loadNodes();
-  }
-
-  if (!state.nodes.length) {
-    showToast("No nodes available. Please add a node first.", "warning");
-    return;
-  }
-
-  var select = $("#createCoreNode");
-  if (select) fillNodeSelect(select, "");
-
-  var modal = $("#coreCreateModal");
-  if (modal) modal.classList.remove("hidden");
+function renderCoreOverviewTab() {
+    const c = S.coreEditor.core;
+    const availableNodes = S.nodes || [];
+    const nodeOptions = availableNodes.map(n => `<option value="${n.id}" ${c.node_id===n.id?'selected':''}>${esc(n.name)} (${esc(n.address)})</option>`).join('');
+    return `<div style="max-width:600px">
+        <div class="form-group"><label class="form-label">Name<span class="required">*</span></label><input class="form-input" id="ce-name" value="${esc(c.name)}" maxlength="120"></div>
+        <div class="form-group"><label class="form-label">Node<span class="required">*</span></label><select class="form-input" id="ce-node-id"><option value="">Select a node...</option>${nodeOptions}</select><div class="form-hint">One node can only have one enabled core.</div></div>
+        <div class="form-group"><label class="form-toggle"><input type="checkbox" id="ce-enabled" ${c.enabled?'checked':''}><span>Enabled</span></label></div>
+        ${c.last_applied_at ? `<div class="form-hint mt-12">Last applied: ${fmtTime(c.last_applied_at)}</div>` : ''}
+        ${c.last_error ? `<div class="inline-warning mt-12">${IC.alert} <span>${esc(c.last_error)}</span></div>` : ''}
+    </div>`;
 }
 
-function closeCoreCreateModal() {
-  var modal = $("#coreCreateModal");
-  if (modal) modal.classList.add("hidden");
-  var form = $("#coreCreateForm");
-  if (form) form.reset();
-}
-
-async function createCore(e) {
-  e.preventDefault();
-  var nameEl = $("#createCoreName");
-  var nodeEl = $("#createCoreNode");
-  var submitBtn = e.target.querySelector('[type="submit"]');
-
-  var name = nameEl ? nameEl.value.trim() : "";
-  var node_id = nodeEl ? nodeEl.value : "";
-
-  if (!name) {
-    showToast("Core name is required.", "warning");
-    return;
-  }
-  if (!node_id || !isValidNodeId(node_id)) {
-    showToast("Please select a valid node.", "warning");
-    return;
-  }
-
-  var origText = submitBtn ? submitBtn.textContent : "";
-  if (submitBtn) {
-    submitBtn.disabled = true;
-    submitBtn.textContent = "Creating\u2026";
-  }
-
-  try {
-    var data = await api("/api/cores", {
-      method: "POST",
-      body: JSON.stringify({ name: name, node_id: node_id, enabled: true }),
+/* ------------------------------------------------------------
+   INBOUND TAB
+   ------------------------------------------------------------ */
+function renderCoreInboundsTab() {
+    const ce = S.coreEditor;
+    // If editing a specific inbound
+    if (S.inboundSubEditor) return renderInboundEditor();
+    if (!ce.inbounds.length) return `<div class="empty-state">${IC.cores}<h3>No Inbounds</h3><p>Inbounds define what ports the node listens on and where traffic is forwarded.</p><button class="btn btn-primary" data-action="add-inbound">${IC.plus} Add Inbound</button></div>`;
+    let html = `<div style="display:flex;justify-content:flex-end;margin-bottom:12px"><button class="btn btn-primary btn-sm" data-action="add-inbound">${IC.plus} Add Inbound</button></div>`;
+    ce.inbounds.forEach((inb, idx) => {
+        const listenPreview = inb.port_mode === 'fixed' ? `${esc(inb.bind_ip||'0.0.0.0')}:${portsToStr(inb.fixed_ports)}` : `${esc(inb.bind_ip||'0.0.0.0')}:random × ${inb.random_count}`;
+        let advPreview = '';
+        if (inb.public_ports_mode === 'use_inbound_ports') advPreview = `advertise: ${esc(inb.public_host || '(node addr)')}:same ports`;
+        else if (inb.public_ports_mode === 'fixed') advPreview = `advertise: ${esc(inb.public_host || '(node addr)')}:${portsToStr(inb.public_fixed_ports)}`;
+        else advPreview = `advertise: ${esc(inb.public_host || '(node addr)')}:random × ${inb.public_random_count}`;
+        const targetPreview = inb.target_type === 'static' ? `→ ${esc(inb.target_host)}:${inb.target_port}` : `→ balancer: ${esc(inb.target_balancer)}`;
+        html += `<div class="sub-item">
+            <div class="sub-item-header">
+                <div class="sub-item-title">${inb.enabled ? '<span class="badge badge-success" style="font-size:0.6rem">ON</span>' : '<span class="badge badge-muted" style="font-size:0.6rem">OFF</span>'}<span class="name">${esc(inb.name)}</span></div>
+                <div class="actions-cell">
+                    <button class="btn btn-xs btn-ghost" data-action="edit-inbound" data-idx="${idx}">${IC.edit}</button>
+                    <button class="btn btn-xs btn-ghost text-error" data-action="delete-inbound" data-idx="${idx}">${IC.trash}</button>
+                </div>
+            </div>
+            <div class="sub-item-body">
+                <div class="inbound-preview">
+                    <div><span>listen: </span><strong>${listenPreview}</strong></div>
+                    <div><span>advertise: </span><strong>${advPreview}</strong></div>
+                    <div><span>target: </span><strong>${targetPreview}</strong></div>
+                </div>
+            </div>
+        </div>`;
     });
-    if (data.ok) {
-      closeCoreCreateModal();
-      showToast("Core created.", "success");
-      await refreshAll();
-      openCoreEditorPage(data.core);
-    }
-  } catch (err) {
-    showToast(err.message || "Failed to create core.", "error");
-  } finally {
-    if (submitBtn) submitBtn.disabled = false;
-    if (btnText) btnText.textContent = origText;
-  }
+    return html;
 }
-
-async function deleteCore(id) {
-  if (!isValidCoreId(id)) { warnInvalidIdentifier("core"); await refreshAll(); return; }
-  var core = coreById(id);
-  var name = core ? core.name : "Core #" + id;
-  var confirmed = await showConfirm(
-    'Are you sure you want to delete "' + name + '"? This cannot be undone.',
-    "Delete Core",
-    "Delete",
-    "danger",
-  );
-  if (!confirmed) return;
-
-  try {
-    await api("/api/cores/" + encodeURIComponent(id), { method: "DELETE" });
-    showToast("Core deleted.", "success");
-    if (state.editingCore && state.editingCore.id === id) switchPage("cores");
-    await refreshAll();
-  } catch (err) {
-    if ((err.message || "").toLowerCase().includes("core not found")) {
-      showToast("Core was already removed. The list was refreshed.", "warning");
-      await refreshAll();
-      return;
-    }
-    showToast(err.message || "Failed to delete core.", "error");
-  }
-}
-
-// ============================================================
-// 13. CORE EDITOR
-// ============================================================
-
-function bindCoreEditorHeader() {
-  var draft = state.editorDraft;
-  if (!draft) return;
-  var nameEl = $("#editorCoreName");
-  var nodeEl = $("#editorCoreNode");
-  var enabledEl = $("#editorCoreEnabled");
-  if (nameEl) nameEl.value = draft.name || "";
-  if (nodeEl) fillNodeSelect(nodeEl, draft.node_id);
-  if (enabledEl) enabledEl.checked = !!draft.enabled;
-}
-
-function syncEditorHeaderToDraft() {
-  if (!state.editorDraft) return;
-  var nameEl = $("#editorCoreName");
-  var nodeEl = $("#editorCoreNode");
-  var enabledEl = $("#editorCoreEnabled");
-  if (nameEl) state.editorDraft.name = nameEl.value.trim();
-  if (nodeEl) state.editorDraft.node_id = nodeEl.value || "";
-  if (enabledEl) state.editorDraft.enabled = enabledEl.checked;
-}
-
-function switchCoreTab(tab, options) {
-  options = options || {};
-  tab = CORE_TABS.includes(tab) ? tab : "inbounds";
-  state.currentCoreTab = tab;
-  if (!options.skipRoute && state.editingCore && isValidCoreId(state.editingCore.id)) {
-    writeRoute(pathForCore(state.editingCore.id, tab), !!options.replaceRoute);
-  }
-  $$(".tab-btn").forEach(function (btn) {
-    var key = btn.dataset.coreTab || btn.dataset.tab || "";
-    var active = key === tab;
-    btn.classList.toggle("active", active);
-    btn.setAttribute("aria-selected", active ? "true" : "false");
-  });
-  $$(".tab-panel").forEach(function (panel) {
-    var key = panel.dataset.coreTab || panel.dataset.tab || "";
-    panel.classList.toggle("active", key === tab);
-  });
-  if (tab === "advanced") renderAdvancedEditor();
-}
-
-function renderCoreEditor() {
-  renderInboundEditor();
-  renderRoutingEditor();
-  renderBalancerEditor();
-  renderDependencyEditor();
-  renderAdvancedEditor();
-  updateTabBadges();
-}
-
-function updateTabBadges() {
-  var draft = state.editorDraft;
-  if (!draft) return;
-  var ib = $("#inboundTabBadge");
-  var bb = $("#balancerTabBadge");
-  if (ib) ib.textContent = (draft.inbounds || []).length;
-  if (bb) bb.textContent = (draft.balancers || []).length;
-}
-
-function defaultInbound() {
-  return {
-    name: "",
-    bind_ip: "0.0.0.0",
-    public_host: "",
-    public_ports_mode: "use_inbound_ports",
-    public_fixed_ports: [],
-    public_random_count: 1,
-    port_mode: "fixed",
-    fixed_ports: [],
-    random_count: 1,
-    target_type: "static",
-    target_host: "",
-    target_port: "",
-    target_balancer: "",
-    enabled: true,
-    notes: "",
-  };
-}
-
-function defaultBalancer() {
-  return {
-    alias: "",
-    strategy: "round_robin",
-    endpoints: [],
-    enabled: true,
-    notes: "",
-  };
-}
-
-function defaultEndpoint() {
-  return {
-    type: "static",
-    host: "",
-    port: 80,
-    dependency_id: "",
-    node_id: "",
-    core_id: "",
-    inbound_name: "",
-    weight: 1,
-    enabled: true,
-    notes: "",
-  };
-}
-
-function makeClientDependencyId() {
-  return "dep_" + Math.random().toString(16).slice(2, 10) + Date.now().toString(16).slice(-6);
-}
-
-function defaultDependency() {
-  return { id: makeClientDependencyId(), type: "node", name: "", ref_id: "", host: "", sync_interval: 5, required: true, notes: "" };
-}
-
-function portsToText(ports) {
-  return Array.isArray(ports) ? ports.join(",") : String(ports || "");
-}
-
-function parsePorts(text) {
-  return String(text)
-    .split(",")
-    .map(function (p) {
-      return parseInt(p.trim(), 10);
-    })
-    .filter(function (p) {
-      return p >= 1 && p <= 65535;
-    });
-}
-
-function currentBalancerAliases() {
-  if (!state.editorDraft || !Array.isArray(state.editorDraft.balancers))
-    return [];
-  return state.editorDraft.balancers
-    .map(function (b) {
-      return b.alias;
-    })
-    .filter(Boolean);
-}
-
-// --- Inbound Editor ---
 
 function renderInboundEditor() {
-  var container = $("#inboundEditorList");
-  if (!container || !state.editorDraft) return;
-  var inbounds = state.editorDraft.inbounds || [];
+    const ie = S.inboundSubEditor;
+    const d = ie.data;
+    const balancers = S.coreEditor.balancers.filter(b => b.enabled);
+    const balOptions = balancers.map(b => `<option value="${esc(b.alias)}" ${d.target_balancer===b.alias?'selected':''}>${esc(b.alias)}</option>`).join('');
+    const showFixedPorts = d.port_mode === 'fixed';
+    const showRandomCount = d.port_mode === 'random';
+    const showPubFixed = d.public_ports_mode === 'fixed';
+    const showPubRandom = d.public_ports_mode === 'random';
+    const showStaticTarget = d.target_type === 'static';
+    const showBalancerTarget = d.target_type === 'balancer';
 
-  if (!inbounds.length) {
-    container.innerHTML = "";
-    return;
-  }
+    return `<div style="max-width:700px">
+        <h3 style="font-size:0.95rem;font-weight:700;margin-bottom:16px">${ie.index === -1 ? 'Add Inbound' : 'Edit Inbound'}</h3>
+        <div class="form-row">
+            <div class="form-group"><label class="form-label">Name<span class="required">*</span></label><input class="form-input" data-ie="name" value="${esc(d.name)}" maxlength="120"></div>
+            <div class="form-group"><label class="form-label">Bind IP</label><input class="form-input" data-ie="bind_ip" value="${esc(d.bind_ip)}" maxlength="120" placeholder="0.0.0.0"><div class="form-hint">Local bind address</div></div>
+        </div>
 
-  container.innerHTML = inbounds
-    .map(function (ib, i) {
-      var isFixed = ib.port_mode !== "random";
-      var isOpen = isEditorCardOpen("inbound", i);
-      var title = "Inbound " + (i + 1) + ": " + (ib.name || "Unnamed");
-      return (
-        '<div class="editor-card editor-card--collapsible' +
-        (isOpen ? " is-open" : " is-collapsed") +
-        '" data-in-index="' +
-        i +
-        '">' +
-        '<div class="editor-card-header">' +
-        '<div class="editor-card-heading">' +
-        editorCollapseButton("inbound", i, isOpen, "Toggle inbound") +
-        '<span class="editor-card-title"><span class="editor-card-title-main">' +
-        escapeHtml(title) +
-        '</span></span>' +
-        '</div>' +
-        '<button class="btn btn-xs btn-danger btn-remove-soft" data-in-index="' +
-        i +
-        '" data-action="remove-inbound" aria-label="Remove inbound">' +
-        '<i class="fa-solid fa-trash-can" aria-hidden="true"></i><span>Remove</span></button>' +
-        "</div>" +
-        '<div class="editor-card-body">' +
-        '<div class="form-row">' +
-        '<div class="form-group"><label>Name</label>' +
-        '<input type="text" class="form-input" data-in-index="' +
-        i +
-        '" data-field="name" value="' +
-        escapeHtml(ib.name || "") +
-        '"></div>' +
-        '<div class="form-group"><label>Bind IP</label>' +
-        '<input type="text" class="form-input" data-in-index="' +
-        i +
-        '" data-field="bind_ip" value="' +
-        escapeHtml(ib.bind_ip || "0.0.0.0") +
-        '"></div>' +
-        '<div class="form-group"><label>Public Host</label>' +
-        '<input type="text" class="form-input" data-in-index="' +
-        i +
-        '" data-field="public_host" value="' +
-        escapeHtml(ib.public_host || "") +
-        '" placeholder="empty = node server IP/host"></div>' +
-        "</div>" +
-        '<div class="form-row">' +
-        '<div class="form-group"><label>Port Mode</label>' +
-        '<select class="form-input" data-in-index="' +
-        i +
-        '" data-field="port_mode">' +
-        '<option value="fixed"' +
-        (isFixed ? " selected" : "") +
-        ">Fixed</option>" +
-        '<option value="random"' +
-        (!isFixed ? " selected" : "") +
-        ">Random</option>" +
-        "</select></div>" +
-        '<div class="form-group"' +
-        (!isFixed ? ' style="display:none"' : "") +
-        ' data-in-fixed="' +
-        i +
-        '"><label>Fixed Ports (comma-separated)</label>' +
-        '<input type="text" class="form-input" data-in-index="' +
-        i +
-        '" data-field="fixed_ports_text" value="' +
-        escapeHtml(portsToText(ib.fixed_ports)) +
-        '"></div>' +
-        '<div class="form-group"' +
-        (isFixed ? ' style="display:none"' : "") +
-        ' data-in-random="' +
-        i +
-        '"><label>Random Count</label>' +
-        '<input type="number" class="form-input" min="1" data-in-index="' +
-        i +
-        '" data-field="random_count" value="' +
-        escapeHtml(String(ib.random_count || 1)) +
-        '"></div>' +
-        "</div>" +
-        '<div class="form-row">' +
-        '<div class="form-group"><label>Public Ports Mode</label>' +
-        '<select class="form-input" data-in-index="' +
-        i +
-        '" data-field="public_ports_mode">' +
-        '<option value="use_inbound_ports"' +
-        ((ib.public_ports_mode || "use_inbound_ports") === "use_inbound_ports" ? " selected" : "") +
-        ">Use inbound ports</option>" +
-        '<option value="random"' +
-        (ib.public_ports_mode === "random" ? " selected" : "") +
-        ">Random</option>" +
-        '<option value="fixed"' +
-        (ib.public_ports_mode === "fixed" ? " selected" : "") +
-        ">Fixed</option>" +
-        "</select></div>" +
-        '<div class="form-group"' +
-        (ib.public_ports_mode === "fixed" ? "" : ' style="display:none"') +
-        ' data-in-public-fixed="' +
-        i +
-        '"><label>Public Fixed Ports</label>' +
-        '<input type="text" class="form-input" data-in-index="' +
-        i +
-        '" data-field="public_fixed_ports_text" value="' +
-        escapeHtml(portsToText(ib.public_fixed_ports)) +
-        '" placeholder="443,8443"></div>' +
-        '<div class="form-group"' +
-        (ib.public_ports_mode === "random" ? "" : ' style="display:none"') +
-        ' data-in-public-random="' +
-        i +
-        '"><label>Public Random Count</label>' +
-        '<input type="number" class="form-input" min="1" data-in-index="' +
-        i +
-        '" data-field="public_random_count" value="' +
-        escapeHtml(String(ib.public_random_count || 1)) +
-        '"></div>' +
-        "</div>" +
-        '<div class="form-row"><div class="form-group form-group--inline switch-field">' +
-        '<label class="toggle-label toggle-label--inline toggle-label--state" for="inbEnabled_' +
-        i +
-        '">' +
-        '<input type="checkbox" class="toggle-input" id="inbEnabled_' +
-        i +
-        '" data-in-index="' +
-        i +
-        '" data-field="enabled"' +
-        (ib.enabled !== false ? " checked" : "") +
-        ">" +
-        '<span class="toggle-track" aria-hidden="true"><span class="toggle-thumb"></span></span>' +
-        '<span class="toggle-text">Enabled</span></label>' +
-        "</div></div>" +
-        "</div>" +
-        "</div>"
-      );
-    })
-    .join("");
+        <div style="margin:16px 0 8px;padding:8px 12px;background:var(--accent-soft);border-radius:var(--radius-sm);font-size:0.78rem;font-weight:700;color:var(--accent)">LISTEN PORTS</div>
+        <div class="form-row">
+            <div class="form-group"><label class="form-label">Port Mode<span class="required">*</span></label><select class="form-input" data-inbound-field="port_mode" data-ie="port_mode"><option value="fixed" ${d.port_mode==='fixed'?'selected':''}>Fixed</option><option value="random" ${d.port_mode==='random'?'selected':''}>Random</option></select></div>
+            ${showFixedPorts ? `<div class="form-group" style="grid-column:span 1"><label class="form-label">Fixed Ports<span class="required">*</span></label><input class="form-input" data-ie="fixed_ports" value="${portsToStr(d.fixed_ports)}" placeholder="8080, 8081, 8082"><div class="form-hint">Comma-separated</div></div>` : ''}
+            ${showRandomCount ? `<div class="form-group"><label class="form-label">Random Count</label><input type="number" class="form-input" data-ie="random_count" value="${d.random_count}" min="1" max="4096"></div>` : ''}
+        </div>
 
-  bindEditorCardToggles(container);
-  container.querySelectorAll("[data-in-index]").forEach(function (el) {
-    if (el.tagName === "BUTTON" && el.dataset.action === "remove-inbound") {
-      el.addEventListener("click", function () {
-        state.editorDraft.inbounds.splice(parseInt(el.dataset.inIndex, 10), 1);
-        renderCoreEditor();
-      });
-    } else if (el.tagName !== "BUTTON") {
-      bindInboundField(el);
-    }
-  });
+        <div style="margin:20px 0 8px;padding:8px 12px;background:var(--info-soft);border-radius:var(--radius-sm);font-size:0.78rem;font-weight:700;color:var(--info)">PUBLIC ADVERTISED PORTS (for exported routing)</div>
+        <div class="form-row">
+            <div class="form-group"><label class="form-label">Public Host</label><input class="form-input" data-ie="public_host" value="${esc(d.public_host)}" maxlength="255" placeholder="Leave empty to use node address"><div class="form-hint">Host advertised to other nodes</div></div>
+            <div class="form-group"><label class="form-label">Public Ports Mode<span class="required">*</span></label><select class="form-input" data-inbound-field="public_ports_mode" data-ie="public_ports_mode"><option value="use_inbound_ports" ${d.public_ports_mode==='use_inbound_ports'?'selected':''}>Use Inbound Ports</option><option value="random" ${d.public_ports_mode==='random'?'selected':''}>Random</option><option value="fixed" ${d.public_ports_mode==='fixed'?'selected':''}>Fixed</option></select></div>
+        </div>
+        ${showPubFixed ? `<div class="form-group"><label class="form-label">Public Fixed Ports<span class="required">*</span></label><input class="form-input" data-ie="public_fixed_ports" value="${portsToStr(d.public_fixed_ports)}" placeholder="9080, 9081"><div class="form-hint">Comma-separated</div></div>` : ''}
+        ${showPubRandom ? `<div class="form-group" style="max-width:200px"><label class="form-label">Public Random Count</label><input type="number" class="form-input" data-ie="public_random_count" value="${d.public_random_count}" min="1" max="4096"></div>` : ''}
+
+        <div style="margin:20px 0 8px;padding:8px 12px;background:var(--warning-soft);border-radius:var(--radius-sm);font-size:0.78rem;font-weight:700;color:var(--warning)">TARGET</div>
+        <div class="form-group"><label class="form-label">Target Type<span class="required">*</span></label><select class="form-input" data-inbound-field="target_type" data-ie="target_type"><option value="static" ${d.target_type==='static'?'selected':''}>Static</option><option value="balancer" ${d.target_type==='balancer'?'selected':''}>Balancer</option></select></div>
+        ${showStaticTarget ? `<div class="form-row">
+            <div class="form-group"><label class="form-label">Target Host<span class="required">*</span></label><input class="form-input" data-ie="target_host" value="${esc(d.target_host)}" maxlength="255"></div>
+            <div class="form-group"><label class="form-label">Target Port<span class="required">*</span></label><input type="number" class="form-input" data-ie="target_port" value="${d.target_port}" min="1" max="65535"></div>
+        </div>` : ''}
+        ${showBalancerTarget ? `<div class="form-group"><label class="form-label">Target Balancer<span class="required">*</span></label><select class="form-input" data-ie="target_balancer"><option value="">Select balancer...</option>${balOptions}</select>${!balancers.length ? '<div class="form-hint text-warning">No enabled balancers. Create one in the Balancers tab first.</div>' : ''}</div>` : ''}
+
+        <div class="form-group mt-16"><label class="form-toggle"><input type="checkbox" data-ie-enabled="enabled" ${d.enabled?'checked':''}><span>Enabled</span></label></div>
+        <div class="form-group"><label class="form-label">Notes</label><textarea class="form-input" data-ie="notes" maxlength="500" rows="2">${esc(d.notes)}</textarea></div>
+
+        <div style="display:flex;gap:8px;margin-top:20px">
+            <button class="btn btn-primary" data-action="save-inbound">${ie.index === -1 ? 'Add Inbound' : 'Update Inbound'}</button>
+            <button class="btn btn-outline" data-action="cancel-inbound">Cancel</button>
+        </div>
+    </div>`;
 }
 
-function bindInboundField(el) {
-  var idx = parseInt(el.dataset.inIndex, 10);
-  var field = el.dataset.field;
-  if (isNaN(idx) || !field) return;
-
-  function update() {
-    var ib = state.editorDraft.inbounds[idx];
-    if (!ib) return;
-
-    if (el.type === "checkbox") {
-      ib[field] = el.checked;
-    } else if (field === "fixed_ports_text") {
-      ib.fixed_ports = parsePorts(el.value);
-    } else if (field === "public_fixed_ports_text") {
-      ib.public_fixed_ports = parsePorts(el.value);
-    } else if (field === "random_count") {
-      ib.random_count = Math.max(1, Number(el.value) || 1);
-    } else if (field === "public_random_count") {
-      ib.public_random_count = Math.max(1, Number(el.value) || 1);
-    } else if (field === "public_ports_mode") {
-      ib.public_ports_mode = el.value || "use_inbound_ports";
-      var contPub = $("#inboundEditorList");
-      if (contPub) {
-        var pubFix = contPub.querySelector('[data-in-public-fixed="' + idx + '"]');
-        var pubRnd = contPub.querySelector('[data-in-public-random="' + idx + '"]');
-        if (pubFix) pubFix.style.display = ib.public_ports_mode === "fixed" ? "" : "none";
-        if (pubRnd) pubRnd.style.display = ib.public_ports_mode === "random" ? "" : "none";
-      }
-    } else if (field === "port_mode") {
-      ib.port_mode = el.value;
-      var cont = $("#inboundEditorList");
-      if (cont) {
-        var fixEl = cont.querySelector('[data-in-fixed="' + idx + '"]');
-        var rndEl = cont.querySelector('[data-in-random="' + idx + '"]');
-        var isFix = el.value !== "random";
-        if (fixEl) fixEl.style.display = isFix ? "" : "none";
-        if (rndEl) rndEl.style.display = !isFix ? "" : "none";
-      }
-      renderRoutingEditor();
-    } else {
-      ib[field] = el.value;
-    }
-
-    if (field === "name") {
-      var card = el.closest(".editor-card");
-      if (card) {
-        var titleEl = card.querySelector(".editor-card-title-main");
-        if (titleEl)
-          titleEl.textContent =
-            "Inbound " + (idx + 1) + ": " + (el.value || "Unnamed");
-      }
-      renderRoutingEditor();
-      renderBalancerEditor();
-    }
-  }
-
-  el.addEventListener("input", update);
-  el.addEventListener("change", update);
-}
-
-// --- Routing Editor ---
-
-function renderRoutingEditor() {
-  var container = $("#routingEditorList");
-  if (!container || !state.editorDraft) return;
-  var inbounds = state.editorDraft.inbounds || [];
-  var aliases = currentBalancerAliases();
-
-  if (!inbounds.length) {
-    container.innerHTML = "";
-    return;
-  }
-
-  container.innerHTML = inbounds
-    .map(function (ib, i) {
-      var portSummary =
-        ib.port_mode === "random"
-          ? (ib.random_count || 1) + " random port(s)"
-          : portsToText(ib.fixed_ports) || "No ports";
-      var isStatic = ib.target_type !== "balancer";
-      var isOpen = isEditorCardOpen("routing", i);
-
-      var balOpts = aliases
-        .map(function (a) {
-          return (
-            '<option value="' +
-            escapeHtml(a) +
-            '"' +
-            (ib.target_balancer === a ? " selected" : "") +
-            ">" +
-            escapeHtml(a) +
-            "</option>"
-          );
-        })
-        .join("");
-
-      return (
-        '<div class="editor-card editor-card--collapsible' +
-        (isOpen ? " is-open" : " is-collapsed") +
-        '" data-rt-index="' +
-        i +
-        '">' +
-        '<div class="editor-card-header">' +
-        '<div class="editor-card-heading">' +
-        editorCollapseButton("routing", i, isOpen, "Toggle routing") +
-        '<span class="editor-card-title"><span class="editor-card-title-main">' +
-        escapeHtml(ib.name || "Inbound " + (i + 1)) +
-        " — " +
-        escapeHtml(portSummary) +
-        "</span></span>" +
-        "</div>" +
-        "</div>" +
-        '<div class="editor-card-body">' +
-        '<div class="form-row"><div class="form-group"><label>Target Type</label>' +
-        '<select class="form-input" data-rt-index="' +
-        i +
-        '" data-field="target_type">' +
-        '<option value="static"' +
-        (isStatic ? " selected" : "") +
-        ">Static</option>" +
-        '<option value="balancer"' +
-        (!isStatic ? " selected" : "") +
-        ">Balancer</option>" +
-        "</select></div></div>" +
-        '<div class="form-row"' +
-        (!isStatic ? ' style="display:none"' : "") +
-        ' data-rt-static="' +
-        i +
-        '">' +
-        '<div class="form-group"><label>Target Host</label>' +
-        '<input type="text" class="form-input" data-rt-index="' +
-        i +
-        '" data-field="target_host" value="' +
-        escapeHtml(ib.target_host || "") +
-        '"></div>' +
-        '<div class="form-group"><label>Target Port</label>' +
-        '<input type="text" class="form-input" data-rt-index="' +
-        i +
-        '" data-field="target_port" value="' +
-        escapeHtml(String(ib.target_port || "")) +
-        '"></div>' +
-        "</div>" +
-        '<div class="form-row"' +
-        (isStatic ? ' style="display:none"' : "") +
-        ' data-rt-balancer="' +
-        i +
-        '">' +
-        '<div class="form-group"><label>Balancer</label>' +
-        '<select class="form-input" data-rt-index="' +
-        i +
-        '" data-field="target_balancer">' +
-        '<option value="">— Select Balancer —</option>' +
-        balOpts +
-        "</select></div>" +
-        "</div>" +
-        '<div class="form-row"><div class="form-group"><label>Notes</label>' +
-        '<input type="text" class="form-input" data-rt-index="' +
-        i +
-        '" data-field="notes" value="' +
-        escapeHtml(ib.notes || "") +
-        '"></div>' +
-        "</div>" +
-        "</div>" +
-        "</div>"
-      );
-    })
-    .join("");
-
-  bindEditorCardToggles(container);
-  container.querySelectorAll("[data-rt-index]").forEach(function (el) {
-    function update() {
-      var idx = parseInt(el.dataset.rtIndex, 10);
-      var field = el.dataset.field;
-      var ib = state.editorDraft.inbounds[idx];
-      if (!ib) return;
-      if (field === "target_type") {
-        ib.target_type = el.value;
-        var isStatic = el.value !== "balancer";
-        var stRow = container.querySelector('[data-rt-static="' + idx + '"]');
-        var blRow = container.querySelector('[data-rt-balancer="' + idx + '"]');
-        if (stRow) stRow.style.display = isStatic ? "" : "none";
-        if (blRow) blRow.style.display = !isStatic ? "" : "none";
-      } else if (field) {
-        ib[field] = el.value;
-      }
-    }
-    if (el.dataset.field) {
-      el.addEventListener("input", update);
-      el.addEventListener("change", update);
-    }
-  });
-}
-
-// --- Balancer Editor ---
-
-function renderBalancerEditor() {
-  var container = $("#balancerEditorList");
-  if (!container || !state.editorDraft) return;
-  var balancers = state.editorDraft.balancers || [];
-
-  if (!balancers.length) {
-    container.innerHTML = "";
-    return;
-  }
-
-  container.innerHTML = balancers
-    .map(function (bal, i) {
-      var endpointCount = Array.isArray(bal.endpoints) ? bal.endpoints.length : 0;
-      var isOpen = isEditorCardOpen("balancer", i);
-      return (
-        '<div class="editor-card editor-card--collapsible balancer-tree-card' +
-        (isOpen ? " is-open" : " is-collapsed") +
-        '" data-bal-index="' +
-        i +
-        '">' +
-        '<div class="editor-card-header balancer-tree-header">' +
-        '<div class="editor-card-heading">' +
-        editorCollapseButton("balancer", i, isOpen, "Toggle balancer") +
-        '<span class="editor-card-title"><i class="fa-solid fa-scale-balanced" aria-hidden="true"></i> <span class="editor-card-title-main">Balancer ' +
-        (i + 1) +
-        ": " +
-        escapeHtml(bal.alias || "Unnamed") +
-        '</span> <span class="badge mini-badge">' + endpointCount + " endpoint" + (endpointCount === 1 ? "" : "s") + "</span></span>" +
-        "</div>" +
-        '<button class="btn btn-xs btn-danger btn-remove-soft" data-bal-index="' +
-        i +
-        '" data-action="remove-balancer" aria-label="Remove balancer">' +
-        '<i class="fa-solid fa-trash-can" aria-hidden="true"></i><span>Remove</span></button>' +
-        "</div>" +
-        '<div class="editor-card-body">' +
-        '<div class="form-row">' +
-        '<div class="form-group"><label>Alias</label>' +
-        '<input type="text" class="form-input" data-bal-index="' +
-        i +
-        '" data-field="alias" value="' +
-        escapeHtml(bal.alias || "") +
-        '"></div>' +
-        '<div class="form-group"><label>Strategy</label>' +
-        '<select class="form-input" data-bal-index="' +
-        i +
-        '" data-field="strategy">' +
-        '<option value="round_robin"' +
-        (bal.strategy === "round_robin" ? " selected" : "") +
-        ">Round Robin</option>" +
-        '<option value="random"' +
-        (bal.strategy === "random" ? " selected" : "") +
-        ">Random</option>" +
-        '<option value="failover"' +
-        (bal.strategy === "failover" ? " selected" : "") +
-        ">Failover</option>" +
-        '<option value="least_connections"' +
-        (bal.strategy === "least_connections" ? " selected" : "") +
-        ">Least Connections</option>" +
-        "</select></div>" +
-        '<div class="form-group form-group--inline switch-field">' +
-        '<label class="toggle-label toggle-label--inline toggle-label--state" for="balEnabled_' +
-        i +
-        '">' +
-        '<input type="checkbox" class="toggle-input" id="balEnabled_' +
-        i +
-        '" data-bal-index="' +
-        i +
-        '" data-field="enabled"' +
-        (bal.enabled !== false ? " checked" : "") +
-        ">" +
-        '<span class="toggle-track" aria-hidden="true"><span class="toggle-thumb"></span></span>' +
-        '<span class="toggle-text">Enabled</span></label></div>' +
-        "</div>" +
-        '<div class="form-row"><div class="form-group"><label>Notes</label>' +
-        '<input type="text" class="form-input" data-bal-index="' +
-        i +
-        '" data-field="notes" value="' +
-        escapeHtml(bal.notes || "") +
-        '"></div>' +
-        "</div>" +
-        '<div class="endpoints-section endpoints-tree-section">' +
-        '<div class="endpoints-header endpoints-header--clean">' +
-        '<span><i class="fa-solid fa-diagram-project" aria-hidden="true"></i> Endpoints</span>' +
-        "</div>" +
-        '<div class="endpoints-list endpoint-tree" id="endpointList_' +
-        i +
-        '"></div>' +
-        '<div class="endpoints-footer">' +
-        '<button class="btn btn-sm btn-primary endpoint-add-bottom" data-bal-index="' +
-        i +
-        '" data-action="add-endpoint"><i class="fa-solid fa-plus" aria-hidden="true"></i><span>Add Endpoint</span></button>' +
-        "</div>" +
-        "</div>" +
-        "</div>" +
-        "</div>"
-      );
-    })
-    .join("");
-
-  bindEditorCardToggles(container);
-  container.querySelectorAll("[data-bal-index]").forEach(function (el) {
-    var action = el.dataset.action;
-    if (action === "remove-balancer") {
-      el.addEventListener("click", function () {
-        state.editorDraft.balancers.splice(parseInt(el.dataset.balIndex, 10), 1);
-        renderCoreEditor();
-      });
-    } else if (action === "add-endpoint") {
-      el.addEventListener("click", function () {
-        var idx = parseInt(el.dataset.balIndex, 10);
-        if (!Array.isArray(state.editorDraft.balancers[idx].endpoints)) {
-          state.editorDraft.balancers[idx].endpoints = [];
-        }
-        var ep = defaultEndpoint();
-        state.editorDraft.balancers[idx].endpoints.push(ep);
-        state.endpointOpen[idx + ":" + (state.editorDraft.balancers[idx].endpoints.length - 1)] = true;
-        state.editorCardOpen[editorCardKey("balancer", idx)] = true;
-        renderBalancerEditor();
-      });
-    } else if (el.tagName !== "BUTTON" && el.dataset.field) {
-      (function () {
-        var balIdx = parseInt(el.dataset.balIndex, 10);
-        var field = el.dataset.field;
-        function update() {
-          var bal = state.editorDraft.balancers[balIdx];
-          if (!bal) return;
-          if (el.type === "checkbox") bal[field] = el.checked;
-          else bal[field] = el.value;
-          if (field === "alias") {
-            var card = el.closest(".editor-card");
-            if (card) {
-              var titleEl = card.querySelector(".editor-card-title-main");
-              if (titleEl) titleEl.textContent = "Balancer " + (balIdx + 1) + ": " + (el.value || "Unnamed");
-            }
-            renderRoutingEditor();
-          }
-        }
-        el.addEventListener("input", update);
-        el.addEventListener("change", update);
-      })();
-    }
-  });
-
-  balancers.forEach(function (_, i) {
-    renderEndpointList(i);
-  });
-}
-
-function endpointKey(balancerIndex, endpointIndex) {
-  return String(balancerIndex) + ":" + String(endpointIndex);
-}
-
-function endpointTitle(ep, index) {
-  if (!ep) return "Endpoint " + (index + 1);
-  if (ep.type === "node_inbound") {
-    return ep.inbound_name || "Select inbound";
-  }
-  return (ep.host || "Static target") + ":" + (ep.port || "port");
-}
-
-function endpointSubTitle(ep) {
-  if (!ep) return "";
-  if (ep.type === "node_inbound") {
-    var dep = dependencyById(ep.dependency_id);
-    var node = nodeById((dep && dep.ref_id) || ep.node_id);
-    var core = coreById(ep.core_id);
-    var parts = ["Node inbound"];
-    if (dep && dep.name) parts.push(dep.name);
-    if (node) parts.push(nodeDisplayName(node));
-    if (core) parts.push(cleanDisplayName(core.name, ep.core_id));
-    if (ep.weight) parts.push("weight " + ep.weight);
-    return parts.join(" · ");
-  }
-  return "Static" + (ep.weight ? " · weight " + ep.weight : "");
-}
-
-function dependencyById(id) {
-  id = String(id || "");
-  var deps = state.editorDraft && Array.isArray(state.editorDraft.dependencies) ? state.editorDraft.dependencies : [];
-  return deps.find(function (dep) { return String(dep.id || "") === id; }) || null;
-}
-
-function nodeDependenciesForEditor() {
-  var currentNodeId = state.editorDraft ? String(state.editorDraft.node_id || "") : "";
-  var deps = state.editorDraft && Array.isArray(state.editorDraft.dependencies) ? state.editorDraft.dependencies : [];
-  return deps.filter(function (dep) {
-    return dep && String(dep.ref_id || "") && String(dep.ref_id || "") !== currentNodeId;
-  });
-}
-
-function endpointDependencyOptions(selected) {
-  selected = String(selected || "");
-  var deps = nodeDependenciesForEditor();
-  var html = '<option value="">— Select Dependency —</option>';
-  html += deps.map(function (dep, idx) {
-    var node = nodeById(dep.ref_id);
-    var label = (dep.name || ("dep " + (idx + 1))) + " → " + (node ? nodeDisplayName(node) : dep.ref_id || "missing node");
-    if (dep.host) label += " @ " + dep.host;
-    return '<option value="' + escapeHtml(String(dep.id || "")) + '" data-node-id="' + escapeHtml(String(dep.ref_id || "")) + '"' + (String(dep.id || "") === selected ? " selected" : "") + '>' + escapeHtml(label) + '</option>';
-  }).join("");
-  return html;
-}
-
-function dependencyNodeId(depId) {
-  var dep = dependencyById(depId);
-  return dep ? String(dep.ref_id || "") : "";
-}
-
-function inboundOptionLabel(item) {
-  // Node Inbound endpoints are semantic references. Do not display the
-  // currently resolved port here, because it may be fixed, random, multi-port,
-  // or changed by runtime sync after the endpoint was selected.
-  return item.inbound_name || item.name || "Unnamed inbound";
-}
-
-function endpointInboundOptions(nodeId) {
-  nodeId = String(nodeId || "");
-  var options = [];
-  var seen = {};
-
-  function addOption(item) {
-    var name = String(item.inbound_name || item.name || "").trim();
-    if (!name) return;
-    var key = String(item.core_id || "") + "::" + name;
-    if (seen[key]) return;
-    seen[key] = true;
-    options.push({
-      name: name,
-      core_id: item.core_id || "",
-      node_id: item.node_id || nodeId,
-      label: inboundOptionLabel(item),
-      ports: Array.isArray(item.ports) ? item.ports : [],
-      port_mode: item.port_mode || "fixed",
-      random_count: item.random_count || 1,
-      public_host: item.public_host || "",
-      public_ports_mode: item.public_ports_mode || "use_inbound_ports",
-      public_fixed_ports: Array.isArray(item.public_fixed_ports) ? item.public_fixed_ports : [],
-      public_random_count: item.public_random_count || 1,
-      bind_ip: item.bind_ip || "",
-    });
-  }
-
-  if (state.editorDraft && String(state.editorDraft.node_id || "") === nodeId) {
-    (state.editorDraft.inbounds || []).forEach(function (ib) {
-      addOption({
-        core_id: state.editingCore ? state.editingCore.id : "",
-        core_name: state.editorDraft.name || (state.editingCore && state.editingCore.name) || "Current core",
-        node_id: nodeId,
-        inbound_name: ib.name,
-        ports: ib.port_mode === "fixed" ? (ib.fixed_ports || []) : [],
-        port_mode: ib.port_mode || "fixed",
-        random_count: ib.random_count || 1,
-        public_host: ib.public_host || "",
-        public_ports_mode: ib.public_ports_mode || "use_inbound_ports",
-        public_fixed_ports: Array.isArray(ib.public_fixed_ports) ? ib.public_fixed_ports : [],
-        public_random_count: ib.public_random_count || 1,
-        bind_ip: ib.bind_ip || "",
-      });
-    });
-  }
-
-  (state.inboundCatalog || [])
-    .filter(function (ib) { return String(ib.node_id || "") === nodeId; })
-    .forEach(addOption);
-
-  return options;
-}
-
-function fillEndpointInboundSelect(select, nodeId, value, coreId) {
-  value = value || "";
-  coreId = coreId || "";
-  nodeId = nodeId || "";
-  if (!select) return;
-  var options = endpointInboundOptions(nodeId);
-  var html = '<option value="">— Select Inbound —</option>';
-  html += options
-    .map(function (item) {
-      var selected = item.name === value && (!coreId || !item.core_id || String(item.core_id) === String(coreId));
-      return (
-        '<option value="' +
-        escapeHtml(item.name) +
-        '" data-core-id="' +
-        escapeHtml(item.core_id || "") +
-        '" data-ports="' +
-        escapeHtml((item.ports || []).join(",")) +
-        '" data-port-mode="' +
-        escapeHtml(item.port_mode || "fixed") +
-        '" data-random-count="' +
-        escapeHtml(String(item.random_count || 1)) +
-        '" data-public-ports-mode="' +
-        escapeHtml(item.public_ports_mode || "use_inbound_ports") +
-        '" data-public-fixed-ports="' +
-        escapeHtml((item.public_fixed_ports || []).join(",")) +
-        '" data-public-random-count="' +
-        escapeHtml(String(item.public_random_count || 1)) +
-        '"' +
-        (selected ? " selected" : "") +
-        ">" +
-        escapeHtml(item.label || item.name) +
-        "</option>"
-      );
-    })
-    .join("");
-  if (value && !options.some(function (item) { return item.name === value; })) {
-    html += '<option value="' + escapeHtml(value) + '" selected>' + escapeHtml(value + " (missing)") + "</option>";
-  }
-  select.innerHTML = html;
-}
-
-function applyEndpointInboundSelection(ep, select) {
-  if (!ep || !select) return;
-  var opt = select.options[select.selectedIndex];
-  ep.inbound_name = select.value;
-  ep.core_id = opt ? (opt.getAttribute("data-core-id") || "") : "";
-  var ports = opt ? String(opt.getAttribute("data-ports") || "") : "";
-  var portMode = opt ? String(opt.getAttribute("data-port-mode") || "fixed") : "fixed";
-  var randomCount = opt ? Math.max(1, Number(opt.getAttribute("data-random-count") || 1) || 1) : 1;
-  var publicPortsMode = opt ? String(opt.getAttribute("data-public-ports-mode") || "use_inbound_ports") : "use_inbound_ports";
-  var publicRandomCount = opt ? Math.max(1, Number(opt.getAttribute("data-public-random-count") || 1) || 1) : 1;
-  var firstPort = ports.split(",").map(function (p) { return parseInt(p.trim(), 10); }).filter(function (p) { return p >= 1 && p <= 65535; })[0];
-  ep.remote_port_mode = portMode;
-  ep.remote_random_count = randomCount;
-  ep.remote_public_ports_mode = publicPortsMode;
-  ep.remote_public_random_count = publicRandomCount;
-  if (firstPort) ep.port = firstPort;
-  else ep.port = 80;
-  if (!ep.host) ep.host = "127.0.0.1";
-}
-
-function renderEndpointList(balancerIndex) {
-  var container = $("#endpointList_" + balancerIndex);
-  if (!container) return;
-  var bal = state.editorDraft.balancers[balancerIndex];
-  if (!bal) return;
-  if (!Array.isArray(bal.endpoints)) bal.endpoints = [];
-  var endpoints = bal.endpoints;
-
-  if (!endpoints.length) {
-    container.innerHTML = "";
-    return;
-  }
-
-  container.innerHTML = endpoints
-    .map(function (ep, j) {
-      var isStatic = ep.type !== "node_inbound";
-      var key = endpointKey(balancerIndex, j);
-      var isOpen = state.endpointOpen[key] !== false;
-      return (
-        '<div class="endpoint-tree-item" data-ep-bal="' +
-        balancerIndex +
-        '" data-ep-index="' +
-        j +
-        '">' +
-        '<div class="endpoint-tree-rail" aria-hidden="true"><span></span></div>' +
-        '<div class="endpoint-card endpoint-card--tree' +
-        (isOpen ? " is-open" : " is-collapsed") +
-        '" data-ep-bal="' +
-        balancerIndex +
-        '" data-ep-index="' +
-        j +
-        '">' +
-        '<div class="endpoint-card-header endpoint-card-header--tree">' +
-        '<button type="button" class="endpoint-collapse-btn" data-ep-bal="' +
-        balancerIndex +
-        '" data-ep-index="' +
-        j +
-        '" data-action="toggle-ep" aria-label="Toggle endpoint">' +
-        '<i class="fa-solid ' + (isOpen ? "fa-chevron-down" : "fa-chevron-right") + '" aria-hidden="true"></i></button>' +
-        '<div class="endpoint-title-wrap"><strong>Endpoint ' +
-        (j + 1) +
-        '</strong><span>' +
-        escapeHtml(endpointTitle(ep, j)) +
-        '</span><small>' +
-        escapeHtml(endpointSubTitle(ep)) +
-        '</small></div>' +
-        '<button class="btn btn-xs btn-danger btn-remove-soft" data-ep-bal="' +
-        balancerIndex +
-        '" data-ep-index="' +
-        j +
-        '" data-action="remove-ep" aria-label="Remove endpoint">' +
-        '<i class="fa-solid fa-trash-can" aria-hidden="true"></i><span>Remove</span></button>' +
-        "</div>" +
-        '<div class="endpoint-card-body">' +
-        '<div class="form-row">' +
-        '<div class="form-group"><label>Type</label>' +
-        '<select class="form-input ep-field" data-ep-bal="' +
-        balancerIndex +
-        '" data-ep-index="' +
-        j +
-        '" data-field="type">' +
-        '<option value="static"' +
-        (isStatic ? " selected" : "") +
-        ">Static</option>" +
-        '<option value="node_inbound"' +
-        (!isStatic ? " selected" : "") +
-        ">Node Inbound</option>" +
-        "</select></div>" +
-        '<div class="form-group"' +
-        (!isStatic ? ' style="display:none"' : "") +
-        ' data-ep-static-g="' +
-        balancerIndex +
-        "-" +
-        j +
-        '"><label>Host</label>' +
-        '<input type="text" class="form-input ep-field" data-ep-bal="' +
-        balancerIndex +
-        '" data-ep-index="' +
-        j +
-        '" data-field="host" value="' +
-        escapeHtml(ep.host || "") +
-        '"></div>' +
-        '<div class="form-group"' +
-        (!isStatic ? ' style="display:none"' : "") +
-        ' data-ep-sport-g="' +
-        balancerIndex +
-        "-" +
-        j +
-        '"><label>Port</label>' +
-        '<input type="number" class="form-input ep-field" min="1" max="65535" data-ep-bal="' +
-        balancerIndex +
-        '" data-ep-index="' +
-        j +
-        '" data-field="port" value="' +
-        escapeHtml(String(ep.port || 80)) +
-        '"></div>' +
-        "</div>" +
-        '<div class="form-row"' +
-        (isStatic ? ' style="display:none"' : "") +
-        ' data-ep-ni-g="' +
-        balancerIndex +
-        "-" +
-        j +
-        '">' +
-        '<div class="form-group"><label>Dependency</label>' +
-        '<select class="form-input ep-field ep-dep-sel" data-ep-bal="' +
-        balancerIndex +
-        '" data-ep-index="' +
-        j +
-        '" data-field="dependency_id"></select></div>' +
-        '<div class="form-group"><label>Inbound</label>' +
-        '<select class="form-input ep-field ep-inb-sel" data-ep-bal="' +
-        balancerIndex +
-        '" data-ep-index="' +
-        j +
-        '" data-field="inbound_name"></select></div>' +
-        "</div>" +
-        '<div class="form-row">' +
-        '<div class="form-group"><label>Weight</label>' +
-        '<input type="number" class="form-input ep-field" data-ep-bal="' +
-        balancerIndex +
-        '" data-ep-index="' +
-        j +
-        '" data-field="weight" min="1" value="' +
-        escapeHtml(String(ep.weight || 1)) +
-        '"></div>' +
-        '<div class="form-group form-group--inline switch-field">' +
-        '<label class="toggle-label toggle-label--inline toggle-label--state" for="epEnabled_' +
-        balancerIndex +
-        "_" +
-        j +
-        '">' +
-        '<input type="checkbox" id="epEnabled_' +
-        balancerIndex +
-        "_" +
-        j +
-        '" class="ep-field toggle-input" data-ep-bal="' +
-        balancerIndex +
-        '" data-ep-index="' +
-        j +
-        '" data-field="enabled"' +
-        (ep.enabled !== false ? " checked" : "") +
-        ">" +
-        '<span class="toggle-track" aria-hidden="true"><span class="toggle-thumb"></span></span>' +
-        '<span class="toggle-text">Enabled</span></label></div>' +
-        "</div>" +
-        "</div>" +
-        "</div>" +
-        "</div>"
-      );
-    })
-    .join("");
-
-  container.querySelectorAll(".ep-dep-sel").forEach(function (sel) {
-    var j = parseInt(sel.dataset.epIndex, 10);
-    var ep = bal.endpoints[j];
-    sel.innerHTML = endpointDependencyOptions(ep ? ep.dependency_id : "");
-  });
-  container.querySelectorAll(".ep-inb-sel").forEach(function (sel) {
-    var j = parseInt(sel.dataset.epIndex, 10);
-    var ep = bal.endpoints[j];
-    fillEndpointInboundSelect(
-      sel,
-      ep ? (dependencyNodeId(ep.dependency_id) || ep.node_id) : "",
-      ep ? ep.inbound_name : "",
-      ep ? ep.core_id : "",
-    );
-  });
-
-  container.querySelectorAll('[data-action="toggle-ep"]').forEach(function (btn) {
-    btn.addEventListener("click", function () {
-      var bi = parseInt(btn.dataset.epBal, 10);
-      var j = parseInt(btn.dataset.epIndex, 10);
-      var key = endpointKey(bi, j);
-      state.endpointOpen[key] = state.endpointOpen[key] === false;
-      renderEndpointList(bi);
-    });
-  });
-
-  container
-    .querySelectorAll('[data-action="remove-ep"]')
-    .forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        var bi = parseInt(btn.dataset.epBal, 10);
-        var j = parseInt(btn.dataset.epIndex, 10);
-        state.editorDraft.balancers[bi].endpoints.splice(j, 1);
-        delete state.endpointOpen[endpointKey(bi, j)];
-        renderBalancerEditor();
-      });
-    });
-
-  container.querySelectorAll(".ep-field").forEach(function (el) {
-    (function () {
-      var bi = parseInt(el.dataset.epBal, 10);
-      var j = parseInt(el.dataset.epIndex, 10);
-      var field = el.dataset.field;
-      function bindEp() {
-        var ep = state.editorDraft.balancers[bi].endpoints[j];
-        if (!ep) return;
-        if (el.type === "checkbox") {
-          ep[field] = el.checked;
-        } else if (field === "weight") {
-          ep.weight = Math.max(1, Number(el.value) || 1);
-        } else if (field === "port") {
-          ep.port = Math.max(1, Math.min(65535, Number(el.value) || 80));
-        } else if (field === "dependency_id") {
-          ep.dependency_id = el.value;
-          ep.node_id = dependencyNodeId(el.value);
-          ep.core_id = "";
-          ep.inbound_name = "";
-          if (!Number(ep.port)) ep.port = 80;
-          var niG = container.querySelector(
-            '[data-ep-ni-g="' + bi + "-" + j + '"]',
-          );
-          if (niG) {
-            var inbSel = niG.querySelector(".ep-inb-sel");
-            if (inbSel) fillEndpointInboundSelect(inbSel, ep.node_id, "", "");
-          }
-        } else if (field === "node_id") {
-          ep.node_id = el.value;
-        } else if (field === "inbound_name") {
-          applyEndpointInboundSelection(ep, el);
-        } else if (field === "type") {
-          ep.type = el.value;
-          var isSt = el.value !== "node_inbound";
-          if (!isSt) {
-            if (!ep.dependency_id && nodeDependenciesForEditor().length === 1) {
-              ep.dependency_id = String(nodeDependenciesForEditor()[0].id || "");
-              ep.node_id = String(nodeDependenciesForEditor()[0].ref_id || "");
-            }
-            if (!Number(ep.port)) ep.port = 80;
-          }
-          var stG = container.querySelector(
-            '[data-ep-static-g="' + bi + "-" + j + '"]',
-          );
-          var spG = container.querySelector(
-            '[data-ep-sport-g="' + bi + "-" + j + '"]',
-          );
-          var niG2 = container.querySelector(
-            '[data-ep-ni-g="' + bi + "-" + j + '"]',
-          );
-          if (stG) stG.style.display = isSt ? "" : "none";
-          if (spG) spG.style.display = isSt ? "" : "none";
-          if (niG2) niG2.style.display = !isSt ? "" : "none";
-          renderEndpointList(bi);
+function saveInbound() {
+    const ie = S.inboundSubEditor;
+    const d = ie.data;
+    // Read values from DOM
+    document.querySelectorAll('[data-ie]').forEach(el => {
+        const key = el.dataset.ie;
+        if (el.type === 'checkbox') return;
+        if (key === 'fixed_ports' || key === 'public_fixed_ports') {
+            d[key] = parsePorts(el.value);
+        } else if (key === 'random_count' || key === 'public_random_count' || key === 'target_port') {
+            d[key] = parseInt(el.value) || 0;
         } else {
-          ep[field] = el.value;
+            d[key] = el.value;
         }
+    });
+    document.querySelectorAll('[data-ie-enabled]').forEach(el => { d[el.dataset.ieEnabled] = el.checked; });
 
-        var card = el.closest(".endpoint-card");
-        if (card) {
-          var wrap = card.querySelector(".endpoint-title-wrap");
-          if (wrap) {
-            wrap.innerHTML = '<strong>Endpoint ' + (j + 1) + '</strong><span>' + escapeHtml(endpointTitle(ep, j)) + '</span><small>' + escapeHtml(endpointSubTitle(ep)) + '</small>';
-          }
-        }
-      }
-      el.addEventListener("input", bindEp);
-      el.addEventListener("change", bindEp);
-    })();
-  });
+    // Validate
+    if (!d.name || d.name.trim().length < 1) { toast('Inbound name is required','error'); return; }
+    if (d.port_mode === 'fixed' && d.fixed_ports.length === 0) { toast('Fixed ports list cannot be empty','error'); return; }
+    if (d.public_ports_mode === 'fixed' && d.public_fixed_ports.length === 0) { toast('Public fixed ports list cannot be empty','error'); return; }
+    if (d.target_type === 'static' && (!d.target_host || d.target_port < 1 || d.target_port > 65535)) { toast('Static target host and port are required','error'); return; }
+    if (d.target_type === 'balancer' && !d.target_balancer) { toast('Select a target balancer','error'); return; }
+
+    if (ie.index === -1) S.coreEditor.inbounds.push(d);
+    else S.coreEditor.inbounds[ie.index] = d;
+    S.inboundSubEditor = null;
+    renderOverlay();
+    toast('Inbound saved','success');
 }
 
-function fillEndpointNodeSelect(select, value) {
-  value = value || "";
-  if (!select) return;
-  select.innerHTML =
-    '<option value="">— Select Node —</option>' +
-    state.nodes
-      .filter(function (n) { return isValidNodeId(n && n.id); })
-      .map(function (n) {
-        return (
-          '<option value="' +
-          escapeHtml(String(n.id)) +
-          '"' +
-          (String(n.id) === String(value) ? " selected" : "") +
-          ">" +
-          escapeHtml(nodeDisplayName(n)) +
-          "</option>"
-        );
-      })
-      .join("");
+/* ------------------------------------------------------------
+   BALANCER TAB
+   ------------------------------------------------------------ */
+function renderCoreBalancersTab() {
+    const ce = S.coreEditor;
+    // If editing endpoint
+    if (S.balancerSubEditor && S.balancerSubEditor.epIdx >= 0) return renderEndpointEditor();
+    // If editing balancer header
+    if (S.balancerSubEditor && S.balancerSubEditor.epIdx === -1) return renderBalancerHeaderEditor();
+
+    if (!ce.balancers.length) return `<div class="empty-state">${IC.cores}<h3>No Balancers</h3><p>Balancers distribute traffic across multiple endpoints with various strategies.</p><button class="btn btn-primary" data-action="add-balancer">${IC.plus} Add Balancer</button></div>`;
+    let html = `<div style="display:flex;justify-content:flex-end;margin-bottom:12px"><button class="btn btn-primary btn-sm" data-action="add-balancer">${IC.plus} Add Balancer</button></div>`;
+    ce.balancers.forEach((bal, bi) => {
+        const enabledEps = bal.endpoints.filter(e => e.enabled).length;
+        html += `<div class="sub-item">
+            <div class="sub-item-header">
+                <div class="sub-item-title">${bal.enabled ? '<span class="badge badge-success" style="font-size:0.6rem">ON</span>' : '<span class="badge badge-muted" style="font-size:0.6rem">OFF</span>'}<span class="name">${esc(bal.alias)}</span><span class="badge badge-info" style="font-size:0.6rem">${esc(bal.strategy)}</span><span class="text-muted text-xs">${enabledEps}/${bal.endpoints.length} eps</span></div>
+                <div class="actions-cell">
+                    <button class="btn btn-xs btn-ghost" data-action="edit-balancer" data-idx="${bi}">${IC.edit}</button>
+                    <button class="btn btn-xs btn-ghost text-error" data-action="delete-balancer" data-idx="${bi}">${IC.trash}</button>
+                </div>
+            </div>
+            <div class="sub-item-body">
+                ${!bal.endpoints.length ? '<div class="text-muted text-sm" style="padding:4px 0">No endpoints</div>' : ''}
+                ${bal.endpoints.map((ep, ei) => {
+                    let epDesc = '';
+                    if (ep.type === 'static') epDesc = `static: ${esc(ep.host)}:${ep.port}`;
+                    else {
+                        const dep = ce.dependencies.find(d => d.id === ep.dependency_id);
+                        const depNode = dep ? getNodeById(dep.ref_id) : null;
+                        epDesc = `node_inbound: ${dep ? esc(dep.name) : '?'} → ${esc(ep.inbound_name || '?')}`;
+                    }
+                    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;font-size:0.8rem;border-bottom:1px solid var(--border-subtle)">
+                        <div style="display:flex;align-items:center;gap:6px">
+                            ${ep.enabled ? '<span class="badge badge-success" style="font-size:0.55rem">ON</span>' : '<span class="badge badge-muted" style="font-size:0.55rem">OFF</span>'}
+                            <span class="mono text-xs">${epDesc}</span>
+                            <span class="text-muted text-xs">w:${ep.weight}</span>
+                        </div>
+                        <div class="actions-cell">
+                            <button class="btn btn-xs btn-ghost" data-action="edit-endpoint" data-balidx="${bi}" data-epidx="${ei}">${IC.edit}</button>
+                            <button class="btn btn-xs btn-ghost text-error" data-action="delete-endpoint" data-balidx="${bi}" data-epidx="${ei}">${IC.trash}</button>
+                        </div>
+                    </div>`;
+                }).join('')}
+                <div style="margin-top:8px"><button class="btn btn-xs btn-outline" data-action="add-endpoint" data-balidx="${bi}">${IC.plus} Add Endpoint</button></div>
+            </div>
+        </div>`;
+    });
+    return html;
 }
 
-// --- Dependency Editor ---
+function renderBalancerHeaderEditor() {
+    const bi = S.balancerSubEditor.balIdx;
+    const bal = S.coreEditor.balancers[bi];
+    if (!bal) return '<div class="inline-warning">Balancer not found</div>';
+    return `<div style="max-width:500px">
+        <h3 style="font-size:0.95rem;font-weight:700;margin-bottom:16px">Edit Balancer: ${esc(bal.alias)}</h3>
+        <div class="form-group"><label class="form-label">Alias<span class="required">*</span></label><input class="form-input" data-bal="alias" value="${esc(bal.alias)}" maxlength="120"></div>
+        <div class="form-group"><label class="form-label">Strategy<span class="required">*</span></label><select class="form-input" data-bal="strategy">
+            ${['round_robin','random','failover','least_connections'].map(s => `<option value="${s}" ${bal.strategy===s?'selected':''}>${s.replace('_',' ')}</option>`).join('')}
+        </select></div>
+        <div class="form-group"><label class="form-toggle"><input type="checkbox" data-bal-enabled="enabled" ${bal.enabled?'checked':''}><span>Enabled</span></label></div>
+        <div class="form-group"><label class="form-label">Notes</label><textarea class="form-input" data-bal="notes" maxlength="500" rows="2">${esc(bal.notes)}</textarea></div>
+        <div style="display:flex;gap:8px;margin-top:20px">
+            <button class="btn btn-primary" data-action="save-balancer">Update Balancer</button>
+            <button class="btn btn-outline" data-action="cancel-balancer">Cancel</button>
+        </div>
+    </div>`;
+}
 
-function renderDependencyEditor() {
-  var container = $("#dependencyEditorList");
-  if (!container || !state.editorDraft) return;
-  var deps = state.editorDraft.dependencies || [];
+function saveBalancer() {
+    const bi = S.balancerSubEditor.balIdx;
+    const bal = S.coreEditor.balancers[bi];
+    document.querySelectorAll('[data-bal]').forEach(el => { bal[el.dataset.bal] = el.value; });
+    document.querySelectorAll('[data-bal-enabled]').forEach(el => { bal[el.dataset.balEnabled] = el.checked; });
+    if (!bal.alias || bal.alias.trim().length < 1) { toast('Balancer alias is required','error'); return; }
+    S.balancerSubEditor = null;
+    renderOverlay();
+    toast('Balancer updated','success');
+}
 
-  if (!deps.length) {
-    container.innerHTML = "";
-    return;
-  }
-
-  container.innerHTML = deps
-    .map(function (dep, i) {
-      if (!dep.id) dep.id = makeClientDependencyId();
-      dep.type = "node";
-      var isOpen = isEditorCardOpen("dependency", i);
-      var node = nodeById(dep.ref_id);
-      var title = (dep.name || "dep " + (i + 1)) + (node ? " → " + nodeDisplayName(node) : "");
-      return (
-        '<div class="editor-card editor-card--collapsible' +
-        (isOpen ? " is-open" : " is-collapsed") +
-        '" data-dep-index="' +
-        i +
-        '">' +
-        '<div class="editor-card-header">' +
-        '<div class="editor-card-heading">' +
-        editorCollapseButton("dependency", i, isOpen, "Toggle dependency") +
-        '<span class="editor-card-title"><span class="editor-card-title-main">' +
-        escapeHtml(title) +
-        '</span></span>' +
-        "</div>" +
-        '<button class="btn btn-xs btn-danger btn-remove-soft" data-dep-index="' +
-        i +
-        '" data-action="remove-dep" aria-label="Remove dependency">' +
-        '<i class="fa-solid fa-trash-can" aria-hidden="true"></i><span>Remove</span></button>' +
-        "</div>" +
-        '<div class="editor-card-body">' +
-        '<div class="form-row">' +
-        '<div class="form-group"><label>Dependency Name</label>' +
-        '<input type="text" class="form-input" data-dep-index="' +
-        i +
-        '" data-field="name" value="' +
-        escapeHtml(dep.name || "") +
-        '" placeholder="dep 1"></div>' +
-        '<div class="form-group"><label>Node</label>' +
-        '<select class="form-input dep-ref-sel" data-dep-index="' +
-        i +
-        '" data-field="ref_id">' +
-        dependencyOptions("node", dep.ref_id) +
-        "</select></div>" +
-        '<div class="form-group"><label>Host Override</label>' +
-        '<input type="text" class="form-input" data-dep-index="' +
-        i +
-        '" data-field="host" value="' +
-        escapeHtml(dep.host || "") +
-        '" placeholder="empty = node address/public host"></div>' +
-        "</div>" +
-        '<div class="form-row">' +
-        '<div class="form-group"><label>Sync Interval</label>' +
-        '<input type="number" class="form-input" min="1" max="86400" step="1" data-dep-index="' +
-        i +
-        '" data-field="sync_interval" value="' +
-        escapeHtml(String(dep.sync_interval || 5)) +
-        '"><small>Seconds. This node refreshes runtime from the dependency node on this cadence.</small></div>' +
-        '<div class="form-group form-group--inline switch-field">' +
-        '<label class="toggle-label toggle-label--inline toggle-label--state" for="depReq_' +
-        i +
-        '">' +
-        '<input type="checkbox" class="toggle-input" id="depReq_' +
-        i +
-        '" data-dep-index="' +
-        i +
-        '" data-field="required"' +
-        (dep.required !== false ? " checked" : "") +
-        ">" +
-        '<span class="toggle-track" aria-hidden="true"><span class="toggle-thumb"></span></span>' +
-        '<span class="toggle-text">Required</span></label></div>' +
-        "</div>" +
-        '<div class="form-row"><div class="form-group"><label>Notes</label>' +
-        '<input type="text" class="form-input" data-dep-index="' +
-        i +
-        '" data-field="notes" value="' +
-        escapeHtml(dep.notes || "") +
-        '"></div>' +
-        "</div>" +
-        "</div>" +
-        "</div>"
-      );
-    })
-    .join("");
-
-  bindEditorCardToggles(container);
-  container.querySelectorAll("[data-dep-index]").forEach(function (el) {
-    if (el.dataset.action === "remove-dep") {
-      el.addEventListener("click", function () {
-        var removed = state.editorDraft.dependencies.splice(parseInt(el.dataset.depIndex, 10), 1)[0];
-        var removedId = removed ? String(removed.id || "") : "";
-        (state.editorDraft.balancers || []).forEach(function (bal) {
-          (bal.endpoints || []).forEach(function (ep) {
-            if (removedId && ep.dependency_id === removedId) {
-              ep.dependency_id = "";
-              ep.node_id = "";
-              ep.core_id = "";
-              ep.inbound_name = "";
-            }
-          });
+/* ------------------------------------------------------------
+   ENDPOINT EDITOR
+   ------------------------------------------------------------ */
+function renderEndpointEditor() {
+    const { balIdx, epIdx } = S.balancerSubEditor;
+    const ep = S.coreEditor.balancers[balIdx]?.endpoints[epIdx];
+    if (!ep) return '<div class="inline-warning">Endpoint not found</div>';
+    const ce = S.coreEditor;
+    const isStatic = ep.type === 'static';
+    const depOptions = ce.dependencies.map(d => {
+        const n = getNodeById(d.ref_id);
+        return `<option value="${d.id}" ${ep.dependency_id===d.id?'selected':''}>${esc(d.name)} → ${n ? esc(n.name) : 'Unknown Node'}</option>`;
+    }).join('');
+    const selectedDep = ce.dependencies.find(d => d.id === ep.dependency_id);
+    const depNodeId = selectedDep ? selectedDep.ref_id : '';
+    const catalogInbounds = depNodeId ? getCatalogForNode(depNodeId) : [];
+    // Group by core
+    let inboundOptions = '';
+    if (catalogInbounds.length) {
+        const byCore = {};
+        catalogInbounds.forEach(ci => { const k = ci.core_id || '_unknown'; if (!byCore[k]) byCore[k] = []; byCore[k].push(ci); });
+        Object.entries(byCore).forEach(([coreId, inbs]) => {
+            const coreObj = inbs[0]?.core_name || coreId;
+            inboundOptions += `<optgroup label="${esc(coreObj)}">`;
+            inbs.forEach(ci => { inboundOptions += `<option value="${esc(ci.name)}" ${ep.inbound_name===ci.name && ep.core_id===coreId?'selected':''}>${esc(ci.name)} ${ci.public_ports_mode==='fixed' ? portsToStr(ci.public_fixed_ports||ci.fixed_ports||[]) : ci.port_mode==='random' ? 'random×'+ci.random_count : ''}</option>`; });
+            inboundOptions += '</optgroup>';
         });
-        renderDependencyEditor();
-        renderBalancerEditor();
-      });
-    } else if (el.dataset.field) {
-      (function () {
-        var depIdx = parseInt(el.dataset.depIndex, 10);
-        var field = el.dataset.field;
-        function update() {
-          var dep = state.editorDraft.dependencies[depIdx];
-          if (!dep) return;
-          dep.type = "node";
-          if (!dep.id) dep.id = makeClientDependencyId();
-          if (el.type === "checkbox") dep[field] = el.checked;
-          else if (field === "sync_interval") dep.sync_interval = Math.max(1, Math.min(86400, parseInt(el.value, 10) || 5));
-          else dep[field] = el.value;
-          if (field === "ref_id") {
-            (state.editorDraft.balancers || []).forEach(function (bal) {
-              (bal.endpoints || []).forEach(function (ep) {
-                if (String(ep.dependency_id || "") === String(dep.id || "")) {
-                  ep.node_id = dep.ref_id;
-                  ep.core_id = "";
-                  ep.inbound_name = "";
-                }
-              });
-            });
-            renderBalancerEditor();
-          }
-          if (field === "name" || field === "ref_id" || field === "host") {
-            var card = el.closest(".editor-card");
-            if (card) {
-              var titleEl = card.querySelector(".editor-card-title-main");
-              var node = nodeById(dep.ref_id);
-              if (titleEl) titleEl.textContent = (dep.name || "dep " + (depIdx + 1)) + (node ? " → " + nodeDisplayName(node) : "");
-            }
-          }
+    }
+
+    if (!isStatic && !ce.dependencies.length) {
+        return `<div style="max-width:500px">
+            <h3 style="font-size:0.95rem;font-weight:700;margin-bottom:16px">Edit Endpoint</h3>
+            <div class="inline-info">${IC.eye} <span>Add a node dependency in the Dependencies tab before using Node Inbound endpoints.</span></div>
+            <div style="display:flex;gap:8px;margin-top:16px">
+                <button class="btn btn-outline" data-action="cancel-endpoint">Cancel</button>
+            </div>
+        </div>`;
+    }
+
+    return `<div style="max-width:600px">
+        <h3 style="font-size:0.95rem;font-weight:700;margin-bottom:16px">${epIdx === -1 ? 'Add' : 'Edit'} Endpoint</h3>
+        <div class="form-group"><label class="form-label">Type<span class="required">*</span></label><select class="form-input" data-ep-field="type"><option value="static" ${isStatic?'selected':''}>Static</option><option value="node_inbound" ${!isStatic?'selected':''}>Node Inbound</option></select></div>
+        ${isStatic ? `<div class="form-row">
+            <div class="form-group"><label class="form-label">Host<span class="required">*</span></label><input class="form-input" data-ep="host" value="${esc(ep.host)}" maxlength="255"></div>
+            <div class="form-group"><label class="form-label">Port<span class="required">*</span></label><input type="number" class="form-input" data-ep="port" value="${ep.port}" min="1" max="65535"></div>
+        </div>` : `
+        <div class="form-group"><label class="form-label">Dependency<span class="required">*</span></label><select class="form-input" data-ep-dep="dependency_id"><option value="">Select dependency...</option>${depOptions}</select><div class="form-hint">Select from dependencies defined in the Dependencies tab</div></div>
+        ${depNodeId ? `<div class="form-group"><label class="form-label">Core / Inbound<span class="required">*</span></label><select class="form-input" data-ep-inbound="inbound_name"><option value="">Select inbound...</option>${inboundOptions}</select></div>` : '<div class="form-hint">Select a dependency to see available inbounds</div>'}
+        `}
+        <div class="form-row">
+            <div class="form-group"><label class="form-label">Weight</label><input type="number" class="form-input" data-ep="weight" value="${ep.weight}" min="0" step="0.1"></div>
+            <div class="form-group"><label class="form-toggle" style="margin-top:22px"><input type="checkbox" data-ep-enabled="enabled" ${ep.enabled?'checked':''}><span>Enabled</span></label></div>
+        </div>
+        <div class="form-group"><label class="form-label">Notes</label><textarea class="form-input" data-ep="notes" maxlength="500" rows="2">${esc(ep.notes)}</textarea></div>
+        <div style="display:flex;gap:8px;margin-top:20px">
+            <button class="btn btn-primary" data-action="save-endpoint">Save Endpoint</button>
+            <button class="btn btn-outline" data-action="cancel-endpoint">Cancel</button>
+        </div>
+    </div>`;
+}
+
+function saveEndpoint() {
+    const { balIdx, epIdx } = S.balancerSubEditor;
+    const ep = S.coreEditor.balancers[balIdx].endpoints[epIdx];
+    document.querySelectorAll('[data-ep]').forEach(el => {
+        const k = el.dataset.ep;
+        if (k === 'port' || k === 'weight') ep[k] = parseFloat(el.value) || 0;
+        else ep[k] = el.value;
+    });
+    document.querySelectorAll('[data-ep-enabled]').forEach(el => { ep[el.dataset.epEnabled] = el.checked; });
+    document.querySelectorAll('[data-ep-dep]').forEach(el => {
+        ep.dependency_id = el.value;
+        if (el.value) {
+            const dep = S.coreEditor.dependencies.find(d => d.id === el.value);
+            ep.node_id = dep ? dep.ref_id : '';
+        } else {
+            ep.node_id = '';
         }
-        el.addEventListener("input", update);
-        el.addEventListener("change", update);
-      })();
-    }
-  });
-}
-
-function dependencyOptions(type, selected) {
-  selected = selected || "";
-  if (type === "node") {
-    var currentNodeId = state.editorDraft ? String(state.editorDraft.node_id || "") : "";
-    return state.nodes
-      .filter(function (n) {
-        return String(n.id || "") !== currentNodeId;
-      })
-      .map(function (n) {
-        return (
-          '<option value="' +
-          escapeHtml(String(n.id)) +
-          '"' +
-          (String(n.id) === String(selected) ? " selected" : "") +
-          ">" +
-          escapeHtml(nodeDisplayName(n)) +
-          "</option>"
-        );
-      })
-      .join("");
-  }
-  var currentId = state.editingCore ? state.editingCore.id : null;
-  return state.cores
-    .filter(function (c) {
-      return c.id !== currentId;
-    })
-    .map(function (c) {
-      return (
-        '<option value="' +
-        escapeHtml(String(c.id)) +
-        '"' +
-        (String(c.id) === String(selected) ? " selected" : "") +
-        ">" +
-        escapeHtml(c.name || "Core #" + c.id) +
-        "</option>"
-      );
-    })
-    .join("");
-}
-
-// --- Advanced JSON Editor ---
-
-function renderAdvancedEditor() {
-  if (!state.editorDraft) return;
-  var cfg = ensureAdvancedConfig(state.editorDraft);
-  var enabled = $("#advancedJsonEnabled");
-  var textarea = $("#advancedJsonEditor");
-  var result = $("#advancedValidationResult");
-  if (enabled) enabled.checked = !!cfg.enabled;
-  if (textarea && textarea.value !== cfg.json_config) textarea.value = cfg.json_config || "";
-  if (result && !result.dataset.keep) result.innerHTML = "";
-}
-
-function syncAdvancedEditorToDraft() {
-  if (!state.editorDraft) return;
-  var cfg = ensureAdvancedConfig(state.editorDraft);
-  var enabled = $("#advancedJsonEnabled");
-  var textarea = $("#advancedJsonEditor");
-  if (enabled) cfg.enabled = !!enabled.checked;
-  if (textarea) cfg.json_config = textarea.value || "";
-}
-
-function showAdvancedValidation(result, type) {
-  var box = $("#advancedValidationResult");
-  if (!box) return;
-  type = type || "info";
-  box.className = "advanced-validation advanced-validation--" + type;
-  box.dataset.keep = "1";
-  if (Array.isArray(result)) {
-    box.innerHTML = result.map(function (line) { return '<div>' + escapeHtml(line) + '</div>'; }).join("");
-  } else {
-    box.textContent = String(result || "");
-  }
-}
-
-function validateAdvancedJsonLocally() {
-  syncAdvancedEditorToDraft();
-  var cfg = ensureAdvancedConfig(state.editorDraft);
-  var text = String(cfg.json_config || "").trim();
-  if (!text) return { ok: true, value: null, warnings: ["Manual JSON is empty."] };
-  try {
-    var value = JSON.parse(text);
-    if (!value || Array.isArray(value) || typeof value !== "object") {
-      return { ok: false, errors: ["JSON root must be an object."] };
-    }
-    return { ok: true, value: value, warnings: [] };
-  } catch (err) {
-    return { ok: false, errors: [err.message || "Invalid JSON syntax."] };
-  }
-}
-
-async function validateAdvancedConfig(options) {
-  options = options || {};
-  var btn = $("#validateAdvancedJsonButton");
-  var local = validateAdvancedJsonLocally();
-  if (!local.ok) {
-    showAdvancedValidation(local.errors || ["Invalid JSON."], "error");
-    if (!options.silent) showToast("Advanced JSON is invalid.", "error");
-    return false;
-  }
-  syncAdvancedEditorToDraft();
-  var cfg = ensureAdvancedConfig(state.editorDraft);
-  if (!cfg.enabled || !String(cfg.json_config || "").trim()) {
-    showAdvancedValidation(cfg.enabled ? "Manual JSON is empty." : "Manual JSON override is disabled.", "info");
-    return true;
-  }
-  if (btn) {
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i> Validating';
-  }
-  try {
-    var data = await api("/api/cores/advanced/validate", {
-      method: "POST",
-      body: JSON.stringify({ json_config: cfg.json_config }),
     });
-    var lines = [];
-    if (data.valid) lines.push("JSON is valid.");
-    (data.errors || []).forEach(function (x) { lines.push("Error: " + x); });
-    (data.warnings || []).forEach(function (x) { lines.push("Warning: " + x); });
-    showAdvancedValidation(lines, data.valid ? "success" : "error");
-    if (!options.silent) showToast(data.valid ? "Advanced JSON is valid." : "Advanced JSON has errors.", data.valid ? "success" : "error");
-    return !!data.valid;
-  } catch (err) {
-    showAdvancedValidation(err.message || "Validation failed.", "error");
-    if (!options.silent) showToast(err.message || "Validation failed.", "error");
-    return false;
-  } finally {
-    if (btn) {
-      btn.disabled = false;
-      btn.innerHTML = '<i class="fa-solid fa-shield-halved" aria-hidden="true"></i> Validate JSON';
-    }
-  }
-}
+    document.querySelectorAll('[data-ep-inbound]').forEach(el => {
+        ep.inbound_name = el.value;
+        // Try to find core_id from catalog
+        if (el.value && ep.node_id) {
+            const catalog = getCatalogForNode(ep.node_id);
+            const found = catalog.find(ci => ci.name === el.value);
+            ep.core_id = found?.core_id || '';
+        }
+    });
 
-
-function sanitizeCorePayload(payload) {
-  payload = payload || {};
-  (payload.inbounds || []).forEach(function (ib) {
-    ib.port_mode = ib.port_mode === "random" ? "random" : "fixed";
-    ib.random_count = Math.max(1, Math.min(4096, Number(ib.random_count) || 1));
-    ib.public_ports_mode = ["use_inbound_ports", "random", "fixed"].indexOf(ib.public_ports_mode) >= 0 ? ib.public_ports_mode : "use_inbound_ports";
-    ib.public_random_count = Math.max(1, Math.min(4096, Number(ib.public_random_count) || 1));
-    ib.public_host = String(ib.public_host || "").trim();
-    if (!Array.isArray(ib.fixed_ports)) ib.fixed_ports = [];
-    ib.fixed_ports = ib.fixed_ports
-      .map(function (p) { return parseInt(p, 10); })
-      .filter(function (p, idx, arr) { return p >= 1 && p <= 65535 && arr.indexOf(p) === idx; });
-    if (!Array.isArray(ib.public_fixed_ports)) ib.public_fixed_ports = [];
-    ib.public_fixed_ports = ib.public_fixed_ports
-      .map(function (p) { return parseInt(p, 10); })
-      .filter(function (p, idx, arr) { return p >= 1 && p <= 65535 && arr.indexOf(p) === idx; });
-    if (ib.target_type === "static") {
-      ib.target_host = String(ib.target_host || "127.0.0.1").trim() || "127.0.0.1";
-      ib.target_port = Math.max(1, Math.min(65535, Number(ib.target_port) || 80));
+    // Validate
+    if (ep.type === 'static') {
+        if (!ep.host) { toast('Host is required for static endpoint','error'); return; }
+        if (ep.port < 1 || ep.port > 65535) { toast('Port must be 1-65535','error'); return; }
+        ep.dependency_id = ''; ep.node_id = ''; ep.core_id = ''; ep.inbound_name = '';
     } else {
-      ib.target_balancer = String(ib.target_balancer || "");
-      ib.target_port = Math.max(1, Math.min(65535, Number(ib.target_port) || 80));
+        if (!ep.dependency_id) { toast('Select a dependency','error'); return; }
+        if (!ep.inbound_name) { toast('Select an inbound','error'); return; }
+        ep.host = ''; ep.port = 80;
     }
-  });
-  (payload.dependencies || []).forEach(function (dep, idx) {
-    dep.id = String(dep.id || makeClientDependencyId());
-    dep.type = "node";
-    dep.name = String(dep.name || ("dep " + (idx + 1))).trim();
-    dep.ref_id = String(dep.ref_id || "");
-    dep.host = String(dep.host || "").trim();
-    dep.sync_interval = Math.max(1, Math.min(86400, Number(dep.sync_interval) || 5));
-    dep.required = dep.required !== false;
-  });
-  (payload.balancers || []).forEach(function (bal) {
-    if (!Array.isArray(bal.endpoints)) bal.endpoints = [];
-    bal.endpoints.forEach(function (ep) {
-      ep.type = ep.type === "node_inbound" ? "node_inbound" : "static";
-      ep.weight = Math.max(0, Number(ep.weight) || 1);
-      if (ep.type === "node_inbound") {
-        if (!ep.host) ep.host = "127.0.0.1";
-        // Node Inbound endpoints are semantic references. The real port is
-        // enriched by the panel for fixed/live inbounds or resolved by node
-        // peer-sync for remote random inbounds. Keep a safe placeholder here
-        // so random_count values such as 8 never leak into endpoint.port.
-        ep.port = Math.max(1, Math.min(65535, Number(ep.port) || 80));
-        if (ep.remote_port_mode === "random" && !Array.isArray(ep.live_ports)) ep.port = 80;
-        ep.dependency_id = String(ep.dependency_id || "");
-        ep.node_id = String(ep.node_id || dependencyNodeId(ep.dependency_id) || "");
-        ep.core_id = String(ep.core_id || "");
-        ep.inbound_name = String(ep.inbound_name || "");
-      } else {
-        ep.host = String(ep.host || "127.0.0.1").trim() || "127.0.0.1";
-        ep.port = Math.max(1, Math.min(65535, Number(ep.port) || 80));
-        ep.node_id = "";
-        ep.core_id = "";
-        ep.inbound_name = "";
-      }
-    });
-  });
-  return payload;
+
+    S.balancerSubEditor = { balIdx, epIdx: -1 };
+    renderOverlay();
+    toast('Endpoint saved','success');
 }
 
-function validateEditorBalancerEndpoints(payload) {
-  var errors = [];
-  (payload.balancers || []).forEach(function (bal, bi) {
-    (bal.endpoints || []).forEach(function (ep, ei) {
-      if (ep.type === "node_inbound") {
-        if (!String(ep.dependency_id || "").trim()) errors.push("Balancer " + (bi + 1) + ", endpoint " + (ei + 1) + ": select a dependency first.");
-        if (!isValidNodeId(ep.node_id || dependencyNodeId(ep.dependency_id))) errors.push("Balancer " + (bi + 1) + ", endpoint " + (ei + 1) + ": selected dependency has no valid node.");
-        if (!String(ep.inbound_name || "").trim()) errors.push("Balancer " + (bi + 1) + ", endpoint " + (ei + 1) + ": select an inbound.");
-      } else {
-        if (!String(ep.host || "").trim()) errors.push("Balancer " + (bi + 1) + ", endpoint " + (ei + 1) + ": target host is required.");
-        if (!(Number(ep.port) >= 1 && Number(ep.port) <= 65535)) errors.push("Balancer " + (bi + 1) + ", endpoint " + (ei + 1) + ": target port must be between 1 and 65535.");
-      }
-    });
-  });
-  return errors;
-}
+/* ------------------------------------------------------------
+   DEPENDENCY TAB
+   ------------------------------------------------------------ */
+function renderCoreDepsTab() {
+    const ce = S.coreEditor;
+    const currentNodeId = ce.core.node_id;
+    const availableNodes = S.nodes.filter(n => n.id !== currentNodeId);
 
-function collectEditorPayload() {
-  syncEditorHeaderToDraft();
-  var d = state.editorDraft;
-  return sanitizeCorePayload({
-    name: d.name,
-    node_id: d.node_id,
-    enabled: d.enabled,
-    inbounds: d.inbounds || [],
-    balancers: d.balancers || [],
-    dependencies: d.dependencies || [],
-    advanced_config: ensureAdvancedConfig(d),
-  });
-}
-
-async function saveCoreEditor() {
-  if (!state.editingCore) return false;
-  if (!isValidCoreId(state.editingCore.id)) { warnInvalidIdentifier("core"); await refreshAll(); return false; }
-  var payload = collectEditorPayload();
-  if (!isValidNodeId(payload.node_id)) { showToast("Select a valid node before saving this core.", "warning"); return false; }
-  var endpointErrors = validateEditorBalancerEndpoints(payload);
-  if (endpointErrors.length) { showToast(endpointErrors[0], "warning"); return false; }
-  if (payload.advanced_config && payload.advanced_config.enabled) {
-    var advancedOk = await validateAdvancedConfig({ silent: true });
-    if (!advancedOk) return false;
-    payload = collectEditorPayload();
-  }
-  var saveBtns = $$("#saveCoreBtn, #saveCoreEditorBottom");
-  saveBtns.forEach(function (b) {
-    b.disabled = true;
-    b.textContent = "Saving\u2026";
-  });
-
-  try {
-    var data = await api("/api/cores/" + encodeURIComponent(state.editingCore.id), {
-      method: "PUT",
-      body: JSON.stringify(payload),
-    });
-    if (data.ok) {
-      state.editingCore = data.core;
-      state.editorDraft = deepCopy(data.core);
-      if (!Array.isArray(state.editorDraft.inbounds))
-        state.editorDraft.inbounds = [];
-      if (!Array.isArray(state.editorDraft.balancers))
-        state.editorDraft.balancers = [];
-      if (!Array.isArray(state.editorDraft.dependencies))
-        state.editorDraft.dependencies = [];
-      ensureAdvancedConfig(state.editorDraft);
-      showToast("Core saved successfully.", "success");
-      await refreshAll();
-      bindCoreEditorHeader();
-      updateTabBadges();
-      return true;
+    // If editing a dependency
+    if (S.depSubEditor && S.depSubEditor.data === null) {
+        const idx = S.depSubEditor.index;
+        const dep = idx >= 0 ? ce.dependencies[idx] : null;
+        if (!dep && idx >= 0) { S.depSubEditor = null; return renderCoreDepsTab(); }
+        const d = dep || defaultDependency(ce.dependencies.length);
+        const nodeOpts = availableNodes.map(n => `<option value="${n.id}" ${d.ref_id===n.id?'selected':''}>${esc(n.name)} (${esc(n.address)})</option>`).join('');
+        return `<div style="max-width:600px">
+            <h3 style="font-size:0.95rem;font-weight:700;margin-bottom:16px">${idx === -1 ? 'Add' : 'Edit'} Dependency</h3>
+            <div class="form-group"><label class="form-label">Name</label><input class="form-input" data-dep="name" value="${esc(d.name)}" maxlength="120" placeholder="dep 1"><div class="form-hint">A label for this dependency instance</div></div>
+            <div class="form-group"><label class="form-label">Remote Node<span class="required">*</span></label><select class="form-input" data-dep-field="ref_id" data-dep="ref_id"><option value="">Select node...</option>${nodeOpts}</select><div class="form-hint">The node this core depends on. Same node can be added multiple times with different host overrides.</div></div>
+            <div class="form-group"><label class="form-label">Host Override</label><input class="form-input" data-dep="host" value="${esc(d.host)}" maxlength="255" placeholder="Leave empty to use advertised host"><div class="form-hint">Override the host used to reach this dependency</div></div>
+            <div class="form-row">
+                <div class="form-group"><label class="form-label">Sync Interval (s)</label><input type="number" class="form-input" data-dep="sync_interval" value="${d.sync_interval}" min="1" max="86400"><div class="form-hint">How often to sync runtime from this dependency</div></div>
+                <div class="form-group"><label class="form-toggle" style="margin-top:22px"><input type="checkbox" data-dep-req="required" ${d.required?'checked':''}><span>Required</span></label></div>
+            </div>
+            <div class="form-group"><label class="form-label">Notes</label><textarea class="form-input" data-dep="notes" maxlength="500" rows="2">${esc(d.notes)}</textarea></div>
+            <div style="display:flex;gap:8px;margin-top:20px">
+                <button class="btn btn-primary" data-action="save-dep">${idx === -1 ? 'Add Dependency' : 'Update Dependency'}</button>
+                <button class="btn btn-outline" data-action="cancel-dep">Cancel</button>
+            </div>
+        </div>`;
     }
-    return false;
-  } catch (err) {
-    showToast(err.message || "Failed to save core.", "error");
-    return false;
-  } finally {
-    saveBtns.forEach(function (b) {
-      b.disabled = false;
-      b.textContent = "Save Core";
+
+    if (!ce.dependencies.length) return `<div class="empty-state">${IC.cores}<h3>No Dependencies</h3><p>Dependencies define which remote nodes this core relies on. They are needed for Node Inbound balancer endpoints.</p><button class="btn btn-primary" data-action="add-dep">${IC.plus} Add Dependency</button></div>`;
+    let html = `<div style="display:flex;justify-content:flex-end;margin-bottom:12px"><button class="btn btn-primary btn-sm" data-action="add-dep">${IC.plus} Add Dependency</button></div>`;
+    ce.dependencies.forEach((dep, idx) => {
+        const remoteNode = getNodeById(dep.ref_id);
+        html += `<div class="sub-item">
+            <div class="sub-item-header">
+                <div class="sub-item-title">${dep.required ? '<span class="badge badge-warning" style="font-size:0.55rem">REQ</span>' : '<span class="badge badge-muted" style="font-size:0.55rem">OPT</span>'}<span class="name">${esc(dep.name)}</span><span class="text-muted text-xs">→ ${remoteNode ? esc(remoteNode.name) : '<span class="text-error">Missing</span>'}</span></div>
+                <div class="actions-cell">
+                    <button class="btn btn-xs btn-ghost" data-action="edit-dep" data-idx="${idx}">${IC.edit}</button>
+                    <button class="btn btn-xs btn-ghost text-error" data-action="delete-dep" data-idx="${idx}">${IC.trash}</button>
+                </div>
+            </div>
+            <div class="sub-item-body">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:0.8rem">
+                    <div><span class="text-muted">Host Override:</span> ${dep.host ? esc(dep.host) : '<span class="text-muted">(default)</span>'}</div>
+                    <div><span class="text-muted">Sync Interval:</span> ${dep.sync_interval}s</div>
+                </div>
+            </div>
+        </div>`;
     });
-  }
+    return html;
 }
 
-async function saveAndApplyCoreEditor() {
-  if (!state.editingCore) return;
-  var ok = await saveCoreEditor();
-  if (!ok || !state.editingCore) return;
-  await applyCore(state.editingCore.id, null);
-}
-
-// ============================================================
-// 14. LOGS PAGE
-// ============================================================
-
-async function loadLogSources() {
-  try {
-    var data = await api("/api/logs/sources");
-    if (data.ok) {
-      state.logSources = data.sources || [];
-      var select = $("#logSourceSelect");
-      if (!select) return;
-      var prev = select.value || state.currentLogSource;
-      select.innerHTML = state.logSources
-        .map(function (src) {
-          return (
-            '<option value="' +
-            escapeHtml(src.id) +
-            '"' +
-            (src.id === prev ? " selected" : "") +
-            ">" +
-            escapeHtml(src.label || src.id) +
-            "</option>"
-          );
-        })
-        .join("");
-      if (!select.value && state.logSources.length)
-        select.value = state.logSources[0].id;
-      state.currentLogSource = select.value;
+function saveDependency() {
+    const idx = S.depSubEditor.index;
+    let d;
+    if (idx === -1) {
+        d = defaultDependency(S.coreEditor.dependencies.length);
+        S.coreEditor.dependencies.push(d);
+    } else {
+        d = S.coreEditor.dependencies[idx];
     }
-  } catch (err) {
-    console.error("loadLogSources:", err);
-  }
+    document.querySelectorAll('[data-dep]').forEach(el => {
+        const k = el.dataset.dep;
+        if (k === 'sync_interval') d[k] = parseInt(el.value) || 5;
+        else d[k] = el.value;
+    });
+    document.querySelectorAll('[data-dep-req]').forEach(el => { d.required = el.checked; });
+    if (!d.ref_id) { toast('Select a remote node','error'); return; }
+    if (d.ref_id === S.coreEditor.core.node_id) { toast('Cannot depend on the same node','error'); return; }
+    S.depSubEditor = null;
+    renderOverlay();
+    toast('Dependency saved','success');
 }
 
-function renderLogs(data) {
-  var output = $("#logsOutput");
-  var lineCount = $("#logsLineCount");
-  if (!output) return;
-
-  output.innerHTML = "";
-
-  if (!data || data.error) {
-    var errDiv = document.createElement("div");
-    errDiv.className = "logs-error";
-    errDiv.textContent = data
-      ? data.error || "Failed to load logs."
-      : "Failed to load logs.";
-    output.appendChild(errDiv);
-    if (lineCount) lineCount.textContent = "0 lines";
-    return;
-  }
-
-  var lines = data.lines || [];
-  if (lineCount)
-    lineCount.textContent =
-      lines.length + " line" + (lines.length !== 1 ? "s" : "");
-
-  if (!lines.length) {
-    var ph = document.createElement("div");
-    ph.className = "logs-placeholder";
-    ph.textContent = "No log lines found.";
-    output.appendChild(ph);
-    return;
-  }
-
-  var frag = document.createDocumentFragment();
-  lines.forEach(function (line) {
-    frag.appendChild(colorizeLogLine(line));
-  });
-  output.appendChild(frag);
-  output.scrollTop = output.scrollHeight;
+/* ------------------------------------------------------------
+   ADVANCED JSON TAB
+   ------------------------------------------------------------ */
+function renderCoreAdvancedTab() {
+    const adv = S.coreEditor.advanced;
+    return `<div style="max-width:800px">
+        <div class="form-group"><label class="form-toggle"><input type="checkbox" id="adv-enabled" ${adv.enabled?'checked':''}><span>Enable Advanced JSON Configuration</span></label><div class="form-hint">When enabled, this JSON will be merged into the core config sent to the node.</div></div>
+        <div class="form-group"><label class="form-label">JSON Configuration${adv.enabled?'<span class="required">*</span>':''}</label>
+            <textarea class="form-input" id="adv-json" style="font-family:var(--font-mono);font-size:0.8rem;min-height:300px;line-height:1.6" ${!adv.enabled?'disabled':''}>${esc(adv.json_config)}</textarea>
+            <div class="form-hint">Max 200,000 characters</div>
+        </div>
+        <div style="display:flex;gap:8px">
+            <button class="btn btn-outline" data-action="validate-json-local">Validate Locally</button>
+            <button class="btn btn-outline" data-action="validate-json-backend">Validate on Server</button>
+        </div>
+        <div id="adv-validation-result" style="margin-top:12px"></div>
+    </div>`;
 }
 
-function colorizeLogLine(line) {
-  var span = document.createElement("span");
-  span.className = "log-line";
-
-  var upper = line.toUpperCase();
-  if (upper.indexOf("| CRITICAL |") !== -1 || upper.indexOf("CRITICAL") !== -1) {
-    span.classList.add("log-level-critical");
-  } else if (upper.indexOf("| ERROR |") !== -1 || upper.indexOf("| ERROR") !== -1 || upper.indexOf("TRACEBACK") !== -1) {
-    span.classList.add("log-level-error");
-  } else if (
-    upper.indexOf("| WARNING |") !== -1 ||
-    upper.indexOf("| WARN |") !== -1 ||
-    upper.indexOf("WARNING") !== -1 ||
-    upper.indexOf("WARN") !== -1
-  ) {
-    span.classList.add("log-level-warn");
-  } else if (upper.indexOf("| DEBUG |") !== -1 || upper.indexOf("PANEL.REQUEST") !== -1 || upper.indexOf("NODE.REQUEST") !== -1 || upper.indexOf("NODE_API") !== -1) {
-    span.classList.add("log-level-debug");
-  } else if (upper.indexOf("| INFO |") !== -1) {
-    span.classList.add("log-level-info");
-  } else if (/\b(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\s+/.test(line)) {
-    span.classList.add("log-level-access");
-  } else if (upper.indexOf("SUCCESS") !== -1 || upper.indexOf("READY") !== -1) {
-    span.classList.add("log-level-success");
-  }
-
-  var tsMatch = line.match(
-    /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?)/,
-  );
-  if (tsMatch) {
-    var tsSpan = document.createElement("span");
-    tsSpan.className = "log-ts";
-    tsSpan.textContent = tsMatch[1];
-    span.appendChild(tsSpan);
-    span.appendChild(document.createTextNode(line.slice(tsMatch[1].length)));
-  } else {
-    span.textContent = line;
-  }
-
-  return span;
-}
-
-function clampLogRefreshInterval(value) {
-  var num = Number(value);
-  if (!Number.isFinite(num)) num = 10;
-  num = Math.round(num);
-  return Math.max(1, Math.min(num, 3600));
-}
-
-function getLogRefreshIntervalSeconds() {
-  var input = $("#logRefreshIntervalInput");
-  var seconds = clampLogRefreshInterval(input ? input.value : state.logRefreshIntervalSeconds);
-  state.logRefreshIntervalSeconds = seconds;
-  if (input && String(input.value) !== String(seconds)) input.value = String(seconds);
-  try {
-    localStorage.setItem("doctorDev.logRefreshIntervalSeconds", String(seconds));
-  } catch (_) {}
-  return seconds;
-}
-
-function updateLogAutoRefreshLabel(active) {
-  var lastUpdEl = $("#logsLastUpdated");
-  if (!lastUpdEl) return;
-  if (active) {
-    lastUpdEl.textContent =
-      "Live refresh: every " + getLogRefreshIntervalSeconds() + " second" +
-      (getLogRefreshIntervalSeconds() === 1 ? "" : "s");
-  }
-}
-
-function stopLogAutoRefresh(uncheck) {
-  if (state.logAutoRefreshTimer) {
-    clearInterval(state.logAutoRefreshTimer);
-    state.logAutoRefreshTimer = null;
-  }
-  if (uncheck) {
-    var cb = $("#logAutoRefresh");
-    if (cb) cb.checked = false;
-  }
-}
-
-function startLogAutoRefresh() {
-  stopLogAutoRefresh(false);
-  var seconds = getLogRefreshIntervalSeconds();
-  state.logAutoRefreshTimer = setInterval(function () {
-    if (state.page === "logs") loadLogs({ silent: true });
-  }, seconds * 1000);
-  updateLogAutoRefreshLabel(true);
-}
-
-function syncLogAutoRefresh() {
-  var cb = $("#logAutoRefresh");
-  if (cb && cb.checked) startLogAutoRefresh();
-  else stopLogAutoRefresh(false);
-}
-
-async function loadLogs(options) {
-  options = options || {};
-  if (state.logsLoading) return;
-  state.logsLoading = true;
-  var sourceEl = $("#logSourceSelect");
-  var limitEl = $("#logLimitSelect");
-  var levelEl = $("#logLevelSelect");
-  var searchEl = $("#logSearchInput");
-  var lastUpdEl = $("#logsLastUpdated");
-  var refreshBtn = $("#refreshLogsBtn");
-
-  var source = sourceEl ? sourceEl.value : state.currentLogSource;
-  var limit = limitEl ? limitEl.value : "100";
-  var level = levelEl ? levelEl.value : "";
-  var q = searchEl ? searchEl.value.trim() : "";
-
-  if (source) state.currentLogSource = source;
-  if (refreshBtn) refreshBtn.disabled = true;
-
-  try {
-    var params =
-      "source=" +
-      encodeURIComponent(source) +
-      "&limit=" +
-      encodeURIComponent(limit);
-    if (level) params += "&level=" + encodeURIComponent(level);
-    if (q) params += "&q=" + encodeURIComponent(q);
-
-    var data = await api("/api/logs?" + params);
-    state.rawLogLines = data.lines || [];
-    renderLogs(data);
-    if (lastUpdEl)
-      lastUpdEl.textContent = "Updated: " + new Date().toLocaleTimeString();
-  } catch (err) {
-    renderLogs(null);
-    if (!options.silent) showToast(err.message || "Failed to load logs.", "error");
-  } finally {
-    if (refreshBtn) refreshBtn.disabled = false;
-    state.logsLoading = false;
-    var autoCb = $("#logAutoRefresh");
-    if (autoCb && autoCb.checked) updateLogAutoRefreshLabel(true);
-  }
-}
-
-// ============================================================
-// 15. EVENT LISTENERS
-// ============================================================
-
-document.addEventListener("DOMContentLoaded", function () {
-  // --- Auth ---
-  var loginForm = $("#loginForm");
-  if (loginForm) loginForm.addEventListener("submit", handleLoginSubmit);
-
-  var logoutBtn = $("#logoutButton");
-  if (logoutBtn) logoutBtn.addEventListener("click", handleLogout);
-
-  var togglePwdBtn = $("#togglePassword");
-  if (togglePwdBtn)
-    togglePwdBtn.addEventListener("click", togglePasswordVisibility);
-
-  // --- Navigation ---
-  $$(".nav-item[data-page]").forEach(function (btn) {
-    btn.addEventListener("click", function () {
-      switchPage(btn.dataset.page);
-    });
-  });
-
-  // --- Dashboard quick actions ---
-  var qaAddNode = $("#qaAddNode");
-  if (qaAddNode)
-    qaAddNode.addEventListener("click", function () {
-      openNodeModal();
-    });
-
-  var qaAddCore = $("#qaAddCore");
-  if (qaAddCore)
-    qaAddCore.addEventListener("click", function () {
-      openCoreCreateModal();
-    });
-
-  var qaViewLogs = $("#qaViewLogs");
-  if (qaViewLogs)
-    qaViewLogs.addEventListener("click", function () {
-      switchPage("logs");
-    });
-
-  var qaManageNodes = $("#qaManageNodes");
-  if (qaManageNodes)
-    qaManageNodes.addEventListener("click", function () {
-      switchPage("nodes");
-    });
-
-  // --- Refresh ---
-  var refreshBtn = $("#refreshButton");
-  if (refreshBtn) refreshBtn.addEventListener("click", refreshAll);
-  var repairDataBtn = $("#repairDataButton");
-  if (repairDataBtn) repairDataBtn.addEventListener("click", repairPanelData);
-
-  // --- Nodes ---
-  var createNodeBtn = $("#createNodeBtn");
-  if (createNodeBtn)
-    createNodeBtn.addEventListener("click", function () {
-      openNodeModal();
-    });
-
-  var nodesEmptyCreate = $("#nodesEmptyCreateBtn");
-  if (nodesEmptyCreate)
-    nodesEmptyCreate.addEventListener("click", function () {
-      openNodeModal();
-    });
-
-  var nodeModal = $("#nodeModal");
-  if (nodeModal) {
-    nodeModal.addEventListener("click", function (e) {
-      if (e.target === nodeModal) closeNodeModal();
-    });
-  }
-
-  var closeNodeModalBtn = $("#closeNodeModal");
-  if (closeNodeModalBtn)
-    closeNodeModalBtn.addEventListener("click", closeNodeModal);
-
-  var cancelNodeBtn = $("#cancelNodeButton");
-  if (cancelNodeBtn) cancelNodeBtn.addEventListener("click", closeNodeModal);
-
-  var deleteNodeBtn = $("#deleteNodeButton");
-  if (deleteNodeBtn)
-    deleteNodeBtn.addEventListener("click", function () {
-      if (state.editingNode && isValidNodeId(state.editingNode.id)) deleteNode(state.editingNode.id);
-      else warnInvalidIdentifier("node");
-    });
-
-  var nodeEnabled = $("#nodeEnabled");
-  if (nodeEnabled) nodeEnabled.addEventListener("change", updateStatusPreview);
-
-  var checkNodeStatus = $("#checkNodeStatus");
-  if (checkNodeStatus) checkNodeStatus.addEventListener("click", checkFormNode);
-
-  var generateApiKeyBtn = $("#generateApiKey");
-  if (generateApiKeyBtn) {
-    generateApiKeyBtn.addEventListener("click", async function () {
-      generateApiKeyBtn.disabled = true;
-      try {
-        var data = await api("/api/nodes/api-key", { method: "POST" });
-        var apiKeyEl = $("#apiKey");
-        if (apiKeyEl && data.api_key) apiKeyEl.value = data.api_key;
-        showToast("New API key generated.", "success");
-      } catch (err) {
-        showToast(err.message || "Failed to generate API key.", "error");
-      } finally {
-        generateApiKeyBtn.disabled = false;
-      }
-    });
-  }
-
-  var generateSecretTokenBtn = $("#generateSecretToken");
-  if (generateSecretTokenBtn) {
-    generateSecretTokenBtn.addEventListener("click", async function () {
-      generateSecretTokenBtn.disabled = true;
-      try {
-        var data = await api("/api/nodes/secret-token", { method: "POST" });
-        var tokenEl = $("#nodeSecretToken");
-        if (tokenEl && data.secret_token) tokenEl.value = data.secret_token;
-        showToast("New node secret token generated.", "success");
-      } catch (err) {
-        showToast(err.message || "Failed to generate node secret token.", "error");
-      } finally {
-        generateSecretTokenBtn.disabled = false;
-      }
-    });
-  }
-
-  var nodeForm = $("#nodeForm");
-  if (nodeForm) nodeForm.addEventListener("submit", saveNode);
-
-  // --- Cores ---
-  var createCoreBtn = $("#createCoreBtn");
-  if (createCoreBtn)
-    createCoreBtn.addEventListener("click", function () {
-      openCoreCreateModal();
-    });
-
-  var coresEmptyCreate = $("#coresEmptyCreateBtn");
-  if (coresEmptyCreate)
-    coresEmptyCreate.addEventListener("click", function () {
-      openCoreCreateModal();
-    });
-
-  var coreCreateModal = $("#coreCreateModal");
-  if (coreCreateModal) {
-    coreCreateModal.addEventListener("click", function (e) {
-      if (e.target === coreCreateModal) closeCoreCreateModal();
-    });
-  }
-
-  var closeCoreCreateModalBtn = $("#closeCoreCreateModal");
-  if (closeCoreCreateModalBtn)
-    closeCoreCreateModalBtn.addEventListener("click", closeCoreCreateModal);
-
-  var cancelCoreCreateBtn = $("#cancelCoreCreateButton");
-  if (cancelCoreCreateBtn)
-    cancelCoreCreateBtn.addEventListener("click", closeCoreCreateModal);
-
-  var coreCreateForm = $("#coreCreateForm");
-  if (coreCreateForm) coreCreateForm.addEventListener("submit", createCore);
-
-  // --- Core Editor navigation ---
-  $$("#backToCoresBtn, #backToCoresBtn2, #backToCoresLink").forEach(
-    function (el) {
-      el.addEventListener("click", function (event) {
-        if (event) event.preventDefault();
-        switchPage("cores");
-      });
-    },
-  );
-
-  $$("#saveCoreBtn, #saveCoreEditorBottom").forEach(function (el) {
-    el.addEventListener("click", saveCoreEditor);
-  });
-  $$("#applyCoreBtn, #applyCoreEditorBottom").forEach(function (el) {
-    el.addEventListener("click", saveAndApplyCoreEditor);
-  });
-
-  // --- Core Editor tabs ---
-  $$(".tab-btn").forEach(function (btn) {
-    btn.addEventListener("click", function () {
-      switchCoreTab(btn.dataset.coreTab || btn.dataset.tab);
-    });
-  });
-
-  $$('[data-action="open-section-cards"], [data-action="close-section-cards"]').forEach(function (btn) {
-    btn.addEventListener("click", function () {
-      var scope = btn.dataset.scope || state.currentCoreTab;
-      setSectionCardsOpen(scope, btn.dataset.action === "open-section-cards");
-    });
-  });
-
-  window.addEventListener("popstate", function () {
-    applyRouteFromLocation();
-  });
-
-  // --- Core Editor add buttons ---
-  var addInboundBtn = $("#addInboundButton");
-  if (addInboundBtn) {
-    addInboundBtn.addEventListener("click", function () {
-      if (state.editorDraft) {
-        state.editorDraft.inbounds.push(defaultInbound());
-        renderCoreEditor();
-        switchCoreTab("inbounds");
-      }
-    });
-  }
-
-  var addBalancerBtn = $("#addBalancerButton");
-  if (addBalancerBtn) {
-    addBalancerBtn.addEventListener("click", function () {
-      if (state.editorDraft) {
-        state.editorDraft.balancers.push(defaultBalancer());
-        renderCoreEditor();
-        switchCoreTab("balancers");
-      }
-    });
-  }
-
-  var addDependencyBtn = $("#addDependencyButton");
-  if (addDependencyBtn) {
-    addDependencyBtn.addEventListener("click", function () {
-      if (state.editorDraft) {
-        state.editorDraft.dependencies.push(defaultDependency());
-        renderDependencyEditor();
-      }
-    });
-  }
-
-  // --- Core Editor header sync ---
-  var editorCoreName = $("#editorCoreName");
-  if (editorCoreName)
-    editorCoreName.addEventListener("input", syncEditorHeaderToDraft);
-
-  var editorCoreNode = $("#editorCoreNode");
-  if (editorCoreNode)
-    editorCoreNode.addEventListener("change", syncEditorHeaderToDraft);
-
-  var editorCoreEnabled = $("#editorCoreEnabled");
-  if (editorCoreEnabled)
-    editorCoreEnabled.addEventListener("change", syncEditorHeaderToDraft);
-
-  // --- Advanced JSON ---
-  var advancedJsonEnabled = $("#advancedJsonEnabled");
-  if (advancedJsonEnabled) advancedJsonEnabled.addEventListener("change", syncAdvancedEditorToDraft);
-
-  var advancedJsonEditor = $("#advancedJsonEditor");
-  if (advancedJsonEditor) advancedJsonEditor.addEventListener("input", syncAdvancedEditorToDraft);
-
-  var validateAdvancedJsonButton = $("#validateAdvancedJsonButton");
-  if (validateAdvancedJsonButton) validateAdvancedJsonButton.addEventListener("click", function () { validateAdvancedConfig(); });
-
-  // --- Logs ---
-  var refreshLogsBtn = $("#refreshLogsBtn");
-  if (refreshLogsBtn) refreshLogsBtn.addEventListener("click", loadLogs);
-
-  var logSourceSelect = $("#logSourceSelect");
-  if (logSourceSelect) logSourceSelect.addEventListener("change", loadLogs);
-
-  var logLimitSelect = $("#logLimitSelect");
-  if (logLimitSelect) logLimitSelect.addEventListener("change", loadLogs);
-
-  var logLevelSelect = $("#logLevelSelect");
-  if (logLevelSelect) logLevelSelect.addEventListener("change", loadLogs);
-
-  var logSearchInput = $("#logSearchInput");
-  if (logSearchInput) {
-    logSearchInput.addEventListener("keydown", function (e) {
-      if (e.key === "Enter") loadLogs();
-    });
-  }
-
-  var logRefreshIntervalInput = $("#logRefreshIntervalInput");
-  if (logRefreshIntervalInput) {
+function validateJsonLocal() {
+    const json = document.getElementById('adv-json').value;
+    const resultEl = document.getElementById('adv-validation-result');
+    if (!json.trim()) { resultEl.innerHTML = '<div class="inline-warning">JSON is empty</div>'; return; }
     try {
-      var savedInterval = localStorage.getItem("doctorDev.logRefreshIntervalSeconds");
-      if (savedInterval) logRefreshIntervalInput.value = String(clampLogRefreshInterval(savedInterval));
-    } catch (_) {}
-    state.logRefreshIntervalSeconds = clampLogRefreshInterval(logRefreshIntervalInput.value);
-    logRefreshIntervalInput.addEventListener("change", syncLogAutoRefresh);
-    logRefreshIntervalInput.addEventListener("input", function () {
-      state.logRefreshIntervalSeconds = clampLogRefreshInterval(logRefreshIntervalInput.value);
+        const parsed = JSON.parse(json);
+        resultEl.innerHTML = `<div class="inline-info" style="margin-top:12px">${IC.check} <span>Valid JSON — ${Object.keys(parsed).length} top-level keys</span></div>`;
+    } catch(e) {
+        resultEl.innerHTML = `<div class="inline-warning" style="margin-top:12px">${IC.alert} <span>Invalid JSON: ${esc(e.message)}</span></div>`;
+    }
+}
+
+async function validateJsonBackend() {
+    const json = document.getElementById('adv-json').value;
+    const resultEl = document.getElementById('adv-validation-result');
+    if (!json.trim()) { resultEl.innerHTML = '<div class="inline-warning">JSON is empty</div>'; return; }
+    try {
+        JSON.parse(json); // local check first
+    } catch(e) {
+        resultEl.innerHTML = `<div class="inline-warning" style="margin-top:12px">${IC.alert} <span>Fix local JSON errors first: ${esc(e.message)}</span></div>`;
+        return;
+    }
+    try {
+        await API.cores.validateAdv({ json_config: json });
+        resultEl.innerHTML = `<div class="inline-info" style="margin-top:12px">${IC.check} <span>Server validation passed</span></div>`;
+    } catch(e) {
+        resultEl.innerHTML = `<div class="inline-warning" style="margin-top:12px">${IC.alert} <span>${esc(e.detail || 'Validation failed')}</span></div>`;
+    }
+}
+
+/* ------------------------------------------------------------
+   PREVIEW / APPLY TAB
+   ------------------------------------------------------------ */
+function renderCorePreviewTab() {
+    const ce = S.coreEditor;
+    let html = `<div style="max-width:800px">
+        <p class="text-secondary text-sm mb-16">Preview the full configuration that will be sent to the node, or apply it directly.</p>
+        <div style="display:flex;gap:8px;margin-bottom:16px">
+            <button class="btn btn-outline" data-action="preview-core">${IC.eye} Preview Config</button>
+            ${!ce.isNew ? `<button class="btn btn-warning" data-action="apply-core-now">${IC.upload} Apply to Node</button>` : '<div class="text-muted text-sm">Save the core first before applying.</div>'}
+        </div>
+        <div id="core-preview-result"></div>
+    </div>`;
+    return html;
+}
+
+async function previewCore() {
+    const resultEl = document.getElementById('core-preview-result');
+    if (!resultEl) return;
+    resultEl.innerHTML = '<div class="spinner" style="margin:20px 0"></div>';
+    // We need to save first to get a preview, or build the payload
+    const payload = buildCorePayload();
+    if (!payload) return;
+    if (S.coreEditor.isNew) {
+        // For new cores, just show the payload we'd send
+        resultEl.innerHTML = `<div class="code-block-header"><span>Payload Preview (new core — save first for server-side preview)</span><button class="copy-btn" onclick="navigator.clipboard.writeText(this.closest('.code-block-header').nextElementSibling.textContent).then(()=>toast('Copied','success'))">${IC.copy} Copy</button></div><pre class="code-block">${esc(JSON.stringify(payload, null, 2))}</pre>`;
+        return;
+    }
+    try {
+        const data = await API.cores.preview(S.coreEditor.core.id);
+        const json = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+        resultEl.innerHTML = `<div class="code-block-header"><span>Config Preview</span><button class="copy-btn" onclick="navigator.clipboard.writeText(this.closest('.code-block-header').nextElementSibling.textContent).then(()=>toast('Copied','success'))">${IC.copy} Copy</button></div><pre class="code-block">${esc(json)}</pre>`;
+    } catch(e) {
+        resultEl.innerHTML = `<div class="inline-warning">${IC.alert} <span>${esc(e.detail || 'Preview failed. Save the core first.')}</span></div>`;
+    }
+}
+
+async function applyCoreNow() {
+    if (S.coreEditor.isNew) { toast('Save the core first','warning'); return; }
+    showConfirm({ title:'Apply Core Config', text:'Push the current core configuration to the node. This will update the running config.', icon:'warning', confirmText:'Apply', onConfirm: async () => {
+        try {
+            await API.cores.apply(S.coreEditor.core.id);
+            toast('Core config applied','success');
+            await loadDashboardData();
+        } catch(e) { toast(e.detail || 'Apply failed','error'); }
+    }});
+}
+
+function buildCorePayload() {
+    const c = S.coreEditor.core;
+    const name = document.getElementById('ce-name')?.value.trim() || c.name;
+    const node_id = document.getElementById('ce-node-id')?.value || c.node_id;
+    const enabled = document.getElementById('ce-enabled')?.checked ?? c.enabled;
+    const advEnabled = document.getElementById('adv-enabled')?.checked ?? S.coreEditor.advanced.enabled;
+    const advJson = document.getElementById('adv-json')?.value ?? S.coreEditor.advanced.json_config;
+    if (!name) { toast('Core name is required','error'); return null; }
+    if (!node_id) { toast('Select a node','error'); return null; }
+    return {
+        name,
+        node_id,
+        enabled,
+        inbounds: S.coreEditor.inbounds,
+        balancers: S.coreEditor.balancers,
+        dependencies: S.coreEditor.dependencies,
+        advanced: { enabled: advEnabled, json_config: advJson },
+    };
+}
+
+async function saveCore(applyAfter) {
+    const payload = buildCorePayload();
+    if (!payload) return;
+    try {
+        if (S.coreEditor.isNew) {
+            const created = await API.cores.create(payload);
+            toast('Core created','success');
+            if (applyAfter && created?.id) {
+                try { await API.cores.apply(created.id); toast('Core applied','success'); } catch(e) { toast(e.detail||'Created but apply failed','warning'); }
+            }
+        } else {
+            await API.cores.update(S.coreEditor.core.id, payload);
+            toast('Core saved','success');
+            if (applyAfter) {
+                try { await API.cores.apply(S.coreEditor.core.id); toast('Core applied','success'); } catch(e) { toast(e.detail||'Saved but apply failed','warning'); }
+            }
+        }
+        S.coreEditor.open = false;
+        await loadDashboardData();
+        renderOverlay();
+        renderPageContent();
+    } catch(e) { toast(e.detail || 'Save failed','error'); }
+}
+
+function deleteCore() {
+    if (S.coreEditor.isNew) { S.coreEditor.open = false; renderOverlay(); return; }
+    const c = S.coreEditor.core;
+    showConfirm({ title:'Delete Core', text:`Permanently delete "${c.name}" and all its inbounds, balancers, and dependencies?`, confirmText:'Delete', onConfirm: async () => {
+        try { await API.cores.delete(c.id); toast('Core deleted','success'); S.coreEditor.open = false; await loadDashboardData(); renderOverlay(); renderPageContent(); } catch(e) { toast(e.detail||'Delete failed','error'); }
+    }});
+}
+
+/* ------------------------------------------------------------
+   LOGS PAGE
+   ------------------------------------------------------------ */
+function renderLogs() {
+    const f = S.logsFilter;
+    const sourceOptions = S.logsSources.map(s => `<option value="${esc(s)}" ${f.source===s?'selected':''}>${esc(s)}</option>`).join('');
+    const levelOptions = ['all','debug','info','warning','error'].map(l => `<option value="${l}" ${f.level===l?'selected':''}>${l}</option>`).join('');
+    const entries = S.logsEntries || [];
+    const lines = Array.isArray(entries) ? entries : (entries.logs || entries.entries || []);
+    return `<div class="card mb-16">
+        <div class="card-body compact">
+            <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+                <div class="form-group" style="margin:0;min-width:140px"><select class="form-input" id="log-source" style="padding:6px 10px;font-size:0.8rem"><option value="panel">panel</option>${sourceOptions}</select></div>
+                <div class="form-group" style="margin:0;min-width:100px"><select class="form-input" id="log-level" style="padding:6px 10px;font-size:0.8rem">${levelOptions}</select></div>
+                <div class="form-group" style="margin:0;min-width:80px"><input type="number" class="form-input" id="log-limit" value="${f.limit}" min="1" max="5000" style="padding:6px 10px;font-size:0.8rem"></div>
+                <div class="form-group" style="margin:0;flex:1;min-width:200px"><input class="form-input" id="log-q" value="${esc(f.q)}" placeholder="Search..." style="padding:6px 10px;font-size:0.8rem"></div>
+                <button class="btn btn-primary btn-sm" id="log-search-btn">${IC.search} Search</button>
+                <button class="btn btn-outline btn-sm" id="log-refresh-btn">${IC.refresh}</button>
+            </div>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-header">
+            <h3>Log Output</h3>
+            <div style="display:flex;gap:8px;align-items:center">
+                <span class="text-muted text-xs">${lines.length} lines</span>
+                <button class="btn btn-xs btn-ghost" id="log-copy-btn">${IC.copy} Copy</button>
+            </div>
+        </div>
+        <div style="max-height:calc(100vh - 280px);overflow-y:auto" id="log-lines">
+            ${lines.length ? lines.map(l => {
+                const lvl = (l.level || 'info').toLowerCase();
+                return `<div class="log-line level-${lvl}"><span class="log-ts">${esc(l.timestamp || l.ts || '')}</span><span class="log-level ${lvl}">${esc(l.level || 'info')}</span><span class="log-msg">${esc(l.message || l.msg || JSON.stringify(l))}</span></div>`;
+            }).join('') : '<div class="empty-state"><p>No log entries. Adjust filters and search.</p></div>'}
+        </div>
+    </div>`;
+}
+function bindLogsEvents() {
+    const doSearch = () => {
+        S.logsFilter.source = document.getElementById('log-source').value;
+        S.logsFilter.level = document.getElementById('log-level').value;
+        S.logsFilter.limit = parseInt(document.getElementById('log-limit').value) || 300;
+        S.logsFilter.q = document.getElementById('log-q').value.trim();
+        loadLogs().then(() => renderPageContent());
+    };
+    document.getElementById('log-search-btn')?.addEventListener('click', doSearch);
+    document.getElementById('log-refresh-btn')?.addEventListener('click', doSearch);
+    document.getElementById('log-q')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(); });
+    document.getElementById('log-copy-btn')?.addEventListener('click', () => {
+        const lines = document.getElementById('log-lines');
+        if (lines) navigator.clipboard.writeText(lines.textContent).then(() => toast('Logs copied','success')).catch(() => toast('Copy failed','error'));
     });
-  }
+}
 
-  var logAutoRefresh = $("#logAutoRefresh");
-  if (logAutoRefresh) {
-    logAutoRefresh.addEventListener("change", function () {
-      if (logAutoRefresh.checked) {
-        loadLogs({ silent: true });
-        startLogAutoRefresh();
-      } else {
-        stopLogAutoRefresh(false);
-      }
+/* ------------------------------------------------------------
+   DIAGNOSTICS PAGE
+   ------------------------------------------------------------ */
+function renderDiagnostics() {
+    const integ = S.integrity;
+    let integHtml = '';
+    if (integ && integ.issues && integ.issues.length) {
+        integHtml = `<div class="card mb-16">
+            <div class="card-header"><h3>Integrity Issues</h3><button class="btn btn-danger btn-sm" id="repair-btn">${IC.wrench} Repair Data</button></div>
+            <div class="card-body compact">
+                ${integ.issues.map(i => `<div class="integrity-item issue"><span class="ii-icon text-error">${IC.alert}</span><span>${esc(typeof i === 'string' ? i : i.message || i.description || JSON.stringify(i))}</span></div>`).join('')}
+            </div>
+        </div>`;
+    } else if (integ) {
+        integHtml = `<div class="card mb-16"><div class="card-body compact"><div class="integrity-item ok"><span class="ii-icon text-accent">${IC.check}</span><span>No integrity issues detected.</span></div></div></div>`;
+    } else {
+        integHtml = `<div class="card mb-16"><div class="card-body compact"><span class="text-muted text-sm">Integrity check not yet run.</span></div></div>`;
+    }
+
+    // Runtime health summary
+    const nodes = S.nodes || [];
+    const rc = S.runtimeCache || {};
+    let rtHtml = '<div class="card mb-16"><div class="card-header"><h3>Runtime Health Summary</h3></div><div class="card-body compact">';
+    if (!nodes.length) {
+        rtHtml += '<div class="text-muted text-sm">No nodes to check.</div>';
+    } else {
+        nodes.forEach(n => {
+            const rt = rc[n.id];
+            const ok = rt?.runtime_ok;
+            rtHtml += `<div style="display:flex;align-items:center;gap:10px;padding:6px 0;font-size:0.82rem;border-bottom:1px solid var(--border-subtle)">
+                ${ok ? '<span class="badge badge-success"><span class="badge-dot pulse"></span>OK</span>' : '<span class="badge badge-error">Issue</span>'}
+                <strong>${esc(n.name)}</strong>
+                <span class="text-muted">${esc(n.address)}</span>
+                ${rt?.reachable !== undefined ? `<span class="text-xs">reachable:${rt.reachable?'✓':'✗'}</span>` : ''}
+                ${rt?.auth_ok !== undefined ? `<span class="text-xs">auth:${rt.auth_ok?'✓':'✗'}</span>` : ''}
+                ${rt?.last_error ? `<span class="text-error text-xs">${esc(rt.last_error.slice(0,80))}</span>` : ''}
+            </div>`;
+        });
+    }
+    rtHtml += '</div></div>';
+
+    return `<div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:14px">
+        <button class="btn btn-outline" id="check-integrity-btn">${IC.eye} Check Integrity</button>
+        <button class="btn btn-outline" id="sync-all-btn">${IC.sync} Sync All Runtime</button>
+    </div>
+    ${integHtml}
+    ${rtHtml}`;
+}
+function bindDiagnosticsEvents() {
+    document.getElementById('check-integrity-btn')?.addEventListener('click', async () => {
+        await loadIntegrity();
+        renderPageContent();
     });
-  }
-
-  var copyLogsBtn = $("#copyLogsBtn");
-  if (copyLogsBtn) {
-    copyLogsBtn.addEventListener("click", async function () {
-      try {
-        await navigator.clipboard.writeText(state.rawLogLines.join("\n"));
-        showToast("Logs copied to clipboard.", "success");
-      } catch (_) {
-        showToast("Failed to copy logs.", "error");
-      }
+    document.getElementById('repair-btn')?.addEventListener('click', () => {
+        showConfirm({ title:'Repair Data', text:'This will attempt to fix data integrity issues. The operation may modify stored configurations.', icon:'warning', confirmText:'Repair', onConfirm: async () => {
+            try { await API.panel.repair(); toast('Repair completed','success'); await loadIntegrity(); await loadDashboardData(); renderPageContent(); } catch(e) { toast(e.detail||'Repair failed','error'); }
+        }});
     });
-  }
-
-  var clearLogsBtn = $("#clearLogsBtn");
-  if (clearLogsBtn) {
-    clearLogsBtn.addEventListener("click", function () {
-      var output = $("#logsOutput");
-      if (output) output.innerHTML = "";
-      state.rawLogLines = [];
-      var lc = $("#logsLineCount");
-      if (lc) lc.textContent = "0 lines";
+    document.getElementById('sync-all-btn')?.addEventListener('click', async () => {
+        try { await API.nodes.syncAll(); toast('All runtimes synced','success'); await loadDashboardData(); renderPageContent(); } catch(e) { toast(e.detail||'Sync failed','error'); }
     });
-  }
+}
 
-  // --- Sidebar (mobile) ---
-  var openSidebarBtn = $("#openSidebarBtn");
-  var sidebar = $("#sidebar");
-  var sidebarOverlay = $("#sidebarOverlay");
-  var closeSidebarBtn = $("#closeSidebarBtn");
+/* ------------------------------------------------------------
+   INITIALIZATION
+   ------------------------------------------------------------ */
+async function init() {
+    try {
+        S.user = await API.auth.me();
+    } catch(e) {
+        S.user = null;
+    }
+    renderApp();
+    if (S.user) {
+        await loadDashboardData();
+        await loadLogsSources();
+        renderPageContent();
+    }
+}
 
-  if (openSidebarBtn && sidebar && sidebarOverlay) {
-    openSidebarBtn.addEventListener("click", function () {
-      sidebar.classList.add("open");
-      sidebarOverlay.classList.remove("hidden");
-    });
-  }
+// Boot
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+} else {
+    init();
+}
 
-  function closeSidebar() {
-    if (sidebar) sidebar.classList.remove("open");
-    if (sidebarOverlay) sidebarOverlay.classList.add("hidden");
-  }
-
-  if (closeSidebarBtn) closeSidebarBtn.addEventListener("click", closeSidebar);
-  if (sidebarOverlay) sidebarOverlay.addEventListener("click", closeSidebar);
-
-  // --- Global error handlers ---
-  window.addEventListener("error", function (e) {
-    console.error("Global error:", e.error || e.message);
-  });
-  window.addEventListener("unhandledrejection", function (e) {
-    console.error("Unhandled rejection:", e.reason);
-  });
-});
-
-// ============================================================
-// 16. INIT
-// ============================================================
-
-checkSession();
-
-
-
-
-
-
-
+})();
