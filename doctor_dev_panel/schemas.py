@@ -25,6 +25,9 @@ class CoreInboundBody(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     bind_ip: str = Field(default="0.0.0.0", max_length=120)
     public_host: str = Field(default="", max_length=255)
+    public_ports_mode: Literal["use_inbound_ports", "random", "fixed"] = "use_inbound_ports"
+    public_fixed_ports: list[int] = Field(default_factory=list)
+    public_random_count: int = Field(default=1, ge=1, le=4096)
     port_mode: Literal["fixed", "random"] = "fixed"
     fixed_ports: list[int] = Field(default_factory=list)
     random_count: int = Field(default=1, ge=1, le=4096)
@@ -49,7 +52,7 @@ class CoreInboundBody(BaseModel):
             return 80
         return port if 1 <= port <= 65535 else 80
 
-    @field_validator("fixed_ports")
+    @field_validator("fixed_ports", "public_fixed_ports")
     @classmethod
     def valid_ports(cls, value: list[int]) -> list[int]:
         unique: list[int] = []
@@ -65,6 +68,7 @@ class CoreBalancerEndpointBody(BaseModel):
     type: Literal["static", "node_inbound"] = "static"
     host: str = Field(default="127.0.0.1", max_length=255)
     port: int = Field(default=80, ge=1, le=65535)
+    dependency_id: str = Field(default="", max_length=120)
     node_id: str = Field(default="", max_length=120)
     core_id: str = Field(default="", max_length=120)
     inbound_name: str = Field(default="", max_length=120)
@@ -97,10 +101,14 @@ class CoreBalancerBody(BaseModel):
 
 
 class CoreDependencyBody(BaseModel):
-    type: Literal["core", "node"] = "core"
+    # Dependencies are node-only now. The `type` field remains accepted for
+    # backward compatibility with old saved JSON, but the store normalizes it
+    # to "node" and the UI no longer exposes a type selector.
+    id: str = Field(default="", max_length=120)
+    type: Literal["node"] = "node"
+    name: str = Field(default="", max_length=120)
     ref_id: str = Field(default="", max_length=120)
-    # Only node dependencies use sync_interval. It defines how often this
-    # running node refreshes runtime state from the dependency node.
+    host: str = Field(default="", max_length=255)
     sync_interval: int = Field(default=5, ge=1, le=86400)
     required: bool = True
     notes: str = Field(default="", max_length=500)

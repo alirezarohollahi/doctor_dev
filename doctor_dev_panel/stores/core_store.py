@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Optional
 from urllib.parse import urlparse
 
-from .node_runtime_cache import find_live_inbound_ports, get_node_runtime
+from .node_runtime_cache import find_advertised_inbound, find_live_inbound_ports, get_node_runtime
 
 from .id_utils import is_valid_core_id, is_valid_node_id
 
@@ -18,6 +18,7 @@ VALID_CORE_STATUSES = {"draft", "ready", "applied", "error", "disabled"}
 VALID_BALANCER_STRATEGIES = {"round_robin", "random", "failover", "least_connections"}
 VALID_TARGET_TYPES = {"static", "balancer"}
 VALID_ENDPOINT_TYPES = {"static", "node_inbound"}
+VALID_PUBLIC_PORTS_MODES = {"use_inbound_ports", "random", "fixed"}
 
 
 def _now() -> str:
@@ -40,6 +41,10 @@ def cores_path() -> Path:
 
 def generate_core_id() -> str:
     return "core_" + secrets.token_hex(8)
+
+
+def generate_dependency_id() -> str:
+    return "dep_" + secrets.token_hex(8)
 
 
 def empty_store() -> dict[str, Any]:
@@ -120,6 +125,17 @@ def normalize_inbound(payload: dict[str, Any], index: int = 0) -> dict[str, Any]
     fixed_ports = _port_list(payload.get("fixed_ports"))
     random_count = int(payload.get("random_count") or 1)
     random_count = max(1, min(random_count, 4096))
+    public_ports_mode = _clean_name(payload.get("public_ports_mode"), "use_inbound_ports").lower().replace("-", "_").replace(" ", "_")
+    if public_ports_mode in {"use_inbound", "inbound", "use_ports", "use_inbound_port"}:
+        public_ports_mode = "use_inbound_ports"
+    if public_ports_mode not in VALID_PUBLIC_PORTS_MODES:
+        public_ports_mode = "use_inbound_ports"
+    public_fixed_ports = _port_list(payload.get("public_fixed_ports") or payload.get("public_ports"))
+    try:
+        public_random_count = int(payload.get("public_random_count") or payload.get("public_count") or 1)
+    except (TypeError, ValueError):
+        public_random_count = 1
+    public_random_count = max(1, min(public_random_count, 4096))
     target_port = payload.get("target_port")
     try:
         target_port_int = int(target_port) if target_port not in {None, ""} else None
@@ -131,6 +147,9 @@ def normalize_inbound(payload: dict[str, Any], index: int = 0) -> dict[str, Any]
         "name": name,
         "bind_ip": _clean_name(payload.get("bind_ip"), "0.0.0.0"),
         "public_host": _clean_name(payload.get("public_host"), ""),
+        "public_ports_mode": public_ports_mode,
+        "public_fixed_ports": public_fixed_ports,
+        "public_random_count": public_random_count,
         "port_mode": port_mode,
         "fixed_ports": fixed_ports,
         "random_count": random_count,
@@ -163,6 +182,7 @@ def normalize_endpoint(payload: dict[str, Any], index: int = 0) -> dict[str, Any
         "type": endpoint_type,
         "host": _clean_name(payload.get("host"), "127.0.0.1"),
         "port": port,
+        "dependency_id": _clean_name(payload.get("dependency_id"), ""),
         "node_id": _clean_name(payload.get("node_id"), ""),
         "core_id": _clean_name(payload.get("core_id"), ""),
         "inbound_name": _clean_name(payload.get("inbound_name"), ""),
@@ -190,16 +210,22 @@ def normalize_balancer(payload: dict[str, Any], index: int = 0) -> dict[str, Any
 
 
 def normalize_dependency(payload: dict[str, Any], index: int = 0) -> dict[str, Any]:
-    dep_type = _clean_name(payload.get("type"), "core").lower()
-    if dep_type not in {"core", "node"}:
-        dep_type = "core"
+    # Dependencies are node-only. Keep `type=node` in JSON for compatibility
+    # with the existing node runtime, but do not allow core dependencies here.
     try:
         sync_interval = int(payload.get("sync_interval") or payload.get("update_interval") or 5)
     except (TypeError, ValueError):
         sync_interval = 5
+    dep_id = _clean_name(payload.get("id") or payload.get("dependency_id"), "")
+    if not dep_id.startswith("dep_"):
+        dep_id = generate_dependency_id()
+    name = _clean_name(payload.get("name") or payload.get("alias"), f"dep {index + 1}")
     return {
-        "type": dep_type,
-        "ref_id": _clean_name(payload.get("ref_id"), ""),
+        "id": dep_id,
+        "type": "node",
+        "name": name,
+        "ref_id": _clean_name(payload.get("ref_id") or payload.get("node_id"), ""),
+        "host": _clean_name(payload.get("host") or payload.get("peer_host"), ""),
         "sync_interval": min(max(sync_interval, 1), 86400),
         "required": bool(payload.get("required", True)),
         "notes": _clean_name(payload.get("notes"), ""),
@@ -252,7 +278,7 @@ def normalize_core(payload: dict[str, Any], existing: Optional[dict[str, Any]] =
     # dependency is misleading in the UI and cannot produce peer-sync metadata.
     base["dependencies"] = [
         dep for dep in dependencies
-        if not (dep.get("type") == "node" and str(dep.get("ref_id") or "") == str(base.get("node_id") or ""))
+        if str(dep.get("ref_id") or "") != str(base.get("node_id") or "")
     ]
     base["advanced_config"] = normalize_advanced_config(base.get("advanced_config"))
     base.setdefault("last_applied_at", None)
@@ -334,6 +360,9 @@ def inbound_catalog(node_id: Optional[str] = None) -> list[dict[str, Any]]:
                     "inbound_name": inbound.get("name"),
                     "bind_ip": inbound.get("bind_ip"),
                     "public_host": inbound.get("public_host"),
+                    "public_ports_mode": inbound.get("public_ports_mode", "use_inbound_ports"),
+                    "public_fixed_ports": inbound.get("public_fixed_ports", []),
+                    "public_random_count": inbound.get("public_random_count", 1),
                     "port_mode": inbound.get("port_mode"),
                     "ports": ports,
                     "random_count": random_count,
@@ -355,11 +384,13 @@ def _address_host(address: Any) -> str:
 
 
 
-def _node_sync_urls(node: dict[str, Any]) -> list[str]:
+def _node_sync_urls(node: dict[str, Any], host_override: str = "") -> list[str]:
     raw = str(node.get("address") or "").strip()
-    if not raw:
+    override = str(host_override or "").strip()
+    source = override or raw
+    if not source:
         return []
-    parsed = urlparse(raw if "://" in raw else f"//{raw}")
+    parsed = urlparse(source if "://" in source else f"//{source}")
     host = parsed.netloc or parsed.path
     host = host.split("/", 1)[0].strip()
     if not host:
@@ -370,8 +401,11 @@ def _node_sync_urls(node: dict[str, Any]) -> list[str]:
         api_port = int(node.get("api_port") or 62051)
     except (TypeError, ValueError):
         api_port = 62051
-    if "://" in raw and parsed.scheme:
+    raw_parsed = urlparse(raw if "://" in raw else f"//{raw}") if raw else parsed
+    if "://" in source and parsed.scheme:
         schemes = [parsed.scheme]
+    elif raw and "://" in raw and raw_parsed.scheme:
+        schemes = [raw_parsed.scheme]
     else:
         schemes = ["http"]
     urls: list[str] = []
@@ -398,15 +432,49 @@ def _dependency_sync_interval(dep: dict[str, Any]) -> int:
     return min(max(interval, 1), 86400)
 
 
-def _dependency_interval_map(core: dict[str, Any]) -> dict[str, int]:
-    result: dict[str, int] = {}
+def _node_dependencies(core: dict[str, Any]) -> list[dict[str, Any]]:
     dependencies = core.get("dependencies") if isinstance(core.get("dependencies"), list) else []
-    for dep in dependencies:
-        if not isinstance(dep, dict) or dep.get("type") != "node" or dep.get("required") is False:
-            continue
+    return [dep for dep in dependencies if isinstance(dep, dict) and dep.get("type", "node") == "node" and dep.get("required") is not False]
+
+
+def _dependency_by_id(core: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    result: dict[str, dict[str, Any]] = {}
+    for dep in _node_dependencies(core):
+        dep_id = str(dep.get("id") or "").strip()
+        if dep_id:
+            result[dep_id] = dep
+    return result
+
+
+def _dependency_for_endpoint(core: dict[str, Any], endpoint: dict[str, Any]) -> Optional[dict[str, Any]]:
+    dep_id = str(endpoint.get("dependency_id") or "").strip()
+    if dep_id:
+        dep = _dependency_by_id(core).get(dep_id)
+        if dep:
+            return dep
+        return None
+    # Legacy fallback: old endpoints only stored node_id. If exactly one
+    # dependency targets that node, bind the endpoint to that dependency.
+    target_node_id = str(endpoint.get("node_id") or "").strip()
+    matches = [dep for dep in _node_dependencies(core) if str(dep.get("ref_id") or "") == target_node_id]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _dependency_host(dep: dict[str, Any], node: dict[str, Any]) -> str:
+    return _clean_name(dep.get("host"), "") or _address_host(node.get("address"))
+
+
+def _dependency_interval_map(core: dict[str, Any]) -> dict[str, int]:
+    # Compatibility map used by older code/tests. Prefer dependency_id in new
+    # endpoint enrichment because the same node can appear more than once.
+    result: dict[str, int] = {}
+    for dep in _node_dependencies(core):
         ref_id = str(dep.get("ref_id") or "").strip()
+        dep_id = str(dep.get("id") or "").strip()
         if ref_id:
             result[ref_id] = _dependency_sync_interval(dep)
+        if dep_id:
+            result[dep_id] = _dependency_sync_interval(dep)
     return result
 
 
@@ -440,17 +508,26 @@ def _node_peer_token_refresh_interval(node: dict[str, Any]) -> int:
     return min(max(interval, 5), 86400)
 
 
-def _attach_peer_sync_fields(endpoint: dict[str, Any], target_node: dict[str, Any], target_node_id: str, target_core_id: str, inbound_name: str, sync_interval: int = 5) -> None:
+def _attach_peer_sync_fields(
+    endpoint: dict[str, Any],
+    target_node: dict[str, Any],
+    target_node_id: str,
+    target_core_id: str,
+    inbound_name: str,
+    sync_interval: int = 5,
+    peer_host: str = "",
+) -> None:
     endpoint["remote_node_id"] = target_node_id
     endpoint["remote_core_id"] = target_core_id
     endpoint["remote_inbound_name"] = inbound_name
-    endpoint["sync_urls"] = _node_sync_urls(target_node)
+    effective_host = peer_host or _address_host(target_node.get("address"))
+    endpoint["sync_urls"] = _node_sync_urls(target_node, effective_host)
     endpoint["token_url"] = _peer_token_url()
     endpoint["token_refresh_interval"] = _node_peer_token_refresh_interval(target_node)
     endpoint.pop("update_interval", None)
     endpoint["sync_interval"] = min(max(int(sync_interval or 5), 1), 86400)
     endpoint["api_port"] = int(target_node.get("api_port") or 62051)
-    endpoint["peer_host"] = _address_host(target_node.get("address"))
+    endpoint["peer_host"] = effective_host
 
 
 
@@ -477,6 +554,36 @@ def _fixed_ports(inbound: dict[str, Any]) -> list[int]:
             ports.append(port)
     return ports
 
+
+def _public_fixed_ports(inbound: dict[str, Any]) -> list[int]:
+    ports: list[int] = []
+    for item in inbound.get("public_fixed_ports") or inbound.get("public_ports") or []:
+        try:
+            port = int(item)
+        except (TypeError, ValueError):
+            continue
+        if 1 <= port <= 65535 and port not in ports:
+            ports.append(port)
+    return ports
+
+
+def _public_ports_mode(inbound: dict[str, Any]) -> str:
+    mode = str(inbound.get("public_ports_mode") or "use_inbound_ports").strip().lower().replace("-", "_").replace(" ", "_")
+    if mode in {"use_inbound", "inbound", "use_ports", "use_inbound_port"}:
+        mode = "use_inbound_ports"
+    return mode if mode in VALID_PUBLIC_PORTS_MODES else "use_inbound_ports"
+
+
+def _public_ports_from_inbound(inbound: dict[str, Any], live_ports: list[int] | None = None) -> list[int]:
+    mode = _public_ports_mode(inbound)
+    if mode == "fixed":
+        return _public_fixed_ports(inbound)
+    if mode == "random":
+        return []
+    if live_ports:
+        return list(live_ports)
+    return _fixed_ports(inbound)
+
 def _first_fixed_port(inbound: dict[str, Any]) -> Optional[int]:
     for item in inbound.get("fixed_ports") or []:
         try:
@@ -489,13 +596,12 @@ def _first_fixed_port(inbound: dict[str, Any]) -> Optional[int]:
 
 
 def _enrich_node_inbound_endpoints(config_node_id: str, cores: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Resolve Node Inbound endpoint references into usable host/port data.
+    """Resolve Node Inbound endpoints through declared node dependencies.
 
-    The UI stores semantic references (`node_id`, `core_id`, `inbound_name`).
-    The node runtime only receives the config for the node being applied, so
-    references to remote nodes must be enriched with the remote node host and
-    selected inbound port here. Same-node references can still be resolved by
-    the runtime, but we also attach the first fixed port for diagnostics.
+    New behavior: a node-inbound endpoint must reference a dependency instance
+    (`dependency_id`). This lets one remote node be added multiple times with
+    different route hosts. Legacy endpoints without dependency_id are only
+    accepted when exactly one matching dependency exists for their node_id.
     """
     try:
         from .node_store import list_nodes
@@ -506,74 +612,110 @@ def _enrich_node_inbound_endpoints(config_node_id: str, cores: list[dict[str, An
     node_map = {str(node.get("id")): node for node in list_nodes() if isinstance(node, dict)}
 
     def find_inbound(target_node_id: str, core_id: str, inbound_name: str) -> tuple[Optional[dict[str, Any]], Optional[dict[str, Any]]]:
-        for core in all_cores:
-            if target_node_id and str(core.get("node_id") or "") != target_node_id:
+        for candidate_core in all_cores:
+            if target_node_id and str(candidate_core.get("node_id") or "") != target_node_id:
                 continue
-            if core_id and str(core.get("id") or "") != core_id:
+            if core_id and str(candidate_core.get("id") or "") != core_id:
                 continue
-            for inbound in core.get("inbounds", []) if isinstance(core.get("inbounds"), list) else []:
+            for inbound in candidate_core.get("inbounds", []) if isinstance(candidate_core.get("inbounds"), list) else []:
                 if inbound_name and str(inbound.get("name") or "") != inbound_name:
                     continue
-                return core, inbound
+                return candidate_core, inbound
         return None, None
 
     for core in cores:
-        dependency_intervals = _dependency_interval_map(core)
         for balancer in core.get("balancers", []) if isinstance(core.get("balancers"), list) else []:
             endpoints = balancer.get("endpoints") if isinstance(balancer.get("endpoints"), list) else []
             for endpoint in endpoints:
                 if not isinstance(endpoint, dict) or endpoint.get("type") != "node_inbound":
                     continue
-                target_node_id = str(endpoint.get("node_id") or config_node_id)
+
+                dep = _dependency_for_endpoint(core, endpoint)
+                if not dep:
+                    endpoint["resolve_error"] = "Add this node as a dependency before using its inbounds in a balancer."
+                    endpoint["live_ports"] = []
+                    endpoint["port"] = 80
+                    continue
+
+                target_node_id = str(dep.get("ref_id") or endpoint.get("node_id") or "")
+                if not target_node_id:
+                    endpoint["resolve_error"] = "Selected dependency has no node."
+                    continue
+                target_node = node_map.get(target_node_id, {})
+                if not target_node:
+                    endpoint["resolve_error"] = "Selected dependency node was not found."
+                    continue
+
                 inbound_name = str(endpoint.get("inbound_name") or "")
                 core_id = str(endpoint.get("core_id") or "")
                 target_core, target_inbound = find_inbound(target_node_id, core_id, inbound_name)
                 if not target_inbound:
                     endpoint["resolve_error"] = "Selected node inbound was not found."
+                    endpoint["node_id"] = target_node_id
+                    endpoint["dependency_id"] = str(dep.get("id") or "")
                     continue
+
                 target_core_id = str(target_core.get("id") or core_id or "") if target_core else core_id
+                endpoint["dependency_id"] = str(dep.get("id") or "")
+                endpoint["dependency_name"] = str(dep.get("name") or "")
+                endpoint["node_id"] = target_node_id
                 endpoint["core_id"] = target_core_id
                 endpoint["inbound_name"] = str(target_inbound.get("name") or inbound_name)
-                target_node = node_map.get(target_node_id, {})
-                _attach_peer_sync_fields(endpoint, target_node, target_node_id, target_core_id, str(endpoint.get("inbound_name") or ""), dependency_intervals.get(target_node_id, 5))
+
+                dep_host = _clean_name(dep.get("host"), "")
+                fallback_host = _address_host(target_node.get("address"))
+                advertised = find_advertised_inbound(target_node_id, target_core_id, str(endpoint.get("inbound_name") or "")) or {}
+                advertised_host = str(advertised.get("public_host") or "").strip()
+                effective_host = dep_host or advertised_host or str(target_inbound.get("public_host") or "").strip() or fallback_host
+
+                dep_interval = _dependency_sync_interval(dep)
+                _attach_peer_sync_fields(
+                    endpoint,
+                    target_node,
+                    target_node_id,
+                    target_core_id,
+                    str(endpoint.get("inbound_name") or ""),
+                    dep_interval,
+                    effective_host,
+                )
                 endpoint["remote_port_mode"] = str(target_inbound.get("port_mode") or "fixed")
                 endpoint["remote_random_count"] = int(target_inbound.get("random_count") or 1)
+                endpoint["remote_public_ports_mode"] = _public_ports_mode(target_inbound)
+                endpoint["remote_public_random_count"] = int(target_inbound.get("public_random_count") or 1)
+                endpoint["host"] = effective_host
 
-                host = "127.0.0.1" if target_node_id == config_node_id else str(target_inbound.get("public_host") or _address_host(target_node.get("address")))
-                endpoint["host"] = host
                 runtime_entry = get_node_runtime(target_node_id) or {}
                 endpoint["live_ports_synced_at"] = runtime_entry.get("last_success_at") or runtime_entry.get("synced_at") or ""
                 endpoint["live_ports_synced_at_unix"] = _iso_to_unix(endpoint.get("live_ports_synced_at"))
 
+                advertised_ports = []
+                if isinstance(advertised.get("public_ports"), list):
+                    advertised_ports = _port_list(advertised.get("public_ports"))
+                if advertised_ports:
+                    endpoint["port"] = advertised_ports[0]
+                    endpoint["resolved_from"] = "node_inbound_advertised_cache"
+                    endpoint["live_ports"] = advertised_ports[:256]
+                    endpoint["public_ports"] = advertised_ports[:256]
+                    continue
+
                 live_ports = find_live_inbound_ports(target_node_id, target_core_id, str(endpoint.get("inbound_name") or ""))
-                if live_ports:
-                    endpoint["port"] = live_ports[0]
-                    endpoint["resolved_from"] = "node_inbound_live_cache"
-                    endpoint["live_ports"] = live_ports[:256]
+                public_ports = _public_ports_from_inbound(target_inbound, live_ports)
+                if public_ports:
+                    endpoint["port"] = public_ports[0]
+                    endpoint["resolved_from"] = "node_inbound_public_config" if _public_ports_mode(target_inbound) != "use_inbound_ports" else "node_inbound_live_cache"
+                    endpoint["live_ports"] = public_ports[:256]
+                    endpoint["public_ports"] = public_ports[:256]
                     continue
 
-                fixed_ports = _fixed_ports(target_inbound)
-                if fixed_ports:
-                    endpoint["port"] = fixed_ports[0]
-                    endpoint["resolved_from"] = "node_inbound_fixed"
-                    endpoint["live_ports"] = fixed_ports[:256]
-                    endpoint["live_ports_synced_at"] = ""
-                    endpoint["live_ports_synced_at_unix"] = 0
-                    continue
-
-                if target_inbound.get("port_mode") == "random":
-                    # Same-node random inbounds are resolved directly from the active listener table.
-                    # Remote random inbounds must be resolved by node-side peer sync using
-                    # sync_urls + peer tokens. Never use random_count as a TCP port and
-                    # never fall back to a placeholder port for remote random inbounds.
+                if _public_ports_mode(target_inbound) == "random" or target_inbound.get("port_mode") == "random":
                     endpoint["port"] = 80
                     endpoint["live_ports"] = []
-                    endpoint["resolved_from"] = "node_inbound_random_peer_sync" if target_node_id != config_node_id else "node_inbound_random_runtime"
+                    endpoint["public_ports"] = []
+                    endpoint["resolved_from"] = "node_inbound_public_random_peer_sync" if target_node_id != config_node_id else "node_inbound_random_runtime"
                     continue
 
-                endpoint["resolve_error"] = "Selected node inbound has no fixed or live port."
+                endpoint["resolve_error"] = "Selected node inbound has no public, fixed, or live port."
     return cores
-
 
 def _enrich_node_dependencies(config_node_id: str, cores: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Attach peer sync credentials for node dependencies.
@@ -609,12 +751,13 @@ def _enrich_node_dependencies(config_node_id: str, cores: list[dict[str, Any]]) 
             dep_interval = _dependency_sync_interval(dep)
             dep["remote_node_id"] = target_node_id
             dep["remote_core_id"] = str(target_core.get("id") or "")
-            dep["sync_urls"] = _node_sync_urls(target_node)
+            dep_host = _dependency_host(dep, target_node)
+            dep["sync_urls"] = _node_sync_urls(target_node, dep_host)
             dep["token_url"] = _peer_token_url()
             dep["token_refresh_interval"] = _node_peer_token_refresh_interval(target_node)
             dep.pop("update_interval", None)
             dep["sync_interval"] = dep_interval
-            dep["peer_host"] = _address_host(target_node.get("address"))
+            dep["peer_host"] = dep_host
     return cores
 
 

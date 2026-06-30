@@ -1487,6 +1487,10 @@ function defaultInbound() {
   return {
     name: "",
     bind_ip: "0.0.0.0",
+    public_host: "",
+    public_ports_mode: "use_inbound_ports",
+    public_fixed_ports: [],
+    public_random_count: 1,
     port_mode: "fixed",
     fixed_ports: [],
     random_count: 1,
@@ -1514,6 +1518,7 @@ function defaultEndpoint() {
     type: "static",
     host: "",
     port: 80,
+    dependency_id: "",
     node_id: "",
     core_id: "",
     inbound_name: "",
@@ -1523,8 +1528,12 @@ function defaultEndpoint() {
   };
 }
 
+function makeClientDependencyId() {
+  return "dep_" + Math.random().toString(16).slice(2, 10) + Date.now().toString(16).slice(-6);
+}
+
 function defaultDependency() {
-  return { type: "core", ref_id: "", sync_interval: 5, required: true, notes: "" };
+  return { id: makeClientDependencyId(), type: "node", name: "", ref_id: "", host: "", sync_interval: 5, required: true, notes: "" };
 }
 
 function portsToText(ports) {
@@ -1601,6 +1610,12 @@ function renderInboundEditor() {
         '" data-field="bind_ip" value="' +
         escapeHtml(ib.bind_ip || "0.0.0.0") +
         '"></div>' +
+        '<div class="form-group"><label>Public Host</label>' +
+        '<input type="text" class="form-input" data-in-index="' +
+        i +
+        '" data-field="public_host" value="' +
+        escapeHtml(ib.public_host || "") +
+        '" placeholder="empty = node server IP/host"></div>' +
         "</div>" +
         '<div class="form-row">' +
         '<div class="form-group"><label>Port Mode</label>' +
@@ -1633,6 +1648,42 @@ function renderInboundEditor() {
         i +
         '" data-field="random_count" value="' +
         escapeHtml(String(ib.random_count || 1)) +
+        '"></div>' +
+        "</div>" +
+        '<div class="form-row">' +
+        '<div class="form-group"><label>Public Ports Mode</label>' +
+        '<select class="form-input" data-in-index="' +
+        i +
+        '" data-field="public_ports_mode">' +
+        '<option value="use_inbound_ports"' +
+        ((ib.public_ports_mode || "use_inbound_ports") === "use_inbound_ports" ? " selected" : "") +
+        ">Use inbound ports</option>" +
+        '<option value="random"' +
+        (ib.public_ports_mode === "random" ? " selected" : "") +
+        ">Random</option>" +
+        '<option value="fixed"' +
+        (ib.public_ports_mode === "fixed" ? " selected" : "") +
+        ">Fixed</option>" +
+        "</select></div>" +
+        '<div class="form-group"' +
+        (ib.public_ports_mode === "fixed" ? "" : ' style="display:none"') +
+        ' data-in-public-fixed="' +
+        i +
+        '"><label>Public Fixed Ports</label>' +
+        '<input type="text" class="form-input" data-in-index="' +
+        i +
+        '" data-field="public_fixed_ports_text" value="' +
+        escapeHtml(portsToText(ib.public_fixed_ports)) +
+        '" placeholder="443,8443"></div>' +
+        '<div class="form-group"' +
+        (ib.public_ports_mode === "random" ? "" : ' style="display:none"') +
+        ' data-in-public-random="' +
+        i +
+        '"><label>Public Random Count</label>' +
+        '<input type="number" class="form-input" min="1" data-in-index="' +
+        i +
+        '" data-field="public_random_count" value="' +
+        escapeHtml(String(ib.public_random_count || 1)) +
         '"></div>' +
         "</div>" +
         '<div class="form-row"><div class="form-group form-group--inline switch-field">' +
@@ -1681,8 +1732,21 @@ function bindInboundField(el) {
       ib[field] = el.checked;
     } else if (field === "fixed_ports_text") {
       ib.fixed_ports = parsePorts(el.value);
+    } else if (field === "public_fixed_ports_text") {
+      ib.public_fixed_ports = parsePorts(el.value);
     } else if (field === "random_count") {
       ib.random_count = Math.max(1, Number(el.value) || 1);
+    } else if (field === "public_random_count") {
+      ib.public_random_count = Math.max(1, Number(el.value) || 1);
+    } else if (field === "public_ports_mode") {
+      ib.public_ports_mode = el.value || "use_inbound_ports";
+      var contPub = $("#inboundEditorList");
+      if (contPub) {
+        var pubFix = contPub.querySelector('[data-in-public-fixed="' + idx + '"]');
+        var pubRnd = contPub.querySelector('[data-in-public-random="' + idx + '"]');
+        if (pubFix) pubFix.style.display = ib.public_ports_mode === "fixed" ? "" : "none";
+        if (pubRnd) pubRnd.style.display = ib.public_ports_mode === "random" ? "" : "none";
+      }
     } else if (field === "port_mode") {
       ib.port_mode = el.value;
       var cont = $("#inboundEditorList");
@@ -2013,15 +2077,49 @@ function endpointTitle(ep, index) {
 function endpointSubTitle(ep) {
   if (!ep) return "";
   if (ep.type === "node_inbound") {
-    var node = nodeById(ep.node_id);
+    var dep = dependencyById(ep.dependency_id);
+    var node = nodeById((dep && dep.ref_id) || ep.node_id);
     var core = coreById(ep.core_id);
     var parts = ["Node inbound"];
+    if (dep && dep.name) parts.push(dep.name);
     if (node) parts.push(nodeDisplayName(node));
     if (core) parts.push(cleanDisplayName(core.name, ep.core_id));
     if (ep.weight) parts.push("weight " + ep.weight);
     return parts.join(" · ");
   }
   return "Static" + (ep.weight ? " · weight " + ep.weight : "");
+}
+
+function dependencyById(id) {
+  id = String(id || "");
+  var deps = state.editorDraft && Array.isArray(state.editorDraft.dependencies) ? state.editorDraft.dependencies : [];
+  return deps.find(function (dep) { return String(dep.id || "") === id; }) || null;
+}
+
+function nodeDependenciesForEditor() {
+  var currentNodeId = state.editorDraft ? String(state.editorDraft.node_id || "") : "";
+  var deps = state.editorDraft && Array.isArray(state.editorDraft.dependencies) ? state.editorDraft.dependencies : [];
+  return deps.filter(function (dep) {
+    return dep && String(dep.ref_id || "") && String(dep.ref_id || "") !== currentNodeId;
+  });
+}
+
+function endpointDependencyOptions(selected) {
+  selected = String(selected || "");
+  var deps = nodeDependenciesForEditor();
+  var html = '<option value="">— Select Dependency —</option>';
+  html += deps.map(function (dep, idx) {
+    var node = nodeById(dep.ref_id);
+    var label = (dep.name || ("dep " + (idx + 1))) + " → " + (node ? nodeDisplayName(node) : dep.ref_id || "missing node");
+    if (dep.host) label += " @ " + dep.host;
+    return '<option value="' + escapeHtml(String(dep.id || "")) + '" data-node-id="' + escapeHtml(String(dep.ref_id || "")) + '"' + (String(dep.id || "") === selected ? " selected" : "") + '>' + escapeHtml(label) + '</option>';
+  }).join("");
+  return html;
+}
+
+function dependencyNodeId(depId) {
+  var dep = dependencyById(depId);
+  return dep ? String(dep.ref_id || "") : "";
 }
 
 function inboundOptionLabel(item) {
@@ -2051,6 +2149,9 @@ function endpointInboundOptions(nodeId) {
       port_mode: item.port_mode || "fixed",
       random_count: item.random_count || 1,
       public_host: item.public_host || "",
+      public_ports_mode: item.public_ports_mode || "use_inbound_ports",
+      public_fixed_ports: Array.isArray(item.public_fixed_ports) ? item.public_fixed_ports : [],
+      public_random_count: item.public_random_count || 1,
       bind_ip: item.bind_ip || "",
     });
   }
@@ -2066,6 +2167,9 @@ function endpointInboundOptions(nodeId) {
         port_mode: ib.port_mode || "fixed",
         random_count: ib.random_count || 1,
         public_host: ib.public_host || "",
+        public_ports_mode: ib.public_ports_mode || "use_inbound_ports",
+        public_fixed_ports: Array.isArray(ib.public_fixed_ports) ? ib.public_fixed_ports : [],
+        public_random_count: ib.public_random_count || 1,
         bind_ip: ib.bind_ip || "",
       });
     });
@@ -2099,6 +2203,12 @@ function fillEndpointInboundSelect(select, nodeId, value, coreId) {
         escapeHtml(item.port_mode || "fixed") +
         '" data-random-count="' +
         escapeHtml(String(item.random_count || 1)) +
+        '" data-public-ports-mode="' +
+        escapeHtml(item.public_ports_mode || "use_inbound_ports") +
+        '" data-public-fixed-ports="' +
+        escapeHtml((item.public_fixed_ports || []).join(",")) +
+        '" data-public-random-count="' +
+        escapeHtml(String(item.public_random_count || 1)) +
         '"' +
         (selected ? " selected" : "") +
         ">" +
@@ -2121,9 +2231,13 @@ function applyEndpointInboundSelection(ep, select) {
   var ports = opt ? String(opt.getAttribute("data-ports") || "") : "";
   var portMode = opt ? String(opt.getAttribute("data-port-mode") || "fixed") : "fixed";
   var randomCount = opt ? Math.max(1, Number(opt.getAttribute("data-random-count") || 1) || 1) : 1;
+  var publicPortsMode = opt ? String(opt.getAttribute("data-public-ports-mode") || "use_inbound_ports") : "use_inbound_ports";
+  var publicRandomCount = opt ? Math.max(1, Number(opt.getAttribute("data-public-random-count") || 1) || 1) : 1;
   var firstPort = ports.split(",").map(function (p) { return parseInt(p.trim(), 10); }).filter(function (p) { return p >= 1 && p <= 65535; })[0];
   ep.remote_port_mode = portMode;
   ep.remote_random_count = randomCount;
+  ep.remote_public_ports_mode = publicPortsMode;
+  ep.remote_public_random_count = publicRandomCount;
   if (firstPort) ep.port = firstPort;
   else ep.port = 80;
   if (!ep.host) ep.host = "127.0.0.1";
@@ -2233,12 +2347,12 @@ function renderEndpointList(balancerIndex) {
         "-" +
         j +
         '">' +
-        '<div class="form-group"><label>Node</label>' +
-        '<select class="form-input ep-field ep-node-sel" data-ep-bal="' +
+        '<div class="form-group"><label>Dependency</label>' +
+        '<select class="form-input ep-field ep-dep-sel" data-ep-bal="' +
         balancerIndex +
         '" data-ep-index="' +
         j +
-        '" data-field="node_id"></select></div>' +
+        '" data-field="dependency_id"></select></div>' +
         '<div class="form-group"><label>Inbound</label>' +
         '<select class="form-input ep-field ep-inb-sel" data-ep-bal="' +
         balancerIndex +
@@ -2282,17 +2396,17 @@ function renderEndpointList(balancerIndex) {
     })
     .join("");
 
-  container.querySelectorAll(".ep-node-sel").forEach(function (sel) {
+  container.querySelectorAll(".ep-dep-sel").forEach(function (sel) {
     var j = parseInt(sel.dataset.epIndex, 10);
     var ep = bal.endpoints[j];
-    fillEndpointNodeSelect(sel, ep ? ep.node_id : "");
+    sel.innerHTML = endpointDependencyOptions(ep ? ep.dependency_id : "");
   });
   container.querySelectorAll(".ep-inb-sel").forEach(function (sel) {
     var j = parseInt(sel.dataset.epIndex, 10);
     var ep = bal.endpoints[j];
     fillEndpointInboundSelect(
       sel,
-      ep ? ep.node_id : "",
+      ep ? (dependencyNodeId(ep.dependency_id) || ep.node_id) : "",
       ep ? ep.inbound_name : "",
       ep ? ep.core_id : "",
     );
@@ -2334,28 +2448,32 @@ function renderEndpointList(balancerIndex) {
           ep.weight = Math.max(1, Number(el.value) || 1);
         } else if (field === "port") {
           ep.port = Math.max(1, Math.min(65535, Number(el.value) || 80));
-        } else if (field === "node_id") {
-          ep.node_id = el.value;
+        } else if (field === "dependency_id") {
+          ep.dependency_id = el.value;
+          ep.node_id = dependencyNodeId(el.value);
           ep.core_id = "";
           ep.inbound_name = "";
-          if (!ep.host) ep.host = "127.0.0.1";
           if (!Number(ep.port)) ep.port = 80;
           var niG = container.querySelector(
             '[data-ep-ni-g="' + bi + "-" + j + '"]',
           );
           if (niG) {
             var inbSel = niG.querySelector(".ep-inb-sel");
-            if (inbSel) fillEndpointInboundSelect(inbSel, el.value, "", "");
+            if (inbSel) fillEndpointInboundSelect(inbSel, ep.node_id, "", "");
           }
+        } else if (field === "node_id") {
+          ep.node_id = el.value;
         } else if (field === "inbound_name") {
           applyEndpointInboundSelection(ep, el);
         } else if (field === "type") {
           ep.type = el.value;
           var isSt = el.value !== "node_inbound";
           if (!isSt) {
-            if (!ep.node_id && state.editorDraft && isValidNodeId(state.editorDraft.node_id)) ep.node_id = state.editorDraft.node_id;
+            if (!ep.dependency_id && nodeDependenciesForEditor().length === 1) {
+              ep.dependency_id = String(nodeDependenciesForEditor()[0].id || "");
+              ep.node_id = String(nodeDependenciesForEditor()[0].ref_id || "");
+            }
             if (!Number(ep.port)) ep.port = 80;
-            if (!ep.host) ep.host = "127.0.0.1";
           }
           var stG = container.querySelector(
             '[data-ep-static-g="' + bi + "-" + j + '"]',
@@ -2423,7 +2541,11 @@ function renderDependencyEditor() {
 
   container.innerHTML = deps
     .map(function (dep, i) {
+      if (!dep.id) dep.id = makeClientDependencyId();
+      dep.type = "node";
       var isOpen = isEditorCardOpen("dependency", i);
+      var node = nodeById(dep.ref_id);
+      var title = (dep.name || "dep " + (i + 1)) + (node ? " → " + nodeDisplayName(node) : "");
       return (
         '<div class="editor-card editor-card--collapsible' +
         (isOpen ? " is-open" : " is-collapsed") +
@@ -2433,8 +2555,8 @@ function renderDependencyEditor() {
         '<div class="editor-card-header">' +
         '<div class="editor-card-heading">' +
         editorCollapseButton("dependency", i, isOpen, "Toggle dependency") +
-        '<span class="editor-card-title"><span class="editor-card-title-main">Dependency ' +
-        (i + 1) +
+        '<span class="editor-card-title"><span class="editor-card-title-main">' +
+        escapeHtml(title) +
         '</span></span>' +
         "</div>" +
         '<button class="btn btn-xs btn-danger btn-remove-soft" data-dep-index="' +
@@ -2444,28 +2566,27 @@ function renderDependencyEditor() {
         "</div>" +
         '<div class="editor-card-body">' +
         '<div class="form-row">' +
-        '<div class="form-group"><label>Type</label>' +
-        '<select class="form-input" data-dep-index="' +
+        '<div class="form-group"><label>Dependency Name</label>' +
+        '<input type="text" class="form-input" data-dep-index="' +
         i +
-        '" data-field="type">' +
-        '<option value="core"' +
-        (dep.type === "core" ? " selected" : "") +
-        ">Core</option>" +
-        '<option value="node"' +
-        (dep.type === "node" ? " selected" : "") +
-        ">Node</option>" +
-        "</select></div>" +
-        '<div class="form-group"><label>Reference</label>' +
+        '" data-field="name" value="' +
+        escapeHtml(dep.name || "") +
+        '" placeholder="dep 1"></div>' +
+        '<div class="form-group"><label>Node</label>' +
         '<select class="form-input dep-ref-sel" data-dep-index="' +
         i +
         '" data-field="ref_id">' +
-        dependencyOptions(dep.type, dep.ref_id) +
+        dependencyOptions("node", dep.ref_id) +
         "</select></div>" +
-        '<div class="form-group" data-dep-sync-field="' +
+        '<div class="form-group"><label>Host Override</label>' +
+        '<input type="text" class="form-input" data-dep-index="' +
         i +
-        '"' +
-        (dep.type === "node" ? "" : ' style="display:none"') +
-        '><label>Sync Interval</label>' +
+        '" data-field="host" value="' +
+        escapeHtml(dep.host || "") +
+        '" placeholder="empty = node address/public host"></div>' +
+        "</div>" +
+        '<div class="form-row">' +
+        '<div class="form-group"><label>Sync Interval</label>' +
         '<input type="number" class="form-input" min="1" max="86400" step="1" data-dep-index="' +
         i +
         '" data-field="sync_interval" value="' +
@@ -2502,8 +2623,20 @@ function renderDependencyEditor() {
   container.querySelectorAll("[data-dep-index]").forEach(function (el) {
     if (el.dataset.action === "remove-dep") {
       el.addEventListener("click", function () {
-        state.editorDraft.dependencies.splice(parseInt(el.dataset.depIndex, 10), 1);
+        var removed = state.editorDraft.dependencies.splice(parseInt(el.dataset.depIndex, 10), 1)[0];
+        var removedId = removed ? String(removed.id || "") : "";
+        (state.editorDraft.balancers || []).forEach(function (bal) {
+          (bal.endpoints || []).forEach(function (ep) {
+            if (removedId && ep.dependency_id === removedId) {
+              ep.dependency_id = "";
+              ep.node_id = "";
+              ep.core_id = "";
+              ep.inbound_name = "";
+            }
+          });
+        });
         renderDependencyEditor();
+        renderBalancerEditor();
       });
     } else if (el.dataset.field) {
       (function () {
@@ -2512,18 +2645,29 @@ function renderDependencyEditor() {
         function update() {
           var dep = state.editorDraft.dependencies[depIdx];
           if (!dep) return;
+          dep.type = "node";
+          if (!dep.id) dep.id = makeClientDependencyId();
           if (el.type === "checkbox") dep[field] = el.checked;
           else if (field === "sync_interval") dep.sync_interval = Math.max(1, Math.min(86400, parseInt(el.value, 10) || 5));
           else dep[field] = el.value;
-          if (field === "type") {
-            dep.ref_id = "";
-            if (dep.type === "node" && !dep.sync_interval) dep.sync_interval = 5;
-            var card = el.closest("[data-dep-index]");
+          if (field === "ref_id") {
+            (state.editorDraft.balancers || []).forEach(function (bal) {
+              (bal.endpoints || []).forEach(function (ep) {
+                if (String(ep.dependency_id || "") === String(dep.id || "")) {
+                  ep.node_id = dep.ref_id;
+                  ep.core_id = "";
+                  ep.inbound_name = "";
+                }
+              });
+            });
+            renderBalancerEditor();
+          }
+          if (field === "name" || field === "ref_id" || field === "host") {
+            var card = el.closest(".editor-card");
             if (card) {
-              var refSel = card.querySelector(".dep-ref-sel");
-              if (refSel) refSel.innerHTML = dependencyOptions(el.value, "");
-              var syncField = card.querySelector('[data-dep-sync-field="' + depIdx + '"]');
-              if (syncField) syncField.style.display = el.value === "node" ? "" : "none";
+              var titleEl = card.querySelector(".editor-card-title-main");
+              var node = nodeById(dep.ref_id);
+              if (titleEl) titleEl.textContent = (dep.name || "dep " + (depIdx + 1)) + (node ? " → " + nodeDisplayName(node) : "");
             }
           }
         }
@@ -2674,8 +2818,15 @@ function sanitizeCorePayload(payload) {
   (payload.inbounds || []).forEach(function (ib) {
     ib.port_mode = ib.port_mode === "random" ? "random" : "fixed";
     ib.random_count = Math.max(1, Math.min(4096, Number(ib.random_count) || 1));
+    ib.public_ports_mode = ["use_inbound_ports", "random", "fixed"].indexOf(ib.public_ports_mode) >= 0 ? ib.public_ports_mode : "use_inbound_ports";
+    ib.public_random_count = Math.max(1, Math.min(4096, Number(ib.public_random_count) || 1));
+    ib.public_host = String(ib.public_host || "").trim();
     if (!Array.isArray(ib.fixed_ports)) ib.fixed_ports = [];
     ib.fixed_ports = ib.fixed_ports
+      .map(function (p) { return parseInt(p, 10); })
+      .filter(function (p, idx, arr) { return p >= 1 && p <= 65535 && arr.indexOf(p) === idx; });
+    if (!Array.isArray(ib.public_fixed_ports)) ib.public_fixed_ports = [];
+    ib.public_fixed_ports = ib.public_fixed_ports
       .map(function (p) { return parseInt(p, 10); })
       .filter(function (p, idx, arr) { return p >= 1 && p <= 65535 && arr.indexOf(p) === idx; });
     if (ib.target_type === "static") {
@@ -2685,6 +2836,15 @@ function sanitizeCorePayload(payload) {
       ib.target_balancer = String(ib.target_balancer || "");
       ib.target_port = Math.max(1, Math.min(65535, Number(ib.target_port) || 80));
     }
+  });
+  (payload.dependencies || []).forEach(function (dep, idx) {
+    dep.id = String(dep.id || makeClientDependencyId());
+    dep.type = "node";
+    dep.name = String(dep.name || ("dep " + (idx + 1))).trim();
+    dep.ref_id = String(dep.ref_id || "");
+    dep.host = String(dep.host || "").trim();
+    dep.sync_interval = Math.max(1, Math.min(86400, Number(dep.sync_interval) || 5));
+    dep.required = dep.required !== false;
   });
   (payload.balancers || []).forEach(function (bal) {
     if (!Array.isArray(bal.endpoints)) bal.endpoints = [];
@@ -2699,7 +2859,8 @@ function sanitizeCorePayload(payload) {
         // so random_count values such as 8 never leak into endpoint.port.
         ep.port = Math.max(1, Math.min(65535, Number(ep.port) || 80));
         if (ep.remote_port_mode === "random" && !Array.isArray(ep.live_ports)) ep.port = 80;
-        ep.node_id = String(ep.node_id || "");
+        ep.dependency_id = String(ep.dependency_id || "");
+        ep.node_id = String(ep.node_id || dependencyNodeId(ep.dependency_id) || "");
         ep.core_id = String(ep.core_id || "");
         ep.inbound_name = String(ep.inbound_name || "");
       } else {
@@ -2719,7 +2880,8 @@ function validateEditorBalancerEndpoints(payload) {
   (payload.balancers || []).forEach(function (bal, bi) {
     (bal.endpoints || []).forEach(function (ep, ei) {
       if (ep.type === "node_inbound") {
-        if (!isValidNodeId(ep.node_id)) errors.push("Balancer " + (bi + 1) + ", endpoint " + (ei + 1) + ": select a valid node.");
+        if (!String(ep.dependency_id || "").trim()) errors.push("Balancer " + (bi + 1) + ", endpoint " + (ei + 1) + ": select a dependency first.");
+        if (!isValidNodeId(ep.node_id || dependencyNodeId(ep.dependency_id))) errors.push("Balancer " + (bi + 1) + ", endpoint " + (ei + 1) + ": selected dependency has no valid node.");
         if (!String(ep.inbound_name || "").trim()) errors.push("Balancer " + (bi + 1) + ", endpoint " + (ei + 1) + ": select an inbound.");
       } else {
         if (!String(ep.host || "").trim()) errors.push("Balancer " + (bi + 1) + ", endpoint " + (ei + 1) + ": target host is required.");

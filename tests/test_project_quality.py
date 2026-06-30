@@ -199,6 +199,84 @@ class StaticQualityTests(unittest.TestCase):
 
         self.assertEqual(1, len(core["dependencies"]))
         self.assertEqual("node-a", core["dependencies"][0]["ref_id"])
+        self.assertEqual("node", core["dependencies"][0]["type"])
+
+    def test_public_inbound_ports_and_dependency_hosts_enrich_node_inbound_endpoint(self) -> None:
+        from doctor_dev_panel.stores.core_store import build_node_config, create_core
+        from doctor_dev_panel.stores.node_store import create_node
+
+        with tempfile.TemporaryDirectory() as tmp:
+            old = {
+                "DOCTOR_DEV_NODES_PATH": os.environ.get("DOCTOR_DEV_NODES_PATH"),
+                "DOCTOR_DEV_CORES_PATH": os.environ.get("DOCTOR_DEV_CORES_PATH"),
+                "DOCTOR_DEV_NODE_RUNTIME_CACHE_PATH": os.environ.get("DOCTOR_DEV_NODE_RUNTIME_CACHE_PATH"),
+                "PUBLIC_HOST": os.environ.get("PUBLIC_HOST"),
+                "PUBLIC_SCHEME": os.environ.get("PUBLIC_SCHEME"),
+                "PORT": os.environ.get("PORT"),
+            }
+            try:
+                os.environ["DOCTOR_DEV_NODES_PATH"] = str(Path(tmp) / "nodes.json")
+                os.environ["DOCTOR_DEV_CORES_PATH"] = str(Path(tmp) / "cores.json")
+                os.environ["DOCTOR_DEV_NODE_RUNTIME_CACHE_PATH"] = str(Path(tmp) / "runtime.json")
+                os.environ["PUBLIC_HOST"] = "127.0.0.1"
+                os.environ["PUBLIC_SCHEME"] = "http"
+                os.environ["PORT"] = "9000"
+
+                node_a = create_node({"name": "A", "address": "10.0.0.5", "api_port": 9001, "api_key": "a"})
+                node_b = create_node({"name": "B", "address": "10.0.0.6", "api_port": 9002, "api_key": "b"})
+                core_a = create_core({
+                    "name": "Core A",
+                    "node_id": node_a["id"],
+                    "enabled": True,
+                    "inbounds": [{
+                        "name": "a-public",
+                        "enabled": True,
+                        "bind_ip": "0.0.0.0",
+                        "port_mode": "fixed",
+                        "fixed_ports": [8787, 8788],
+                        "public_host": "",
+                        "public_ports_mode": "fixed",
+                        "public_fixed_ports": [443, 8443],
+                        "target_type": "static",
+                        "target_host": "127.0.0.1",
+                        "target_port": 9101,
+                    }],
+                    "balancers": [],
+                    "dependencies": [],
+                })
+                create_core({
+                    "name": "Core B",
+                    "node_id": node_b["id"],
+                    "enabled": True,
+                    "dependencies": [
+                        {"id": "dep_one", "type": "node", "name": "dep 1", "ref_id": node_a["id"], "host": "edge-one.example.com", "sync_interval": 3, "required": True},
+                        {"id": "dep_two", "type": "node", "name": "dep 2", "ref_id": node_a["id"], "host": "edge-two.example.com", "sync_interval": 9, "required": True},
+                    ],
+                    "inbounds": [],
+                    "balancers": [{
+                        "alias": "b-to-a",
+                        "strategy": "round_robin",
+                        "enabled": True,
+                        "endpoints": [
+                            {"type": "node_inbound", "dependency_id": "dep_one", "node_id": node_a["id"], "core_id": core_a["id"], "inbound_name": "a-public", "weight": 1, "enabled": True},
+                            {"type": "node_inbound", "dependency_id": "dep_two", "node_id": node_a["id"], "core_id": core_a["id"], "inbound_name": "a-public", "weight": 1, "enabled": True},
+                        ],
+                    }],
+                })
+                config = build_node_config(node_b["id"])
+                endpoints = config["cores"][0]["balancers"][0]["endpoints"]
+                self.assertEqual([443, 8443], endpoints[0]["live_ports"])
+                self.assertEqual([443, 8443], endpoints[1]["live_ports"])
+                self.assertEqual("edge-one.example.com", endpoints[0]["host"])
+                self.assertEqual("edge-two.example.com", endpoints[1]["host"])
+                self.assertEqual(3, endpoints[0]["sync_interval"])
+                self.assertEqual(9, endpoints[1]["sync_interval"])
+            finally:
+                for key, value in old.items():
+                    if value is None:
+                        os.environ.pop(key, None)
+                    else:
+                        os.environ[key] = value
 
     def test_legacy_nodes_get_persistent_peer_verify_secret(self) -> None:
         from doctor_dev_panel.stores.node_store import get_node, list_nodes
@@ -328,6 +406,42 @@ class NodeRuntimeContractTests(unittest.TestCase):
         self.assertEqual([1209], [t.port for t in rt._targets_from_endpoint(endpoint)])
         endpoint["live_ports_synced_at_unix"] = 5
         self.assertEqual([1211], [t.port for t in rt._targets_from_endpoint(endpoint)])
+
+    def test_runtime_peer_cache_uses_advertised_public_ports(self) -> None:
+        from doctor_dev_node.runtime import ForwarderRuntime
+
+        rt = ForwarderRuntime()
+        rt.config = {"node_id": "node-b", "cores": []}
+        endpoint = {
+            "type": "node_inbound",
+            "node_id": "node-a",
+            "remote_node_id": "node-a",
+            "core_id": "core-a",
+            "remote_core_id": "core-a",
+            "inbound_name": "a-one",
+            "remote_inbound_name": "a-one",
+            "host": "dep-host.example.com",
+            "live_ports_synced_at_unix": 1,
+        }
+        rt._peer_runtime_cache["node-a"] = {
+            "synced_at_unix": 10,
+            "summary": {
+                "advertised_inbounds": [
+                    {
+                        "core_id": "core-a",
+                        "inbound_name": "a-one",
+                        "public_host": "public-a.example.com",
+                        "public_ports": [443, 8443],
+                    }
+                ]
+            },
+            "listeners": [
+                {"status": "listening", "core_id": "core-a", "inbound_name": "a-one", "port": 8787},
+            ],
+        }
+        targets = rt._targets_from_endpoint(endpoint)
+        self.assertEqual([443, 8443], [target.port for target in targets])
+        self.assertEqual(["dep-host.example.com", "dep-host.example.com"], [target.host for target in targets])
 
     def test_peer_token_target_and_expiry_checks(self) -> None:
         from doctor_dev_node.peer_tokens import issue_peer_token, verify_peer_token

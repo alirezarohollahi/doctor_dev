@@ -50,6 +50,7 @@ class ForwarderRuntime:
     def __init__(self) -> None:
         self.servers: dict[str, asyncio.AbstractServer] = {}
         self.listeners: list[dict[str, Any]] = []
+        self.advertised_inbounds: list[dict[str, Any]] = []
         self.config: dict[str, Any] = {"version": 1, "cores": []}
         self._rr: dict[str, int] = {}
         self._target_active: dict[str, int] = {}
@@ -79,6 +80,7 @@ class ForwarderRuntime:
                 logger.warning("failed to stop listener %s: %s", key, exc)
         self.servers.clear()
         self.listeners.clear()
+        self.advertised_inbounds.clear()
         self._rr.clear()
         self._target_active.clear()
 
@@ -128,6 +130,7 @@ class ForwarderRuntime:
                     if not isinstance(inbound, dict) or inbound.get("enabled") is False:
                         continue
                     ports = self._ports_for(inbound)
+                    inbound_listener_items: list[dict[str, Any]] = []
                     for port_index, requested_port in enumerate(ports):
                         bind_ip = str(inbound.get("bind_ip") or "0.0.0.0").strip() or "0.0.0.0"
                         preflight_error = self._preflight_inbound_target(core, inbound, bind_ip, requested_port)
@@ -166,7 +169,7 @@ class ForwarderRuntime:
                             if key in self.servers:
                                 key = key_seed
                             self.servers[key] = server
-                            self.listeners.append({
+                            listener_item = {
                                 "core_id": core.get("id"),
                                 "core_name": core.get("name"),
                                 "inbound_name": inbound.get("name"),
@@ -177,7 +180,9 @@ class ForwarderRuntime:
                                 "target_type": inbound.get("target_type"),
                                 "target_balancer": inbound.get("target_balancer"),
                                 "status": "listening",
-                            })
+                            }
+                            self.listeners.append(listener_item)
+                            inbound_listener_items.append(listener_item)
                             started += 1
                             logger.info("listener started: %s:%s core=%s inbound=%s", bind_ip, actual_port, core.get("name"), inbound.get("name"))
                         except Exception as exc:  # noqa: BLE001
@@ -193,6 +198,29 @@ class ForwarderRuntime:
                             })
                             logger.warning("listener failed: %s:%s core=%s inbound=%s error=%s", bind_ip, requested_port, core.get("name"), inbound.get("name"), exc)
 
+                    if inbound_listener_items:
+                        actual_ports = [int(item.get("port") or 0) for item in inbound_listener_items if int(item.get("port") or 0) > 0]
+                        public_host = self._public_host_for(inbound, str(inbound.get("bind_ip") or "0.0.0.0"))
+                        public_ports = self._public_ports_for(inbound, actual_ports)
+                        advertised = {
+                            "core_id": core.get("id"),
+                            "core_name": core.get("name"),
+                            "inbound_name": inbound.get("name"),
+                            "public_host": public_host,
+                            "public_ports_mode": self._public_ports_mode(inbound),
+                            "public_ports": public_ports,
+                            "listener_ports": actual_ports,
+                            "port_mode": inbound.get("port_mode"),
+                            "status": "advertised" if public_ports else "unavailable",
+                        }
+                        self.advertised_inbounds.append(advertised)
+                        for idx, item in enumerate(inbound_listener_items):
+                            item["public_host"] = public_host
+                            item["public_ports_mode"] = advertised["public_ports_mode"]
+                            item["public_ports"] = public_ports
+                            if idx < len(public_ports):
+                                item["public_port"] = public_ports[idx]
+
             if self._peer_sync_endpoints():
                 await self._sync_all_peers_once()
             self._restart_peer_sync_if_needed()
@@ -201,6 +229,63 @@ class ForwarderRuntime:
             summary["listener_errors"] = error_count
             summary["ok"] = error_count == 0 and started > 0
             return summary
+
+
+    def _clean_port_list(self, value: Any) -> list[int]:
+        if value is None or value == "":
+            return []
+        raw = value
+        if isinstance(value, str):
+            raw = [part.strip() for part in value.split(",") if part.strip()]
+        if not isinstance(raw, list):
+            raw = [raw]
+        ports: list[int] = []
+        for item in raw:
+            try:
+                port = int(item)
+            except (TypeError, ValueError):
+                continue
+            if 1 <= port <= 65535 and port not in ports:
+                ports.append(port)
+        return ports
+
+    def _public_ports_mode(self, inbound: dict[str, Any]) -> str:
+        mode = str(inbound.get("public_ports_mode") or "use_inbound_ports").strip().lower().replace("-", "_").replace(" ", "_")
+        if mode in {"use_inbound", "inbound", "use_ports", "use_inbound_port"}:
+            mode = "use_inbound_ports"
+        return mode if mode in {"use_inbound_ports", "fixed", "random"} else "use_inbound_ports"
+
+    def _public_host_for(self, inbound: dict[str, Any], bind_ip: str = "") -> str:
+        host = str(inbound.get("public_host") or os.getenv("DOCTOR_DEV_NODE_PUBLIC_HOST") or os.getenv("PUBLIC_HOST") or "").strip()
+        if not host:
+            host = str(os.getenv("NODE_HOST") or bind_ip or "127.0.0.1").strip()
+        if host in {"", "0.0.0.0", "*", "::", "[::]"}:
+            host = "127.0.0.1"
+        return host
+
+    def _random_public_ports(self, count: int, avoid: list[int]) -> list[int]:
+        count = max(1, min(int(count or 1), 4096))
+        ports: list[int] = []
+        attempts = 0
+        avoid_set = set(avoid)
+        while len(ports) < count and attempts < count * 40:
+            attempts += 1
+            port = random.randint(1024, 65535)
+            if port not in ports and port not in avoid_set:
+                ports.append(port)
+        return ports
+
+    def _public_ports_for(self, inbound: dict[str, Any], actual_ports: list[int]) -> list[int]:
+        mode = self._public_ports_mode(inbound)
+        if mode == "fixed":
+            return self._clean_port_list(inbound.get("public_fixed_ports") or inbound.get("public_ports"))
+        if mode == "random":
+            try:
+                count = int(inbound.get("public_random_count") or inbound.get("public_count") or 1)
+            except (TypeError, ValueError):
+                count = 1
+            return self._random_public_ports(count, actual_ports)
+        return [port for port in actual_ports if 1 <= int(port) <= 65535]
 
 
     def _endpoint_sync_interval(self, endpoint: dict[str, Any]) -> float:
@@ -723,12 +808,31 @@ class ForwarderRuntime:
         cached = self._peer_runtime_cache.get(remote_node_id)
         if not cached:
             return []
-        listeners = cached.get("listeners")
-        if not isinstance(listeners, list):
-            summary = cached.get("summary") if isinstance(cached.get("summary"), dict) else {}
-            listeners = summary.get("listeners") if isinstance(summary.get("listeners"), list) else []
+        summary = cached.get("summary") if isinstance(cached.get("summary"), dict) else {}
         core_id = str(endpoint.get("remote_core_id") or endpoint.get("core_id") or "")
         inbound_name = str(endpoint.get("remote_inbound_name") or endpoint.get("inbound_name") or "")
+        endpoint_host = str(endpoint.get("host") or "").strip() or str(endpoint.get("public_host") or "").strip() or str(endpoint.get("peer_host") or "").strip()
+
+        advertised = summary.get("advertised_inbounds") if isinstance(summary.get("advertised_inbounds"), list) else []
+        for item in advertised:
+            if not isinstance(item, dict):
+                continue
+            if core_id and str(item.get("core_id") or "") != core_id:
+                continue
+            if inbound_name and str(item.get("inbound_name") or item.get("name") or "") != inbound_name:
+                continue
+            ports = self._clean_port_list(item.get("public_ports"))
+            if not ports:
+                continue
+            host = endpoint_host or str(item.get("public_host") or "").strip()
+            if not host or host in LOCAL_TARGET_HOSTS:
+                host = str(endpoint.get("peer_host") or "").strip() or host
+            if host:
+                return [Target(host, port, "node-inbound-advertised-peer-cache") for port in ports]
+
+        listeners = cached.get("listeners")
+        if not isinstance(listeners, list):
+            listeners = summary.get("listeners") if isinstance(summary.get("listeners"), list) else []
         candidates: list[int] = []
         for listener in listeners:
             if not isinstance(listener, dict) or listener.get("status") != "listening":
@@ -738,17 +842,15 @@ class ForwarderRuntime:
             if inbound_name and str(listener.get("inbound_name") or "") != inbound_name:
                 continue
             try:
-                port = int(listener.get("port") or 0)
+                port = int(listener.get("public_port") or listener.get("port") or 0)
             except (TypeError, ValueError):
                 port = 0
             if 1 <= port <= 65535 and port not in candidates:
                 candidates.append(port)
         if not candidates:
             return []
-        host = str(endpoint.get("host") or "").strip() or str(endpoint.get("public_host") or "").strip()
+        host = endpoint_host
         if not host or host in LOCAL_TARGET_HOSTS:
-            # For remote peer cache a localhost-like host is never useful. Keep
-            # the explicit fallback host generated by the panel if possible.
             host = str(endpoint.get("peer_host") or "").strip() or host
         if not host:
             return []
@@ -1048,6 +1150,7 @@ class ForwarderRuntime:
             "runtime_active": bool(self.servers),
             "listeners_total": len(self.listeners),
             "listeners": self.listeners,
+            "advertised_inbounds": self.advertised_inbounds,
             "active_connections": self.active_connections,
             "connection_count": self.connection_count,
             "bytes_in": self.bytes_in,

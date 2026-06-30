@@ -96,3 +96,12 @@ The original cleanup plan is complete through Phase 8. Future work should only h
 - Persist missing `peer_verify_secret` for legacy panel node records when nodes are loaded.
 - Prevent transient per-call peer secrets from causing lab peer runtime sync failures.
 - Added regression coverage for legacy node stores without peer verification secrets.
+
+## Public inbound advertise and dependency-host routing
+
+- Added inbound public advertise fields: `public_host`, `public_ports_mode`, `public_random_count`, and `public_fixed_ports`.
+- Runtime export now includes advertised public inbound host/ports separately from actual listener ports.
+- Node Inbound balancer endpoints now resolve through declared node dependency instances.
+- Node dependencies are node-only, can be named, can carry a host override, and the same node can be added more than once with different hosts.
+- Balancer Node Inbound endpoints require a dependency before they can reference a remote inbound.
+- Peer runtime cache now prefers advertised public ports when resolving remote Node Inbound endpoints.

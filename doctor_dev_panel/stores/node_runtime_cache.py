@@ -137,6 +137,31 @@ def get_node_runtime(node_id: str) -> Optional[dict[str, Any]]:
     return entry if isinstance(entry, dict) else None
 
 
+
+def find_advertised_inbound(node_id: str, core_id: str = "", inbound_name: str = "") -> Optional[dict[str, Any]]:
+    entry = get_node_runtime(node_id)
+    if not entry:
+        return None
+    candidates: list[dict[str, Any]] = []
+    summary = entry.get("summary") if isinstance(entry.get("summary"), dict) else {}
+    advertised = summary.get("advertised_inbounds") if isinstance(summary.get("advertised_inbounds"), list) else []
+    for item in advertised:
+        if isinstance(item, dict):
+            candidates.append(item)
+    # Backward/defensive fallback: listeners can carry public_* fields too.
+    for listener in entry.get("listeners", []) if isinstance(entry.get("listeners"), list) else []:
+        if not isinstance(listener, dict) or listener.get("status") != "listening":
+            continue
+        if listener.get("public_port") or listener.get("public_ports"):
+            candidates.append(listener)
+    for item in candidates:
+        if core_id and str(item.get("core_id") or "") != str(core_id):
+            continue
+        if inbound_name and str(item.get("inbound_name") or item.get("name") or "") != str(inbound_name):
+            continue
+        return item
+    return None
+
 def find_live_inbound_ports(node_id: str, core_id: str = "", inbound_name: str = "") -> list[int]:
     entry = get_node_runtime(node_id)
     if not entry:
