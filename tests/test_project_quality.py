@@ -184,6 +184,32 @@ class StaticQualityTests(unittest.TestCase):
                     else:
                         os.environ[key] = value
 
+    def test_legacy_nodes_get_persistent_peer_verify_secret(self) -> None:
+        from doctor_dev_panel.stores.node_store import get_node, list_nodes
+
+        with tempfile.TemporaryDirectory() as tmp:
+            old = os.environ.get("DOCTOR_DEV_NODES_PATH")
+            try:
+                store = Path(tmp) / "nodes.json"
+                os.environ["DOCTOR_DEV_NODES_PATH"] = str(store)
+                store.write_text(
+                    '{"version":4,"nodes":[{"id":"node_1111111111111111","name":"legacy","address":"127.0.0.1","api_port":9001,"api_key":"k","enabled":true}]}\n',
+                    encoding="utf-8",
+                )
+                first = get_node("node_1111111111111111")
+                second = get_node("node_1111111111111111")
+                self.assertTrue(first and first.get("peer_verify_secret"))
+                self.assertEqual(first.get("peer_verify_secret"), second.get("peer_verify_secret"))
+                persisted = store.read_text(encoding="utf-8")
+                self.assertIn("peer_verify_secret", persisted)
+                self.assertEqual(1, len(list_nodes()))
+            finally:
+                if old is None:
+                    os.environ.pop("DOCTOR_DEV_NODES_PATH", None)
+                else:
+                    os.environ["DOCTOR_DEV_NODES_PATH"] = old
+
+
     def test_legacy_fixed_node_data_port_is_not_in_env_examples(self) -> None:
         for rel in ("env.examples/node.env", "node.env.example"):
             text = (PROJECT_ROOT / rel).read_text(encoding="utf-8")

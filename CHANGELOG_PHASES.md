@@ -90,3 +90,9 @@ The original cleanup plan is complete through Phase 8. Future work should only h
 
 - Removed project-managed secure-file settings, storage fields, UI inputs, installer prompts, and custom trust-material verification paths.
 - Panel and node now run HTTP control-plane by default for the current project scope.
+
+## Lab peer token secret migration fix
+
+- Persist missing `peer_verify_secret` for legacy panel node records when nodes are loaded.
+- Prevent transient per-call peer secrets from causing lab peer runtime sync failures.
+- Added regression coverage for legacy node stores without peer verification secrets.

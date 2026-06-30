@@ -160,12 +160,36 @@ def normalize_node(payload: dict[str, Any], existing: Optional[dict[str, Any]] =
 
 
 def list_nodes() -> list[dict[str, Any]]:
-    nodes = load_store().get("nodes", [])
+    data = load_store()
+    nodes = data.get("nodes", [])
     cleaned: list[dict[str, Any]] = []
-    for node in nodes:
+    changed = False
+    for index, node in enumerate(nodes):
         if not isinstance(node, dict) or not is_valid_node_id(node.get("id")):
             continue
-        cleaned.append(normalize_node(node, existing=node))
+        normalized = normalize_node(node, existing=node)
+
+        # One-time migration for older panel stores created before peer-token
+        # verification was introduced. Without persisting this value, each
+        # get_node/list_nodes call could generate a different transient secret:
+        # the node would receive one secret in its applied routing config while
+        # /api/node-peer-token could sign tokens with another one. In lab stacks
+        # this shows up as peer runtime sync 401 / PEER_SECRET_MISSING or bad
+        # peer token signature after reinstalling or reusing old data/lab stores.
+        if not str(node.get("peer_verify_secret") or "").strip() and str(normalized.get("peer_verify_secret") or "").strip():
+            migrated = dict(node)
+            migrated["peer_verify_secret"] = normalized["peer_verify_secret"]
+            migrated["peer_token_refresh_interval"] = normalized.get("peer_token_refresh_interval", 30)
+            migrated["peer_token_ttl"] = normalized.get("peer_token_ttl", 120)
+            migrated["updated_at"] = normalized.get("updated_at")
+            nodes[index] = migrated
+            changed = True
+            normalized = normalize_node(migrated, existing=migrated)
+
+        cleaned.append(normalized)
+    if changed:
+        data["version"] = 4
+        save_store(data)
     return cleaned
 
 
