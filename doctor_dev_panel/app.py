@@ -6,7 +6,7 @@ import time
 
 from fastapi import FastAPI, HTTPException
 from fastapi import Request as FastAPIRequest
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from .api.auth import router as auth_router
@@ -104,6 +104,17 @@ app.include_router(cores_router)
 app.include_router(logs_router)
 
 
+def _spa_index_response() -> HTMLResponse:
+    """Serve the SPA shell as an in-memory HTML response.
+
+    This avoids small-file partial-transfer issues seen by some browsers/proxies
+    with FileResponse on the root document while keeping static assets served by
+    StaticFiles.
+    """
+    index_path = WEB_DIR / "index.html"
+    return HTMLResponse(index_path.read_text(encoding="utf-8"))
+
+
 @app.get("/favicon.ico", include_in_schema=False, response_model=None)
 async def favicon():
     favicon_path = WEB_DIR / "favicon.ico"
@@ -114,12 +125,12 @@ async def favicon():
 
 @app.get("/", response_model=None)
 async def index():
-    return FileResponse(str(WEB_DIR / "index.html"))
+    return _spa_index_response()
 
 
 @app.get("/admin", response_model=None)
 async def admin():
-    return FileResponse(str(WEB_DIR / "index.html"))
+    return _spa_index_response()
 
 
 @app.get("/{full_path:path}", include_in_schema=False, response_model=None)
@@ -134,7 +145,7 @@ async def spa_fallback(full_path: str):
         raise HTTPException(status_code=404, detail="API endpoint not found.")
     if path.startswith("assets/") or path in {"favicon.ico", "robots.txt", "manifest.json"}:
         raise HTTPException(status_code=404, detail="Static asset not found.")
-    return FileResponse(str(WEB_DIR / "index.html"))
+    return RedirectResponse(url=f"/#/{path}", status_code=307)
 
 
 

@@ -39,6 +39,10 @@ class WebStaticAssetTests(unittest.TestCase):
         missing_asset = client.get("/assets/does-not-exist.css")
         self.assertEqual(404, missing_asset.status_code)
 
+        spa_path = client.get("/cores/core_123/balancers", follow_redirects=False)
+        self.assertEqual(307, spa_path.status_code)
+        self.assertEqual("/#/cores/core_123/balancers", spa_path.headers.get("location"))
+
 
 if __name__ == "__main__":
     unittest.main()

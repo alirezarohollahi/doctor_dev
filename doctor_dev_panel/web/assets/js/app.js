@@ -24,8 +24,12 @@ const uiContractMarkers = 'Sync Interval data-field="sync_interval"';
 void inboundOptionLabel; void endpointInboundOptions; void uiContractMarkers;
 
 window.addEventListener("hashchange", () => {
-  const next = location.hash.replace(/^#\/?/, "") || "dashboard";
-  state.view = next;
+  applyRouteFromLocation();
+  render();
+});
+
+window.addEventListener("popstate", () => {
+  applyRouteFromLocation();
   render();
 });
 
@@ -37,10 +41,77 @@ document.getElementById("modalRoot").addEventListener("click", (event) => {
   if (event.target.matches("[data-modal-close]")) closeModal();
 });
 
+function routeSegmentsFromHash() {
+  const raw = location.hash.replace(/^#\/?/, "").trim();
+  return raw ? raw.split("/").filter(Boolean).map(decodeURIComponent) : [];
+}
+
+function routeSegmentsFromPath() {
+  const raw = location.pathname.replace(/^\/+|\/+$/g, "").trim();
+  return raw ? raw.split("/").filter(Boolean).map(decodeURIComponent) : [];
+}
+
+function applyRouteFromLocation() {
+  const hashSegments = routeSegmentsFromHash();
+  const pathSegments = routeSegmentsFromPath();
+  const segments = hashSegments.length ? hashSegments : pathSegments;
+  const source = hashSegments.length ? "hash" : pathSegments.length ? "path" : "root";
+  const view = routeView(segments[0]);
+  state.view = view;
+
+  if (view === "cores") {
+    if (segments[1]) state.selectedCoreId = segments[1];
+    if (segments[2]) state.selectedCoreTab = routeCoreTab(segments[2]);
+  }
+  if (view === "nodes") {
+    if (segments[1]) state.selectedNodeId = segments[1];
+    if (segments[2]) state.selectedNodeTab = routeNodeTab(segments[2]);
+  }
+  return { source, segments, view };
+}
+
+function routeView(value) {
+  const allowed = new Set(["dashboard", "nodes", "cores", "runtime", "logs", "integrity", "settings"]);
+  return allowed.has(value) ? value : "dashboard";
+}
+
+function routeCoreTab(value) {
+  const aliases = { inbound: "inbounds", balancer: "balancers", balance: "balancers", deps: "dependencies", dependency: "dependencies", json: "advanced", apply: "preview" };
+  const normalized = aliases[value] || value;
+  return ["overview", "inbounds", "balancers", "dependencies", "advanced", "preview"].includes(normalized) ? normalized : "overview";
+}
+
+function routeNodeTab(value) {
+  const aliases = { config: "preview", drift: "drift", runtime: "runtime", meta: "metadata" };
+  const normalized = aliases[value] || value;
+  return ["overview", "runtime", "drift", "preview", "metadata"].includes(normalized) ? normalized : "overview";
+}
+
+function routeTo(path, { replace = false } = {}) {
+  const clean = String(path || "dashboard").replace(/^#?\/?/, "").replace(/\/+$/g, "") || "dashboard";
+  const url = `/#/${clean.split("/").map(encodeURIComponent).join("/")}`;
+  if (replace) history.replaceState(null, "", url);
+  else history.pushState(null, "", url);
+  applyRouteFromLocation();
+}
+
+function routeToNode(nodeId, tab = "overview") {
+  if (!nodeId) return routeTo("nodes");
+  routeTo(`nodes/${nodeId}/${tab || "overview"}`);
+}
+
+function routeToCore(coreId, tab = "overview") {
+  if (!coreId) return routeTo("cores");
+  routeTo(`cores/${coreId}/${tab || "overview"}`);
+}
+
 boot();
 
 async function boot() {
-  state.view = location.hash.replace(/^#\/?/, "") || "dashboard";
+  const route = applyRouteFromLocation();
+  if (route.source === "path") {
+    history.replaceState(null, "", `/#/${route.segments.join("/")}`);
+  }
   try {
     state.user = await api.authMe();
     await loadAll();
@@ -137,19 +208,19 @@ async function onChange(event) {
 async function onClick(event) {
   const nav = event.target.closest("[data-nav]");
   if (nav) {
-    setView(nav.dataset.nav);
+    routeTo(nav.dataset.nav || "dashboard");
     if (state.view === "logs" && !state.logs.lines.length) await loadLogs({ quiet: true });
     render();
     return;
   }
   const selectNode = event.target.closest("[data-select-node]");
-  if (selectNode) { state.selectedNodeId = selectNode.dataset.selectNode; state.selectedNodeTab = "overview"; state.nodePreview = null; state.nodeDrift = null; render(); return; }
+  if (selectNode) { state.nodePreview = null; state.nodeDrift = null; routeToNode(selectNode.dataset.selectNode, "overview"); render(); return; }
   const selectCore = event.target.closest("[data-select-core]");
-  if (selectCore) { state.selectedCoreId = selectCore.dataset.selectCore; render(); return; }
+  if (selectCore) { routeToCore(selectCore.dataset.selectCore, state.selectedCoreTab || "overview"); render(); return; }
   const nodeTab = event.target.closest("[data-node-tab]");
-  if (nodeTab) { state.selectedNodeTab = nodeTab.dataset.nodeTab; render(); return; }
+  if (nodeTab) { routeToNode(state.selectedNodeId, nodeTab.dataset.nodeTab); render(); return; }
   const coreTab = event.target.closest("[data-core-tab]");
-  if (coreTab) { state.selectedCoreTab = coreTab.dataset.coreTab; render(); return; }
+  if (coreTab) { routeToCore(state.selectedCoreId, coreTab.dataset.coreTab); render(); return; }
 
   const actionEl = event.target.closest("[data-action]");
   if (!actionEl) return;
@@ -164,7 +235,7 @@ async function onClick(event) {
 async function handleAction(action, el) {
   if (action === "logout") { await api.logout(); state.user = null; render(); return; }
   if (action === "global-refresh") { await loadAll(); await loadLogs({ quiet: true }); showToast("Panel data refreshed", "good"); render(); return; }
-  if (action === "new-node") { state.draftNode = defaultNode(); state.view = "nodes"; render(); return; }
+  if (action === "new-node") { state.draftNode = defaultNode(); routeTo("nodes/new"); render(); return; }
   if (action === "cancel-node-edit") { state.draftNode = null; render(); return; }
   if (action === "edit-node") { state.draftNode = clone(state.nodes.find((n) => String(n.id) === String(el.dataset.nodeId))); render(); return; }
   if (action === "generate-node-key") { const res = await api.generateNodeKey(); state.draftNode.api_key = res.api_key; render(); return; }
@@ -174,16 +245,16 @@ async function handleAction(action, el) {
   if (action === "sync-node") { const res = await api.syncNode(el.dataset.nodeId); showToast(res.ok ? "Runtime synced" : "Runtime sync returned warnings", res.ok ? "good" : "warn"); await loadAll(); render(); return; }
   if (action === "sync-all") { const res = await api.syncAll(); showToast(res.message || "Runtime sync finished", "good"); await loadAll(); render(); return; }
   if (action === "apply-node") { await applyNode(el.dataset.nodeId); return; }
-  if (action === "load-preview") { const res = await api.nodePreview(el.dataset.nodeId); state.nodePreview = res.config || res; state.selectedNodeTab = "preview"; render(); return; }
-  if (action === "load-drift") { const res = await api.nodeDrift(el.dataset.nodeId, true); state.nodeDrift = res.drift || res; state.selectedNodeTab = "drift"; render(); return; }
-  if (action === "new-core") { state.draftCore = defaultCore(state); state.dirtyCore = true; state.selectedCoreTab = "overview"; state.view = "cores"; render(); return; }
-  if (action === "edit-core") { state.draftCore = clone(state.cores.find((c) => String(c.id) === String(el.dataset.coreId))); state.dirtyCore = false; state.selectedCoreTab = "overview"; render(); return; }
+  if (action === "load-preview") { const res = await api.nodePreview(el.dataset.nodeId); state.nodePreview = res.config || res; routeToNode(el.dataset.nodeId, "preview"); render(); return; }
+  if (action === "load-drift") { const res = await api.nodeDrift(el.dataset.nodeId, true); state.nodeDrift = res.drift || res; routeToNode(el.dataset.nodeId, "drift"); render(); return; }
+  if (action === "new-core") { state.draftCore = defaultCore(state); state.dirtyCore = true; routeTo("cores/new/overview"); render(); return; }
+  if (action === "edit-core") { state.draftCore = clone(state.cores.find((c) => String(c.id) === String(el.dataset.coreId))); state.dirtyCore = false; routeToCore(el.dataset.coreId, "overview"); render(); return; }
   if (action === "cancel-core-edit") { if (state.dirtyCore && !(await confirmDialog({ title:"Discard changes?", message:"Unsaved core editor changes will be lost.", danger:true, confirmText:"Discard" }))) return; state.draftCore = null; state.dirtyCore = false; render(); return; }
   if (action === "save-core") { await saveCore(false); return; }
   if (action === "save-apply-core") { await saveCore(true); return; }
   if (action === "delete-core") { await deleteCore(el.dataset.coreId); return; }
   if (action === "apply-core") { await applyCore(el.dataset.coreId); return; }
-  if (action === "preview-core") { const res = await api.corePreview(el.dataset.coreId); state.corePreview = res.node_config_preview || res; showToast("Preview loaded", "good"); render(); return; }
+  if (action === "preview-core") { const res = await api.corePreview(el.dataset.coreId); state.corePreview = res.node_config_preview || res; routeToCore(el.dataset.coreId, "preview"); showToast("Preview loaded", "good"); render(); return; }
   if (action === "add-inbound") { state.draftCore.inbounds.push(defaultInbound()); state.dirtyCore = true; render(); return; }
   if (action === "remove-inbound") { state.draftCore.inbounds.splice(Number(el.dataset.index), 1); state.dirtyCore = true; render(); return; }
   if (action === "add-balancer") { state.draftCore.balancers.push(defaultBalancer()); state.dirtyCore = true; render(); return; }
@@ -193,7 +264,7 @@ async function handleAction(action, el) {
   if (action === "add-dependency") { state.draftCore.dependencies.push(defaultDependency(state.draftCore.dependencies.length)); state.dirtyCore = true; render(); return; }
   if (action === "remove-dependency") { await removeDependency(Number(el.dataset.index)); return; }
   if (action === "validate-advanced") { await validateAdvanced(); return; }
-  if (action === "preview-draft-core") { state.corePreview = buildCorePayload(); state.selectedCoreTab = "preview"; render(); return; }
+  if (action === "preview-draft-core") { state.corePreview = buildCorePayload(); routeToCore(state.draftCore?.id || state.selectedCoreId || "new", "preview"); render(); return; }
   if (action === "refresh-logs") { await loadLogs(); render(); return; }
   if (action === "copy-logs") { await navigator.clipboard.writeText((state.logs.lines || []).join("\n")); showToast("Visible logs copied", "good"); return; }
   if (action === "clear-visible-logs") { state.logs.lines = []; render(); return; }
@@ -275,7 +346,7 @@ async function saveCore(applyAfter) {
   state.selectedCoreId = core.id;
   await loadAll();
   showToast("Core saved", "good");
-  if (applyAfter) await applyCore(core.id); else render();
+  if (applyAfter) await applyCore(core.id); else { routeToCore(core.id, state.selectedCoreTab || "overview"); render(); }
 }
 
 function buildCorePayload() {

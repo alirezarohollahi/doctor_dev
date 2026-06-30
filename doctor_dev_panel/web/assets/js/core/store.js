@@ -21,9 +21,13 @@ export const state = {
   lastRefresh: "never",
 };
 
-export function setView(view) {
+export function setView(view, options = {}) {
   state.view = view || "dashboard";
-  location.hash = `#/${state.view}`;
+  if (options.replace) {
+    history.replaceState(null, "", `/#/${state.view}`);
+  } else {
+    history.pushState(null, "", `/#/${state.view}`);
+  }
 }
 
 export function startLoading(key) { state.loading.add(key); }
