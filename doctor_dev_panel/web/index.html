@@ -1,15 +1,24 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="en" dir="ltr">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Doctor Dev</title>
-    <link rel="stylesheet" href="/assets/css/app.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Doctor Dev Panel — distributed routing node control plane" />
+  <meta name="theme-color" content="#09090b" />
+  <title>Doctor Dev Panel</title>
+  <link rel="stylesheet" href="/assets/vendor/fontawesome/css/all.min.css" />
+  <link rel="stylesheet" href="/assets/css/app.css" />
 </head>
 <body>
-    <div id="app"></div>
-    <div id="overlay-root"></div>
-    <div id="toast-root"></div>
-    <script src="/assets/js/app.js"></script>
+  <div class="bg-grid" aria-hidden="true"></div>
+  <div id="toastRoot" class="toast-root" role="status" aria-live="polite"></div>
+  <div id="modalRoot" class="modal-root hidden"></div>
+  <div id="app" class="app-root">
+    <section class="boot-screen">
+      <div class="spinner"></div>
+      <p>Loading Doctor Dev Panel…</p>
+    </section>
+  </div>
+  <script type="module" src="/assets/js/app.js"></script>
 </body>
 </html>
