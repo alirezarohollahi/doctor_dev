@@ -8,12 +8,13 @@ YES=0
 FORCE=0
 NO_START=0
 NO_SYSTEMD=0
+NO_KILL_EXISTING=0
 
 PROJECT_DIR="$(pwd)"
 ENV_FILE=""
 SERVICE_NAME="doctor-dev-node"
 BIND_HOST="0.0.0.0"
-API_PORT="8443"
+API_PORT="62051"
 API_KEY=""
 NODE_DATA_DIR=""
 NODE_LOG_DIR=""
@@ -21,6 +22,7 @@ RUN_USER=""
 DEBUG_MODE="false"
 PYTHON_LOG_LEVEL="INFO"
 UVICORN_LOG_LEVEL="info"
+INSTALL_LOG=""
 
 if [[ -t 1 ]] && command -v tput >/dev/null 2>&1 && [[ "$(tput colors 2>/dev/null || echo 0)" -ge 8 ]]; then
   BOLD="$(tput bold)"
@@ -51,13 +53,14 @@ usage() {
 ${APP_TITLE} v${SCRIPT_VERSION}
 
 Usage:
-  ./install_node [options]
+  bash install_node [options]
 
 Options:
-  --yes                       Use defaults and do not ask interactive questions
-  --force                     Overwrite existing env/service and kill existing listeners without asking
+  --yes                       Use provided values/defaults and do not ask questions
+  --force                     Overwrite env/service files and kill port listeners without asking
   --no-start                  Install but do not start/restart service
   --no-systemd                Do not create systemd service
+  --no-kill-existing          Do not stop/kill old service/processes
   --project-dir PATH          Project directory
   --env-file PATH             Node env file path
   --service-name NAME         systemd service name
@@ -67,7 +70,28 @@ Options:
   --user USER                 Linux user for systemd service
   --data-dir PATH             Node data directory
   --log-dir PATH              Node log directory
+  --debug true|false          DEBUG value
+  --python-log-level LEVEL    PYTHON_LOG_LEVEL value
+  --uvicorn-log-level LEVEL   UVICORN_LOG_LEVEL value
+  --install-log PATH          Installer log file path
   -h, --help                  Show help
+
+Full example:
+  sudo bash install_node \\
+    --yes \\
+    --force \\
+    --project-dir /home/doctor_dev \\
+    --env-file /home/doctor_dev/env.node \\
+    --service-name doctor-dev-node \\
+    --host 0.0.0.0 \\
+    --port 62051 \\
+    --api-key 'CHANGE_THIS_NODE_API_KEY' \\
+    --user root \\
+    --data-dir /home/doctor_dev/data/node \\
+    --log-dir /home/doctor_dev/logs/node \\
+    --debug false \\
+    --python-log-level INFO \\
+    --uvicorn-log-level info
 EOF
 }
 
@@ -77,6 +101,7 @@ while [[ $# -gt 0 ]]; do
     --force) FORCE=1; shift ;;
     --no-start) NO_START=1; shift ;;
     --no-systemd) NO_SYSTEMD=1; shift ;;
+    --no-kill-existing) NO_KILL_EXISTING=1; shift ;;
     --project-dir) PROJECT_DIR="${2:-}"; shift 2 ;;
     --env-file) ENV_FILE="${2:-}"; shift 2 ;;
     --service-name) SERVICE_NAME="${2:-}"; shift 2 ;;
@@ -86,6 +111,10 @@ while [[ $# -gt 0 ]]; do
     --user) RUN_USER="${2:-}"; shift 2 ;;
     --data-dir) NODE_DATA_DIR="${2:-}"; shift 2 ;;
     --log-dir) NODE_LOG_DIR="${2:-}"; shift 2 ;;
+    --debug) DEBUG_MODE="${2:-}"; shift 2 ;;
+    --python-log-level) PYTHON_LOG_LEVEL="${2:-}"; shift 2 ;;
+    --uvicorn-log-level) UVICORN_LOG_LEVEL="${2:-}"; shift 2 ;;
+    --install-log) INSTALL_LOG="${2:-}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "${RED}Unknown option:${RESET} $1"; usage; exit 1 ;;
   esac
@@ -95,12 +124,16 @@ hr() {
   printf '%b\n' "${DIM}────────────────────────────────────────────────────────────${RESET}"
 }
 
+now_utc() {
+  date -u +"%Y-%m-%dT%H:%M:%SZ"
+}
+
 banner() {
   clear 2>/dev/null || true
   printf '%b\n' "${CYAN}${BOLD}"
   printf '%s\n' "╔════════════════════════════════════════════════════════════╗"
   printf '%s\n' "║                  Doctor Dev Node Installer                ║"
-  printf '%s\n' "║           clean node setup • stop old node first           ║"
+  printf '%s\n' "║        stop old node • overwrite env • install service     ║"
   printf '%s\n' "╚════════════════════════════════════════════════════════════╝"
   printf '%b\n' "${RESET}"
   printf '%b\n' "${DIM}Version ${SCRIPT_VERSION}${RESET}"
@@ -132,15 +165,20 @@ need_cmd() {
   command -v "$1" >/dev/null 2>&1
 }
 
+run() {
+  printf '%b\n' "${BLUE}${BOLD}$${RESET} $*"
+  "$@"
+}
+
 is_root() {
   [[ "${EUID:-$(id -u)}" -eq 0 ]]
 }
 
 sudo_cmd() {
   if is_root; then
-    "$@"
+    run "$@"
   elif need_cmd sudo; then
-    sudo "$@"
+    run sudo "$@"
   else
     die "This action needs root privileges. Re-run as root or install sudo."
   fi
@@ -239,136 +277,18 @@ detect_default_user() {
   fi
 }
 
-service_exists() {
-  local unit="${1}.service"
-  if ! need_cmd systemctl; then
-    return 1
-  fi
-  systemctl list-unit-files "$unit" >/dev/null 2>&1 || systemctl status "$unit" >/dev/null 2>&1
-}
-
-show_port_processes() {
-  local port="$1"
-
-  if need_cmd ss; then
-    ss -ltnp "sport = :${port}" 2>/dev/null || true
-  elif need_cmd lsof; then
-    lsof -nP -iTCP:"${port}" -sTCP:LISTEN 2>/dev/null || true
-  elif need_cmd fuser; then
-    fuser -v -n tcp "${port}" 2>/dev/null || true
-  else
-    warn "Cannot inspect port users because ss/lsof/fuser is missing."
-  fi
-}
-
-kill_port_processes() {
-  local port="$1"
-  local pids=""
-
-  if need_cmd fuser; then
-    pids="$(fuser -n tcp "$port" 2>/dev/null || true)"
-  elif need_cmd lsof; then
-    pids="$(lsof -t -nP -iTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)"
-  elif need_cmd ss; then
-    pids="$(ss -ltnp "sport = :${port}" 2>/dev/null | sed -nE 's/.*pid=([0-9]+).*/\1/p' | sort -u || true)"
+setup_install_log() {
+  if [[ -z "$INSTALL_LOG" ]]; then
+    INSTALL_LOG="/tmp/doctor_dev_install_node_$(date -u +%Y%m%d_%H%M%S).log"
   fi
 
-  if [[ -z "${pids// }" ]]; then
-    ok "No process is listening on port ${port}."
-    return
-  fi
+  mkdir -p "$(dirname "$INSTALL_LOG")"
+  touch "$INSTALL_LOG"
+  chmod 600 "$INSTALL_LOG" || true
 
-  warn "Processes listening on port ${port}:"
-  show_port_processes "$port"
+  exec > >(tee -a "$INSTALL_LOG") 2>&1
 
-  if confirm "Kill processes listening on port ${port}?" "yes"; then
-    for pid in $pids; do
-      if [[ "$pid" =~ ^[0-9]+$ ]]; then
-        warn "Stopping PID ${pid}..."
-        sudo_cmd kill "$pid" 2>/dev/null || true
-      fi
-    done
-
-    sleep 2
-
-    for pid in $pids; do
-      if [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null; then
-        warn "Force killing PID ${pid}..."
-        sudo_cmd kill -9 "$pid" 2>/dev/null || true
-      fi
-    done
-
-    ok "Port ${port} cleanup finished."
-  else
-    die "Port ${port} is busy. Cannot continue safely."
-  fi
-}
-
-kill_project_node_processes() {
-  local pids=""
-
-  pids="$(
-    pgrep -af "main.py.*--mode node" 2>/dev/null \
-      | grep -F "$PROJECT_DIR" \
-      | awk '{print $1}' \
-      | sort -u || true
-  )"
-
-  if [[ -z "$pids" ]]; then
-    ok "No old Doctor Dev node process found for this project."
-    return
-  fi
-
-  warn "Old Doctor Dev node processes found:"
-  pgrep -af "main.py.*--mode node" 2>/dev/null | grep -F "$PROJECT_DIR" || true
-
-  if confirm "Stop old Doctor Dev node processes for this project?" "yes"; then
-    for pid in $pids; do
-      warn "Stopping old node PID ${pid}..."
-      sudo_cmd kill "$pid" 2>/dev/null || true
-    done
-
-    sleep 2
-
-    for pid in $pids; do
-      if kill -0 "$pid" 2>/dev/null; then
-        warn "Force killing old node PID ${pid}..."
-        sudo_cmd kill -9 "$pid" 2>/dev/null || true
-      fi
-    done
-
-    ok "Old project node processes stopped."
-  else
-    die "Old node process is still running. Cannot continue safely."
-  fi
-}
-
-stop_existing_service() {
-  if [[ "$NO_SYSTEMD" -eq 1 ]]; then
-    warn "Skipping systemd service stop because --no-systemd is enabled."
-    return
-  fi
-
-  if ! need_cmd systemctl; then
-    warn "systemctl not found; skipping service stop."
-    return
-  fi
-
-  if service_exists "$SERVICE_NAME"; then
-    warn "Existing service found: ${SERVICE_NAME}"
-    sudo_cmd systemctl stop "$SERVICE_NAME" || true
-    ok "Stopped service: ${SERVICE_NAME}"
-  else
-    ok "No existing service found with name: ${SERVICE_NAME}"
-  fi
-}
-
-cleanup_existing_install() {
-  step "Stop old node/service before install"
-
-  stop_existing_service
-  kill_project_node_processes
-  kill_port_processes "$API_PORT"
+  ok "Installer log: $INSTALL_LOG"
 }
 
 install_system_packages_if_needed() {
@@ -428,6 +348,143 @@ ensure_run_user() {
   fi
 }
 
+collect_pids_from_port() {
+  local port="$1"
+  local pids=""
+
+  if need_cmd lsof; then
+    pids="$(
+      lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true
+    )"
+  fi
+
+  if [[ -z "$pids" ]] && need_cmd fuser; then
+    pids="$(
+      fuser -n tcp "$port" 2>/dev/null | tr ' ' '\n' || true
+    )"
+  fi
+
+  if [[ -z "$pids" ]] && need_cmd ss; then
+    pids="$(
+      ss -ltnp "sport = :$port" 2>/dev/null \
+        | grep -oE 'pid=[0-9]+' \
+        | cut -d= -f2 \
+        | sort -u || true
+    )"
+  fi
+
+  printf '%s\n' "$pids" | awk 'NF' | sort -u
+}
+
+collect_doctor_node_pids() {
+  {
+    pgrep -f "${PROJECT_DIR}/main.py.*--mode node" 2>/dev/null || true
+    pgrep -f "main.py.*--mode node.*--port ${API_PORT}" 2>/dev/null || true
+    pgrep -f "DOCTOR_DEV_ENV=${ENV_FILE}" 2>/dev/null || true
+    pgrep -f "doctor_dev_node.server" 2>/dev/null || true
+  } | awk -v self="$$" '$1 != self && $1 ~ /^[0-9]+$/ {print $1}' | sort -u
+}
+
+show_pid_details() {
+  local pids="$1"
+  local pid=""
+
+  for pid in $pids; do
+    if [[ -d "/proc/$pid" ]]; then
+      printf '%b\n' "${YELLOW}PID ${pid}:${RESET} $(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || ps -p "$pid" -o command= 2>/dev/null || true)"
+    else
+      ps -p "$pid" -o pid=,ppid=,user=,command= 2>/dev/null || true
+    fi
+  done
+}
+
+kill_pids() {
+  local reason="$1"
+  shift
+  local pids="$*"
+  local alive=""
+  local pid=""
+
+  pids="$(printf '%s\n' $pids | awk '$1 ~ /^[0-9]+$/ {print $1}' | sort -u | tr '\n' ' ')"
+
+  if [[ -z "$pids" ]]; then
+    ok "No processes to kill for: $reason"
+    return
+  fi
+
+  warn "Processes found for ${reason}: $pids"
+  show_pid_details "$pids"
+
+  if ! confirm "Kill these processes?" "yes"; then
+    die "Cannot continue while old node/port process is running."
+  fi
+
+  run kill -TERM $pids 2>/dev/null || true
+
+  for _ in $(seq 1 10); do
+    alive=""
+    for pid in $pids; do
+      if kill -0 "$pid" 2>/dev/null; then
+        alive="$alive $pid"
+      fi
+    done
+    [[ -z "$alive" ]] && break
+    sleep 1
+  done
+
+  if [[ -n "$alive" ]]; then
+    warn "Some processes survived TERM, sending KILL:$alive"
+    run kill -KILL $alive 2>/dev/null || true
+  fi
+
+  ok "Killed old processes for: $reason"
+}
+
+stop_existing_node() {
+  if [[ "$NO_KILL_EXISTING" -eq 1 ]]; then
+    warn "Skipping old service/process cleanup because --no-kill-existing was used."
+    return
+  fi
+
+  step "Stop old node service/processes"
+
+  if [[ "$NO_SYSTEMD" -eq 0 ]] && need_cmd systemctl; then
+    if systemctl list-unit-files "${SERVICE_NAME}.service" >/dev/null 2>&1 || systemctl status "$SERVICE_NAME" >/dev/null 2>&1; then
+      warn "Existing systemd service detected: $SERVICE_NAME"
+      sudo_cmd systemctl stop "$SERVICE_NAME" || true
+      ok "Stopped service if it was running: $SERVICE_NAME"
+    else
+      ok "No existing systemd service detected: $SERVICE_NAME"
+    fi
+  fi
+
+  local project_pids=""
+  project_pids="$(collect_doctor_node_pids || true)"
+  if [[ -n "$project_pids" ]]; then
+    kill_pids "existing Doctor Dev node processes" $project_pids
+  else
+    ok "No Doctor Dev node process detected."
+  fi
+
+  local port_pids=""
+  port_pids="$(collect_pids_from_port "$API_PORT" || true)"
+  if [[ -n "$port_pids" ]]; then
+    if [[ "$FORCE" -eq 1 ]]; then
+      kill_pids "processes listening on TCP port ${API_PORT}" $port_pids
+    else
+      warn "Port ${API_PORT} is already in use."
+      show_pid_details "$port_pids"
+      if confirm "Kill listener(s) on port ${API_PORT}?" "yes"; then
+        kill_pids "processes listening on TCP port ${API_PORT}" $port_pids
+      else
+        die "Port ${API_PORT} is busy. Free it or choose another port."
+      fi
+    fi
+  else
+    ok "Port ${API_PORT} is free."
+  fi
+}
+
 write_env_file() {
   local app_secret=""
   app_secret="$(generate_secret)"
@@ -443,10 +500,12 @@ write_env_file() {
 
   umask 077
   cat > "$ENV_FILE" <<EOF
+# Doctor Dev Node environment
+# Generated by install_node at $(now_utc)
+
 DOCTOR_DEV_MODE=node
 APP_NAME=DoctorDevNode
 APP_ENV=production
-
 APP_SECRET=${app_secret}
 
 NODE_HOST=${BIND_HOST}
@@ -478,7 +537,7 @@ EOF
 }
 
 setup_directories() {
-  mkdir -p "$NODE_DATA_DIR" "$NODE_LOG_DIR" "$PROJECT_DIR/run"
+  mkdir -p "$NODE_DATA_DIR" "$NODE_LOG_DIR" "$PROJECT_DIR/run" "$PROJECT_DIR/logs/install"
 
   local group_name
   group_name="$(id -gn "$RUN_USER" 2>/dev/null || echo "$RUN_USER")"
@@ -495,18 +554,18 @@ setup_venv() {
   if [[ -d "$venv_dir" ]]; then
     ok "Using existing venv: $venv_dir"
   else
-    python3 -m venv "$venv_dir"
+    run python3 -m venv "$venv_dir"
     ok "Created venv: $venv_dir"
   fi
 
-  "$venv_dir/bin/python" -m pip install --upgrade pip setuptools wheel
+  run "$venv_dir/bin/python" -m pip install --upgrade pip setuptools wheel
 
   if ! "$venv_dir/bin/pip" install --no-cache-dir --only-binary=:all: -r "$PROJECT_DIR/requirements.txt"; then
     warn "Binary-only install failed. Retrying normal pip install..."
-    "$venv_dir/bin/pip" install --no-cache-dir -r "$PROJECT_DIR/requirements.txt"
+    run "$venv_dir/bin/pip" install --no-cache-dir -r "$PROJECT_DIR/requirements.txt"
   fi
 
-  "$venv_dir/bin/python" -m compileall -q "$PROJECT_DIR/doctor_dev_panel" "$PROJECT_DIR/doctor_dev_node" "$PROJECT_DIR/main.py"
+  run "$venv_dir/bin/python" -m compileall -q "$PROJECT_DIR/doctor_dev_panel" "$PROJECT_DIR/doctor_dev_node" "$PROJECT_DIR/main.py"
 
   ok "Python environment is ready."
 }
@@ -558,7 +617,7 @@ EOF
   sudo_cmd systemctl daemon-reload
   sudo_cmd systemctl enable "$SERVICE_NAME"
 
-  ok "Installed systemd service: $SERVICE_NAME"
+  ok "Installed/overwrote systemd service: $SERVICE_NAME"
 }
 
 start_service() {
@@ -601,8 +660,9 @@ url = f"http://{host}:{port}/health"
 
 last_error = None
 
-for _ in range(30):
+for i in range(30):
     try:
+        print(f"[health-check] attempt {i + 1}/30 -> {url}", flush=True)
         with urllib.request.urlopen(url, timeout=2) as response:
             raw = response.read().decode("utf-8", errors="replace")
             data = json.loads(raw) if raw else {}
@@ -617,6 +677,15 @@ print(f"✗ Health check failed: {url}")
 print(f"Last error: {last_error}")
 sys.exit(1)
 PY
+}
+
+show_service_status() {
+  if [[ "$NO_SYSTEMD" -eq 1 ]]; then
+    return
+  fi
+
+  step "Service status"
+  sudo_cmd systemctl status "$SERVICE_NAME" --no-pager -l || true
 }
 
 summary() {
@@ -635,11 +704,12 @@ summary() {
   printf '%b\n' "${WHITE}Data dir:${RESET}     $NODE_DATA_DIR"
   printf '%b\n' "${WHITE}Log dir:${RESET}      $NODE_LOG_DIR"
   printf '%b\n' "${WHITE}Run user:${RESET}     $RUN_USER"
+  printf '%b\n' "${WHITE}Install log:${RESET}  $INSTALL_LOG"
   hr
 
   if [[ "$NO_SYSTEMD" -eq 0 ]]; then
     printf '%b\n' "${CYAN}Useful commands:${RESET}"
-    printf '%s\n' "  systemctl status ${SERVICE_NAME} --no-pager"
+    printf '%s\n' "  systemctl status ${SERVICE_NAME} --no-pager -l"
     printf '%s\n' "  journalctl -u ${SERVICE_NAME} -f"
     printf '%s\n' "  systemctl restart ${SERVICE_NAME}"
   fi
@@ -693,18 +763,22 @@ main() {
   NODE_DATA_DIR="$(abs_path "$NODE_DATA_DIR")"
   NODE_LOG_DIR="$(abs_path "$NODE_LOG_DIR")"
 
+  setup_install_log
+
   hr
   printf '%b\n' "${MAGENTA}${BOLD}Install plan:${RESET}"
-  printf '%b\n' "  ${WHITE}1.${RESET} Stop old systemd service if it exists"
-  printf '%b\n' "  ${WHITE}2.${RESET} Kill old Doctor Dev node processes from this project"
-  printf '%b\n' "  ${WHITE}3.${RESET} Kill any process already listening on API port ${API_PORT}"
-  printf '%b\n' "  ${WHITE}4.${RESET} Check project and system dependencies"
-  printf '%b\n' "  ${WHITE}5.${RESET} Create or reuse Python virtual environment"
-  printf '%b\n' "  ${WHITE}6.${RESET} Install requirements"
-  printf '%b\n' "  ${WHITE}7.${RESET} Create node env file with no TLS/cert fields"
-  printf '%b\n' "  ${WHITE}8.${RESET} Prepare data/log directories"
-  printf '%b\n' "  ${WHITE}9.${RESET} Create systemd service"
-  printf '%b\n' "  ${WHITE}10.${RESET} Start service and check /health"
+  printf '%b\n' "  ${WHITE}1.${RESET} Validate project"
+  printf '%b\n' "  ${WHITE}2.${RESET} Stop existing systemd service if present"
+  printf '%b\n' "  ${WHITE}3.${RESET} Kill old Doctor Dev node processes"
+  printf '%b\n' "  ${WHITE}4.${RESET} Kill listener on selected API port if needed"
+  printf '%b\n' "  ${WHITE}5.${RESET} Install/check system dependencies"
+  printf '%b\n' "  ${WHITE}6.${RESET} Prepare service user and directories"
+  printf '%b\n' "  ${WHITE}7.${RESET} Overwrite node env file when --force is used"
+  printf '%b\n' "  ${WHITE}8.${RESET} Create/reuse Python virtual environment"
+  printf '%b\n' "  ${WHITE}9.${RESET} Install requirements and compile-check code"
+  printf '%b\n' "  ${WHITE}10.${RESET} Overwrite systemd service when --force is used"
+  printf '%b\n' "  ${WHITE}11.${RESET} Start/restart service"
+  printf '%b\n' "  ${WHITE}12.${RESET} Run /health check and show service status"
   hr
 
   if ! confirm "Continue with this install plan?" "yes"; then
@@ -714,7 +788,7 @@ main() {
   step "Validate project"
   ensure_project
 
-  cleanup_existing_install
+  stop_existing_node
 
   step "Install/check dependencies"
   install_system_packages_if_needed
@@ -738,6 +812,8 @@ main() {
   start_service
 
   health_check || warn "Node service was installed, but health check failed. Check logs with: journalctl -u ${SERVICE_NAME} -f"
+
+  show_service_status
 
   summary
 }
