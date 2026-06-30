@@ -184,6 +184,22 @@ class StaticQualityTests(unittest.TestCase):
                     else:
                         os.environ[key] = value
 
+
+    def test_self_node_dependency_is_filtered(self) -> None:
+        from doctor_dev_panel.stores.core_store import normalize_core
+
+        core = normalize_core({
+            "name": "Core B",
+            "node_id": "node-b",
+            "dependencies": [
+                {"type": "node", "ref_id": "node-b", "sync_interval": 5, "required": True},
+                {"type": "node", "ref_id": "node-a", "sync_interval": 7, "required": True},
+            ],
+        })
+
+        self.assertEqual(1, len(core["dependencies"]))
+        self.assertEqual("node-a", core["dependencies"][0]["ref_id"])
+
     def test_legacy_nodes_get_persistent_peer_verify_secret(self) -> None:
         from doctor_dev_panel.stores.node_store import get_node, list_nodes
 

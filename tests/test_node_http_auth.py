@@ -55,6 +55,22 @@ def forged_peer_token(*, secret: str, target_node_id: str, target_core_id: str, 
 
 
 class NodeHttpAuthTests(unittest.TestCase):
+
+    def test_apply_config_body_keeps_peer_verify_secret(self) -> None:
+        from doctor_dev_node.server import ApplyConfigBody, pydantic_to_dict
+
+        data = pydantic_to_dict(
+            ApplyConfigBody(
+                version=1,
+                node_id="node-a",
+                generated_at="unit-test",
+                peer_verify_secret="peer-secret-a",
+                cores=[],
+            )
+        )
+
+        self.assertEqual("peer-secret-a", data.get("peer_verify_secret"))
+
     def test_runtime_http_auth_matrix(self) -> None:
         from doctor_dev_node.peer_tokens import issue_peer_token
 

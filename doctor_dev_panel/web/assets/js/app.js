@@ -2537,7 +2537,11 @@ function renderDependencyEditor() {
 function dependencyOptions(type, selected) {
   selected = selected || "";
   if (type === "node") {
+    var currentNodeId = state.editorDraft ? String(state.editorDraft.node_id || "") : "";
     return state.nodes
+      .filter(function (n) {
+        return String(n.id || "") !== currentNodeId;
+      })
       .map(function (n) {
         return (
           '<option value="' +

@@ -302,6 +302,10 @@ class ApplyConfigBody(BaseModel):
     version: int = 1
     node_id: str = ""
     generated_at: Optional[str] = None
+    # The panel signs peer tokens with the target node's peer_verify_secret.
+    # Keep this top-level field in the node-side routing config; otherwise
+    # Pydantic drops it during /config/apply and peer runtime sync returns 401.
+    peer_verify_secret: str = ""
     cores: list[dict[str, Any]] = []
 
 
@@ -382,6 +386,14 @@ async def logs(limit: int = 300, level: str = "all", q: str = "", authorization:
 async def apply_config(body: ApplyConfigBody, authorization: Optional[str] = Header(default=None)) -> dict:
     check_auth(authorization)
     data = pydantic_to_dict(body)
+    previous_config = read_routing_config()
+    incoming_secret = str(data.get("peer_verify_secret") or "").strip()
+    previous_secret = str(previous_config.get("peer_verify_secret") or "").strip()
+    same_node = str(previous_config.get("node_id") or "") == str(data.get("node_id") or "")
+    if not incoming_secret and previous_secret and same_node:
+        # Backward-compatible safety: do not erase an already-applied peer
+        # verification secret if an older panel/client sends a config without it.
+        data["peer_verify_secret"] = previous_secret
     enabled_cores = [core for core in (data.get("cores") or []) if isinstance(core, dict) and core.get("enabled") is not False]
     if len(enabled_cores) > 1:
         logger.warning("routing config rejected: node_id=%s enabled_cores=%s", data.get("node_id"), len(enabled_cores))
@@ -403,7 +415,6 @@ async def apply_config(body: ApplyConfigBody, authorization: Optional[str] = Hea
             "errors": validation_errors,
             "summary": runtime.summary() | {"ok": False, "listener_errors": len(validation_errors)},
         }
-    previous_config = read_routing_config()
     previous_has_runtime = bool(previous_config.get("cores"))
     summary = await runtime.apply_config(data)
     if not summary.get("ok", True):

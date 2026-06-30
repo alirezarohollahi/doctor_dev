@@ -247,7 +247,13 @@ def normalize_core(payload: dict[str, Any], existing: Optional[dict[str, Any]] =
         dependencies_payload = []
     base["inbounds"] = [normalize_inbound(item, idx) for idx, item in enumerate(inbounds_payload)]
     base["balancers"] = [normalize_balancer(item, idx) for idx, item in enumerate(balancers_payload)]
-    base["dependencies"] = [normalize_dependency(item, idx) for idx, item in enumerate(dependencies_payload)]
+    dependencies = [normalize_dependency(item, idx) for idx, item in enumerate(dependencies_payload)]
+    # A node dependency must point to a different node. Keeping a self-node
+    # dependency is misleading in the UI and cannot produce peer-sync metadata.
+    base["dependencies"] = [
+        dep for dep in dependencies
+        if not (dep.get("type") == "node" and str(dep.get("ref_id") or "") == str(base.get("node_id") or ""))
+    ]
     base["advanced_config"] = normalize_advanced_config(base.get("advanced_config"))
     base.setdefault("last_applied_at", None)
     base.setdefault("last_error", "")
