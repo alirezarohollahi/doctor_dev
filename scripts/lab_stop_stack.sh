@@ -1,3 +1,4 @@
+
 #!/usr/bin/env bash
 set -Eeuo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -17,3 +18,6 @@ for pidfile in run/lab/*.pid; do
   fi
   rm -f "$pidfile"
 done
+
+
+

@@ -1,3 +1,4 @@
+
 # Peer Refresh Fix
 
 This fix makes remote `Node Inbound` endpoints update themselves from dependency runtime state.
@@ -17,3 +18,6 @@ A Node B balancer endpoint could reference an inbound on Node A. If Node A chang
 ## Expected behavior
 
 If `B -> NodeInbound(A/a-direct-9101)` and A changes from `1211` to `1209`, B should update after the dependency interval, or on the next failed/stale connection attempt, without a new B apply.
+
+
+

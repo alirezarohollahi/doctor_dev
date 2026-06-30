@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 
 import json
@@ -168,6 +169,9 @@ def remove_admin(username: str, allow_last: bool = False) -> bool:
     data["admins"] = [item for item in admins if item.get("username") != username]
     save_store(data)
     return True
+
+
+
 
 
 

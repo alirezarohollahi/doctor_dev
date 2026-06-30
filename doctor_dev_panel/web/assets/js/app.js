@@ -1,3 +1,4 @@
+
 "use strict";
 
 // ============================================================
@@ -961,11 +962,7 @@ function openNodeModal(node) {
     setVal("#apiKey", node.api_key);
     setVal("#peerTokenRefreshInterval", node.peer_token_refresh_interval || 30);
     setVal("#peerTokenTtl", node.peer_token_ttl || 120);
-    setVal("#certificate", node.certificate || "");
-
-    var tlsEl = null; // TLS is managed via certificate field
     var enabledEl = $("#nodeEnabled");
-    if (tlsEl) tlsEl.checked = !!node.tls;
     if (enabledEl) enabledEl.checked = !!node.enabled;
   } else {
     if (titleEl) titleEl.textContent = "Add Node";
@@ -1009,7 +1006,6 @@ function nodePayload() {
     api_key: get("#apiKey"),
     peer_token_refresh_interval: parseInt(get("#peerTokenRefreshInterval"), 10) || 30,
     peer_token_ttl: parseInt(get("#peerTokenTtl"), 10) || 120,
-    certificate: get("#certificate"),
     enabled: getChecked("#nodeEnabled"),
   };
 }
@@ -1498,7 +1494,6 @@ function defaultInbound() {
     target_host: "",
     target_port: "",
     target_balancer: "",
-    certificate: "",
     enabled: true,
     notes: "",
   };
@@ -1523,7 +1518,6 @@ function defaultEndpoint() {
     core_id: "",
     inbound_name: "",
     weight: 1,
-    certificate: "",
     enabled: true,
     notes: "",
   };
@@ -1640,13 +1634,6 @@ function renderInboundEditor() {
         '" data-field="random_count" value="' +
         escapeHtml(String(ib.random_count || 1)) +
         '"></div>' +
-        "</div>" +
-        '<div class="form-row"><div class="form-group"><label>Certificate (optional)</label>' +
-        '<textarea class="form-input" rows="2" data-in-index="' +
-        i +
-        '" data-field="certificate">' +
-        escapeHtml(ib.certificate || "") +
-        "</textarea></div>" +
         "</div>" +
         '<div class="form-row"><div class="form-group form-group--inline switch-field">' +
         '<label class="toggle-label toggle-label--inline toggle-label--state" for="inbEnabled_' +
@@ -2267,14 +2254,6 @@ function renderEndpointList(balancerIndex) {
         j +
         '" data-field="weight" min="1" value="' +
         escapeHtml(String(ep.weight || 1)) +
-        '"></div>' +
-        '<div class="form-group"><label>Certificate</label>' +
-        '<input type="text" class="form-input ep-field" data-ep-bal="' +
-        balancerIndex +
-        '" data-ep-index="' +
-        j +
-        '" data-field="certificate" value="' +
-        escapeHtml(ep.certificate || "") +
         '"></div>' +
         '<div class="form-group form-group--inline switch-field">' +
         '<label class="toggle-label toggle-label--inline toggle-label--state" for="epEnabled_' +
@@ -3388,6 +3367,9 @@ document.addEventListener("DOMContentLoaded", function () {
 // ============================================================
 
 checkSession();
+
+
+
 
 
 

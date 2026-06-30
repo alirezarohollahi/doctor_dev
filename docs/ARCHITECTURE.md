@@ -1,3 +1,4 @@
+
 # Doctor Dev clean architecture
 
 ## Goal
@@ -40,5 +41,8 @@ This patch creates the clean structure and moves the persistence layer under
 `stores/` while keeping old imports working. The next safe step is moving the
 large endpoint groups from `app.py` into `api/nodes.py`, `api/cores.py`,
 `api/logs.py`, and `api/system.py`.
+
+
+
 
 

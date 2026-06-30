@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 
 import json
@@ -137,7 +138,6 @@ def normalize_inbound(payload: dict[str, Any], index: int = 0) -> dict[str, Any]
         "target_host": _clean_name(payload.get("target_host"), "127.0.0.1"),
         "target_port": target_port_int or 80,
         "target_balancer": _clean_name(payload.get("target_balancer"), ""),
-        "certificate": str(payload.get("certificate") or ""),
         "enabled": bool(payload.get("enabled", True)),
         "notes": _clean_name(payload.get("notes"), ""),
     }
@@ -167,7 +167,6 @@ def normalize_endpoint(payload: dict[str, Any], index: int = 0) -> dict[str, Any
         "core_id": _clean_name(payload.get("core_id"), ""),
         "inbound_name": _clean_name(payload.get("inbound_name"), ""),
         "weight": max(0, weight_num),
-        "certificate": str(payload.get("certificate") or ""),
         "enabled": bool(payload.get("enabled", True)),
         "notes": _clean_name(payload.get("notes"), ""),
     }
@@ -334,7 +333,6 @@ def inbound_catalog(node_id: Optional[str] = None) -> list[dict[str, Any]]:
                     "random_count": random_count,
                     "ports_summary": f"random ×{random_count}" if is_random else ",".join(str(p) for p in ports),
                     "enabled": bool(core.get("enabled")) and bool(inbound.get("enabled")),
-                    "certificate": inbound.get("certificate", ""),
                 }
             )
     return catalog
@@ -369,7 +367,7 @@ def _node_sync_urls(node: dict[str, Any]) -> list[str]:
     if "://" in raw and parsed.scheme:
         schemes = [parsed.scheme]
     else:
-        schemes = ["https", "http"] if str(node.get("certificate") or "").strip() else ["http", "https"]
+        schemes = ["http"]
     urls: list[str] = []
     for scheme in schemes:
         for path in ("/runtime", "/config/export"):
@@ -611,7 +609,6 @@ def _enrich_node_dependencies(config_node_id: str, cores: list[dict[str, Any]]) 
             dep.pop("update_interval", None)
             dep["sync_interval"] = dep_interval
             dep["peer_host"] = _address_host(target_node.get("address"))
-            dep["certificate"] = str(target_node.get("certificate") or "")
     return cores
 
 
@@ -712,6 +709,9 @@ def disable_cores_for_node(node_id: str, *, error: str = "Linked node was remove
         data["version"] = 1
         save_store(data)
     return changed
+
+
+
 
 
 

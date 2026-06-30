@@ -1,3 +1,4 @@
+
 # Consistency audit notes
 
 This project separates three values that used to be mixed together:
@@ -14,3 +15,6 @@ Rules:
 - Runtime listener ports only come from `runtime.summary().listeners`.
 - Panel UI must show desired API port and actual runtime API separately so mismatches are visible.
 - After every successful apply, the panel must immediately refresh runtime cache.
+
+
+

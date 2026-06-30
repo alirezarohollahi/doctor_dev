@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 
 import json
@@ -47,5 +48,8 @@ def write_routing_config(data: dict[str, Any]) -> None:
                 os.unlink(tmp)
             except OSError:
                 pass
+
+
+
 
 

@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 
 import logging
@@ -19,12 +20,6 @@ _SENSITIVE_KEYS = {
     "access_token",
     "refresh_token",
     "private_key",
-    "ssl_key_file",
-    "ssl_key_path",
-    "key_file",
-    "key_path",
-    "certificate",
-    "cert",
 }
 
 
@@ -184,6 +179,9 @@ def filter_lines(lines: Iterable[str], *, level: str = 'all', query: str = '') -
             continue
         result.append(line)
     return result
+
+
+
 
 
 

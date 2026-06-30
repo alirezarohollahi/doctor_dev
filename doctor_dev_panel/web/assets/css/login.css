@@ -1,3 +1,4 @@
+
 @font-face {
   font-family: "Vazirmatn";
   src: url("/assets/fonts/vazirmatn-latin-400-normal.woff2") format("woff2");
@@ -404,6 +405,9 @@ input:focus {
   .logo-wrap { align-items: flex-start; flex-direction: column; }
   .feature-grid { grid-template-columns: 1fr; }
 }
+
+
+
 
 
 

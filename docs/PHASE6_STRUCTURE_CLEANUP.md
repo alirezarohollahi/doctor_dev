@@ -1,3 +1,4 @@
+
 # Phase 6 — API module split and composition-root cleanup
 
 This phase does not add product features. It only makes the existing panel code easier to change and test.
@@ -39,3 +40,6 @@ bash scripts/quality_check.sh
 ```
 
 The quality suite imports the panel app and checks that key routes are still registered.
+
+
+

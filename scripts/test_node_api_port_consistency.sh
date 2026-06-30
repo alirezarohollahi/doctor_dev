@@ -1,3 +1,4 @@
+
 #!/usr/bin/env bash
 set -Eeuo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -42,3 +43,6 @@ for label, payload in [("health", health), ("runtime", runtime)]:
         raise SystemExit(f"{label} reported port {got}, expected {expected}: {payload}")
 print(f"[PASS] health/runtime report actual bound API port {expected}")
 PY
+
+
+

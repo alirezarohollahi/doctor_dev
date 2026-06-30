@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 
 import base64
@@ -52,5 +53,8 @@ def verify_peer_token(token: str, *, secret: str, target_node_id: str = "", targ
     if target_core_id and payload.get("target_core_id") != target_core_id:
         raise ValueError("peer token target core mismatch")
     return payload
+
+
+
 
 

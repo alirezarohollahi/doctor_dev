@@ -1,3 +1,4 @@
+
 # Node runtime contract
 
 The node exposes one management API port: `API_PORT`. Runtime listener ports are created from inbound config.
@@ -13,7 +14,7 @@ The node exposes one management API port: `API_PORT`. Runtime listener ports are
 ## Runtime export must include
 
 - `node_id`
-- API host/port/tls info
+- API host/port info
 - active core id/name
 - desired inbounds/balancers summary
 - actual listeners with real assigned ports
@@ -43,3 +44,6 @@ python main.py --mode node --env node.env --host 127.0.0.1 --port 9098
 ```
 
 then `/health` and `/runtime` must report `port: 9098` and `api_port: 9098`, even if `node.env` still contains `API_PORT=62051`. The running process sets `DOCTOR_DEV_NODE_BOUND_HOST` and `DOCTOR_DEV_NODE_BOUND_API_PORT` before importing the ASGI app, and those bound values are the source of truth for runtime self-reporting.
+
+
+

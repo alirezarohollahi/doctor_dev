@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 
 from typing import Any, Literal, Optional
@@ -17,7 +18,6 @@ class NodeBody(BaseModel):
     api_key: str = Field(min_length=1, max_length=255)
     peer_token_refresh_interval: int = Field(default=30, ge=5, le=86400)
     peer_token_ttl: int = Field(default=120, ge=10, le=86400)
-    certificate: str = Field(default="", max_length=20000)
     enabled: bool = True
 
 
@@ -32,7 +32,6 @@ class CoreInboundBody(BaseModel):
     target_host: str = Field(default="127.0.0.1", max_length=255)
     target_port: int = Field(default=80, ge=1, le=65535)
     target_balancer: str = Field(default="", max_length=120)
-    certificate: str = Field(default="", max_length=20000)
     enabled: bool = True
     notes: str = Field(default="", max_length=500)
 
@@ -70,7 +69,6 @@ class CoreBalancerEndpointBody(BaseModel):
     core_id: str = Field(default="", max_length=120)
     inbound_name: str = Field(default="", max_length=120)
     weight: float = Field(default=1, ge=0)
-    certificate: str = Field(default="", max_length=20000)
     enabled: bool = True
     notes: str = Field(default="", max_length=500)
 
@@ -125,6 +123,9 @@ class CoreBody(BaseModel):
     balancers: list[CoreBalancerBody] = Field(default_factory=list)
     dependencies: list[CoreDependencyBody] = Field(default_factory=list)
     advanced_config: CoreAdvancedConfigBody = Field(default_factory=CoreAdvancedConfigBody)
+
+
+
 
 
 

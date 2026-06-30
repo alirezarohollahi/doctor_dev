@@ -1,3 +1,4 @@
+
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
@@ -182,9 +183,7 @@ case "$cmd" in
     ;;
   health)
     port="$(safe_env_get PORT)"; port="${port:-8080}"
-    use_tls="$(safe_env_get USE_TLS)"; scheme="http"; curl_opts="-fsS"
-    if [[ "$use_tls" == "1" ]]; then scheme="https"; curl_opts="-fkS"; fi
-    curl $curl_opts "${scheme}://127.0.0.1:${port}/health" || {
+    curl -fsS "http://127.0.0.1:${port}/health" || {
       cecho "${YELLOW}Local health check failed. Is the service running on port ${port}?${RESET}"; exit 1;
     }
     echo
@@ -209,6 +208,9 @@ case "$cmd" in
     exit 2
     ;;
 esac
+
+
+
 
 
 

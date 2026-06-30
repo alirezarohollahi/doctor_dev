@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 
 import os
@@ -19,6 +20,9 @@ SECURITY_HEADERS = {
     "Referrer-Policy": "strict-origin-when-cross-origin",
     "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
 }
+
+
+
 
 
 

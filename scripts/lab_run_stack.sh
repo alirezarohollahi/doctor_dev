@@ -1,3 +1,4 @@
+
 #!/usr/bin/env bash
 set -Eeuo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -43,3 +44,6 @@ echo "Panel: http://SERVER_IP:9000"
 echo "Node A API: http://127.0.0.1:9001"
 echo "Node B API: http://127.0.0.1:9002"
 echo "Logs: tail -f logs/lab/*.stdout.log logs/lab/*/*.log"
+
+
+

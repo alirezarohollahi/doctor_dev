@@ -1,3 +1,4 @@
+
 # Doctor Dev changelog by phases
 
 ## Phase 1
@@ -84,3 +85,8 @@ The original cleanup plan is complete through Phase 8. Future work should only h
 - Node runtime now refreshes due peer runtime before target resolution and force-refreshes once after stale target failures.
 - Added peer sync diagnostics to `/runtime`: `peer_sync_errors`, `peer_sync_cache_nodes`, and `peer_sync_last`.
 - Quality suite passes: `bash scripts/quality_check.sh`.
+
+## HTTP-only cleanup
+
+- Removed project-managed secure-file settings, storage fields, UI inputs, installer prompts, and custom trust-material verification paths.
+- Panel and node now run HTTP control-plane by default for the current project scope.

@@ -1,3 +1,4 @@
+
 #!/usr/bin/env bash
 set -Eeuo pipefail
 BASE_URL="${BASE_URL:-http://127.0.0.1:62051}"
@@ -8,3 +9,6 @@ echo "== runtime"
 curl -fsS -H "Authorization: Bearer $API_KEY" "$BASE_URL/runtime"; echo
 echo "== config/export alias"
 curl -fsS -H "Authorization: Bearer $API_KEY" "$BASE_URL/config/export"; echo
+
+
+

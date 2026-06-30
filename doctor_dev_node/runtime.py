@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 
 import asyncio
@@ -6,7 +7,6 @@ import json
 import os
 import random
 import socket
-import ssl
 import time
 from urllib.request import Request, urlopen
 from dataclasses import dataclass
@@ -398,8 +398,7 @@ class ForwarderRuntime:
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
         req = Request(token_url, data=body, headers=headers, method="POST")
-        context = ssl._create_unverified_context() if token_url.startswith("https://") else None
-        with urlopen(req, timeout=PEER_SYNC_TIMEOUT, context=context) as response:  # noqa: S310
+        with urlopen(req, timeout=PEER_SYNC_TIMEOUT) as response:  # noqa: S310
             raw = response.read(1024 * 64).decode("utf-8", errors="replace")
             data = json.loads(raw) if raw else {}
         token = str(data.get("token") or "")
@@ -414,7 +413,6 @@ class ForwarderRuntime:
     def _fetch_peer_export(self, endpoint: dict[str, Any]) -> Optional[dict[str, Any]]:
         urls = endpoint.get("sync_urls") if isinstance(endpoint.get("sync_urls"), list) else []
         token = self._fetch_peer_token(endpoint)
-        certificate = str(endpoint.get("certificate") or "")
         if not urls or not token:
             return None
         last_error = ""
@@ -422,10 +420,7 @@ class ForwarderRuntime:
             try:
                 headers = {"Accept": "application/json", "User-Agent": "DoctorDevNode/PeerSync", "X-Doctor-Node-Token": token}
                 req = Request(str(url), headers=headers)
-                context = None
-                if str(url).startswith("https://"):
-                    context = ssl.create_default_context(cadata=certificate) if certificate.strip() else ssl._create_unverified_context()
-                with urlopen(req, timeout=PEER_SYNC_TIMEOUT, context=context) as response:  # noqa: S310 - admin configured peer URL
+                with urlopen(req, timeout=PEER_SYNC_TIMEOUT) as response:  # noqa: S310 - admin configured peer URL
                     raw = response.read(1024 * 512).decode("utf-8", errors="replace")
                     parsed = json.loads(raw) if raw else {}
                     if isinstance(parsed, dict) and parsed.get("ok") is not False:
@@ -1070,6 +1065,9 @@ class ForwarderRuntime:
 
 
 runtime = ForwarderRuntime()
+
+
+
 
 
 

@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 
 import os
@@ -16,5 +17,8 @@ def check_auth(authorization: Optional[str]) -> None:
         return
     if authorization != f"Bearer {key}":
         raise HTTPException(status_code=401, detail="Invalid or missing API key.")
+
+
+
 
 

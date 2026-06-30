@@ -1,3 +1,4 @@
+
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
@@ -27,9 +28,6 @@ ARG_PUBLIC_HOST=""
 ARG_PANEL_PORT=""
 ARG_ADMIN_USER=""
 ARG_ADMIN_PASSWORD=""
-ARG_TLS_MODE=""
-ARG_CERT_PATH=""
-ARG_KEY_PATH=""
 ARG_NODE_CLI_NAME=""
 ARG_API_KEY=""
 ARG_NODE_HOST=""
@@ -90,9 +88,6 @@ parse_common_args(){
       --panel-port|--port) need_arg "$@"; ARG_PANEL_PORT="$2"; shift 2 ;;
       --admin-user|--admin-username) need_arg "$@"; ARG_ADMIN_USER="$2"; shift 2 ;;
       --admin-password|--password) need_arg "$@"; ARG_ADMIN_PASSWORD="$2"; shift 2 ;;
-      --tls|--tls-mode) need_arg "$@"; ARG_TLS_MODE="$2"; shift 2 ;;
-      --cert-path|--ssl-cert-path) need_arg "$@"; ARG_CERT_PATH="$2"; shift 2 ;;
-      --key-path|--ssl-key-path) need_arg "$@"; ARG_KEY_PATH="$2"; shift 2 ;;
       --node-cli-name|--cli-name) need_arg "$@"; ARG_NODE_CLI_NAME="$2"; shift 2 ;;
       --api-key) need_arg "$@"; ARG_API_KEY="$2"; shift 2 ;;
       --node-host) need_arg "$@"; ARG_NODE_HOST="$2"; shift 2 ;;
@@ -308,8 +303,6 @@ require_port_available_or_fail(){
   fail "$label $port is already used. See the process/service details above."
 }
 
-require_file_readable(){ [[ -r "$1" ]] || fail "File is not readable: $1"; }
-
 generate_uuid(){ "$PYTHON_BIN" - <<'PY'
 import uuid
 print(uuid.uuid4())
@@ -320,9 +313,9 @@ install_packages(){
   info "Checking OS packages..."
   if command -v apt-get >/dev/null 2>&1; then
     apt-get update -y
-    DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-venv python3-pip git curl ca-certificates openssl nano rsync
+    DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-venv python3-pip git curl nano rsync
   else
-    warn "apt-get not found. Make sure python3, venv, pip, git, curl, rsync and openssl are installed."
+    warn "apt-get not found. Make sure python3, venv, pip, git, curl and rsync are installed."
   fi
 }
 
@@ -552,7 +545,7 @@ PY
 }
 
 write_panel_env(){
-  local host="$1" port="$2" public_host="$3" public_scheme="$4" use_tls="$5" cert_path="$6" key_path="$7"
+  local host="$1" port="$2" public_host="$3" public_scheme="http"
   local debug_value="${ARG_DEBUG:-${DEBUG:-false}}"
   case "${debug_value,,}" in 1|true|yes|on|debug|enabled) debug_value="true" ;; *) debug_value="false" ;; esac
   prepare_panel_dirs
@@ -569,11 +562,7 @@ PUBLIC_SCHEME=$public_scheme
 
 SESSION_COOKIE=doctor_dev_session
 SESSION_TTL_SECONDS=43200
-COOKIE_SECURE=$use_tls
-
-USE_TLS=$use_tls
-SSL_CERT_PATH=$cert_path
-SSL_KEY_PATH=$key_path
+COOKIE_SECURE=0
 
 ADMIN_STORE_PATH=$ADMIN_STORE_PATH
 DOCTOR_DEV_DATA_DIR=$PANEL_DATA_DIR
@@ -621,29 +610,6 @@ SERVICE
 
 install_panel_service(){ write_panel_service; systemctl enable "$PANEL_SERVICE_NAME" >/dev/null; systemctl restart "$PANEL_SERVICE_NAME"; ok "Panel service started."; }
 
-configure_panel_tls(){
-  local install_target="$1" domain="$2" tls_choice cert_path key_path use_tls public_scheme
-  use_tls="0"; public_scheme="http"; cert_path=""; key_path=""
-  tls_choice="${ARG_TLS_MODE:-}"
-  if [[ -z "$tls_choice" ]]; then
-    { echo; cecho "${BOLD}TLS / Certificate mode${RESET}"; cecho "  1) No TLS now; use http or add reverse proxy later"; cecho "  2) I already have certificate/key paths"; cecho "  3) Issue certificate here with certbot standalone"; } >&2
-    tls_choice="$(ask "Choose TLS mode" "1")"
-  fi
-  case "${tls_choice,,}" in
-    2|manual|cert|certificate)
-      cert_path="${ARG_CERT_PATH:-$(ask_non_empty "Fullchain/cert path")}"; key_path="${ARG_KEY_PATH:-$(ask_non_empty "Private key path")}"; require_file_readable "$cert_path"; require_file_readable "$key_path"; use_tls="1"; public_scheme="https" ;;
-    3|certbot|letsencrypt)
-      [[ "$install_target" == "domain" ]] || fail "Certbot mode requires domain install target."
-      command -v apt-get >/dev/null 2>&1 && DEBIAN_FRONTEND=noninteractive apt-get install -y certbot
-      command -v certbot >/dev/null 2>&1 || fail "certbot is not installed."
-      warn "Make sure DNS points to this server and port 80 is open." >&2
-      certbot certonly --standalone -d "$domain" >&2
-      cert_path="/etc/letsencrypt/live/$domain/fullchain.pem"; key_path="/etc/letsencrypt/live/$domain/privkey.pem"; use_tls="1"; public_scheme="https" ;;
-    *) use_tls="0"; public_scheme="http" ;;
-  esac
-  echo "$use_tls|$public_scheme|$cert_path|$key_path"
-}
-
 install_panel(){
   header "Doctor Dev Panel Installer" "Clean install with verified admin and data integrity safeguards"
   need_root
@@ -658,7 +624,7 @@ install_panel(){
   setup_venv "$PANEL_APP_DIR"
 
   step "5/8 Configure panel endpoint"
-  local target_choice install_target public_host bind_host port admin_user admin_pass tls_result use_tls public_scheme cert_path key_path
+  local target_choice install_target public_host bind_host port admin_user admin_pass public_scheme
   target_choice="${ARG_TARGET:-}"
   if [[ -z "$target_choice" ]]; then
     cecho "${BOLD}Install target${RESET}"; cecho "  1) Install on IP"; cecho "  2) Install on domain"; cecho "  3) Localhost only"
@@ -679,9 +645,9 @@ install_panel(){
   step "6/8 Configure admin account"
   admin_user="${ARG_ADMIN_USER:-$(ask_non_empty "Admin username" "admin")}"; [[ -n "$admin_user" ]] || fail "Admin username cannot be empty."
   admin_pass="$(ask_password)"
-  tls_result="$(configure_panel_tls "$install_target" "$public_host")"; IFS='|' read -r use_tls public_scheme cert_path key_path <<< "$tls_result"
+  public_scheme="http"
   step "7/8 Write environment and verify admin password"
-  write_panel_env "$bind_host" "$port" "$public_host" "$public_scheme" "$use_tls" "$cert_path" "$key_path"
+  write_panel_env "$bind_host" "$port" "$public_host" "$public_scheme"
   create_admin_store "$admin_user" "$admin_pass"
   step "8/8 Install CLI and service"
   install_panel_cli
@@ -733,7 +699,7 @@ prepare_node_dirs(){ mkdir -p "$NODE_CONFIG_DIR" "$NODE_DATA_DIR" "$NODE_LOG_DIR
 install_node_cli(){ info "Installing node CLI: /usr/local/bin/$NODE_CLI_NAME"; install -m 0755 "$NODE_APP_DIR/scripts/doctor-node" "/usr/local/bin/$NODE_CLI_NAME"; ok "Node CLI installed. Try: $NODE_CLI_NAME help"; }
 
 write_node_env(){
-  local api_key="$1" node_host="$2" api_port="$3" cert_file="$4" key_file="$5"
+  local api_key="$1" node_host="$2" api_port="$3"
   local debug_value="${ARG_DEBUG:-${DEBUG:-false}}"
   case "${debug_value,,}" in 1|true|yes|on|debug|enabled) debug_value="true" ;; *) debug_value="false" ;; esac
   prepare_node_dirs
@@ -743,9 +709,6 @@ DOCTOR_DEV_MODE=node
 API_KEY=$api_key
 NODE_HOST=$node_host
 API_PORT=$api_port
-SSL_CERT_FILE=$cert_file
-SSL_KEY_FILE=$key_file
-
 DOCTOR_DEV_NODE_DATA_DIR=$NODE_DATA_DIR
 DOCTOR_DEV_NODE_LOG_DIR=$NODE_LOG_DIR
 DOCTOR_DEV_NODE_LOG_FILE=$NODE_LOG_DIR/node.log
@@ -789,7 +752,7 @@ install_node_service(){ write_node_service; systemctl enable "$NODE_SERVICE_NAME
 install_node(){
   header "Doctor Dev Node Installer" "Clean node install with validated ports and names"
   need_root; install_packages
-  local cli_name api_default api_key node_host api_port tls_choice cert_file key_file
+  local cli_name api_default api_key node_host api_port
   cli_name="${ARG_NODE_CLI_NAME:-${DOCTOR_DEV_NODE_CLI_NAME:-doctor-node}}"; valid_cli_name "$cli_name" || fail "Invalid CLI name."
   node_vars "$cli_name"
   clean_existing_or_fail node "$cli_name"
@@ -803,11 +766,7 @@ install_node(){
     api_port="$(ask_port_named "API_PORT / control-plane port" "62051" "$node_host")"
   fi
   ok "Node uses a single API_PORT. Data-plane listeners are created from inbound runtime config."
-  cert_file=""; key_file=""
-  tls_choice="${ARG_TLS_MODE:-}"
-  if [[ -z "$tls_choice" ]]; then cecho "${BOLD}SSL/TLS Configuration${RESET}"; cecho "  1) No SSL/TLS now"; cecho "  2) I already have certificate/key paths"; tls_choice="$(ask "Choose SSL/TLS mode" "1")"; fi
-  if [[ "$tls_choice" == "2" || "${tls_choice,,}" == "manual" ]]; then cert_file="${ARG_CERT_PATH:-$(ask_non_empty "SSL_CERT_FILE")}"; key_file="${ARG_KEY_PATH:-$(ask_non_empty "SSL_KEY_FILE")}"; require_file_readable "$cert_file"; require_file_readable "$key_file"; fi
-  write_node_env "$api_key" "$node_host" "$api_port" "$cert_file" "$key_file"
+  write_node_env "$api_key" "$node_host" "$api_port"
   install_node_cli
   if ask_yes_no "Install and start node systemd service now?" "y"; then install_node_service; else write_node_service; warn "Node service was not started. Start later with: $NODE_CLI_NAME start"; fi
   echo; ok "Doctor Dev Node installation finished."; cecho "${BOLD}CLI:${RESET}   ${GREEN}$NODE_CLI_NAME help${RESET}"; cecho "${BOLD}Health:${RESET} ${GREEN}http://127.0.0.1:${api_port}/health${RESET}"
@@ -863,6 +822,9 @@ main(){
 }
 
 main "$@"
+
+
+
 
 
 

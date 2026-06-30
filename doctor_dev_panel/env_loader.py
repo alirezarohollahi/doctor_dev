@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 
 import os
@@ -22,6 +23,9 @@ def load_env_file(path: Optional[Union[str, os.PathLike[str]]]) -> None:
         value = value.strip().strip('"').strip("'")
         if key and key not in os.environ:
             os.environ[key] = value
+
+
+
 
 
 

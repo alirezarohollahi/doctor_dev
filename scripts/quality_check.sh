@@ -1,3 +1,4 @@
+
 #!/usr/bin/env bash
 set -Eeuo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -31,3 +32,6 @@ echo "[9/9] Full quality suite"
 python3 -W ignore::DeprecationWarning -m unittest tests.test_project_quality tests.test_node_http_auth tests.test_panel_runtime_sync tests.test_panel_node_e2e tests.test_web_static_assets
 
 echo "[PASS] Doctor Dev quality checks passed."
+
+
+

@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 
 import argparse
@@ -145,12 +146,10 @@ def api_identity() -> dict[str, Any]:
     """
     host = os.getenv("DOCTOR_DEV_NODE_BOUND_HOST") or os.getenv("NODE_HOST") or "127.0.0.1"
     port = _int_env("DOCTOR_DEV_NODE_BOUND_API_PORT", "API_PORT", default=62051)
-    tls = bool(os.getenv("SSL_CERT_FILE") and os.getenv("SSL_KEY_FILE"))
     return {
         "host": host,
         "port": port,
         "api_port": port,
-        "tls": tls,
     }
 
 
@@ -328,15 +327,13 @@ async def status(authorization: Optional[str] = Header(default=None)) -> dict:
     check_auth(authorization)
     logger.info("status requested")
     if is_debug_enabled():
-        logger.debug("node.status.env %s", debug_json({"NODE_HOST": os.getenv("NODE_HOST"), "API_PORT": os.getenv("API_PORT"), "SSL_CERT_FILE": os.getenv("SSL_CERT_FILE"), "SSL_KEY_FILE": "***" if os.getenv("SSL_KEY_FILE") else ""}))
+        logger.debug("node.status.env %s", debug_json({"NODE_HOST": os.getenv("NODE_HOST"), "API_PORT": os.getenv("API_PORT")}))
     return {
         "status": "running",
         "version": __version__,
         "config": {
             "node_host": api_identity()["host"],
             "api_port": api_identity()["port"],
-            "ssl_cert_file": os.getenv("SSL_CERT_FILE", ""),
-            "ssl_key_file": "***" if os.getenv("SSL_KEY_FILE") else "",
             "peer_token_auth": bool(read_routing_config().get("peer_verify_secret")),
         },
         "routing": runtime_summary(),
@@ -476,21 +473,19 @@ def main() -> None:
     os.environ["API_PORT"] = str(port)
     os.environ["DOCTOR_DEV_NODE_BOUND_HOST"] = str(host)
     os.environ["DOCTOR_DEV_NODE_BOUND_API_PORT"] = str(port)
-    ssl_cert = os.getenv("SSL_CERT_FILE") or None
-    ssl_key = os.getenv("SSL_KEY_FILE") or None
-    use_tls = bool(ssl_cert and ssl_key)
     uvicorn.run(
         "doctor_dev_node.server:app",
         host=host,
         port=port,
         log_level="debug" if is_debug_enabled() else os.getenv("UVICORN_LOG_LEVEL", "info"),
-        ssl_certfile=ssl_cert if use_tls else None,
-        ssl_keyfile=ssl_key if use_tls else None,
     )
 
 
 if __name__ == "__main__":
     main()
+
+
+
 
 
 

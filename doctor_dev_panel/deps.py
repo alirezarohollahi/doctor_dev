@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 
 import json
@@ -123,3 +124,6 @@ def validate_manual_json_config(raw: str) -> dict[str, Any]:
         "warnings": warnings,
         "normalized": parsed if not errors else None,
     }
+
+
+

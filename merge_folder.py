@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
@@ -19,7 +20,6 @@ EXCLUDED_DIRS = {
     "out",
     ".vscode",
     ".idea",
-    "cert",
     ".venv"
 }
 
@@ -149,6 +149,9 @@ if __name__ == "__main__":
     print(f"🔍 شروع اسکن پوشه: {target_dir}")
     print(f"📄 فایل خروجی: {output_path}")
     merge_folder(target_dir, output_path)
+
+
+
 
 
 

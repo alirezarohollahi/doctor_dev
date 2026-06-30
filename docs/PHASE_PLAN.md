@@ -1,3 +1,4 @@
+
 # Doctor Dev cleanup plan
 
 The current stabilization plan is complete.
@@ -16,3 +17,6 @@ The current stabilization plan is complete.
 ## Current rule
 
 Do not add new features unless explicitly requested. Use the current codebase for bug fixes, runtime consistency fixes, and deployment hardening only.
+
+
+

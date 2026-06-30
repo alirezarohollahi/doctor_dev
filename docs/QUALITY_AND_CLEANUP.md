@@ -1,3 +1,4 @@
+
 # Quality and cleanup checks
 
 This phase focuses on reliability and maintainability without adding product features.
@@ -10,6 +11,7 @@ This phase focuses on reliability and maintainability without adding product fea
 - Peer token verification rejects wrong signatures and target mismatches.
 - Failed node config apply restores the previous working runtime config when possible.
 - Node env examples expose only `API_PORT`; inbound listener ports are runtime config, not fixed node service ports.
+- Project-managed secure-file fields were removed from panel, node, installer, and runtime config paths.
 
 ## Run all checks
 
@@ -20,3 +22,6 @@ bash scripts/quality_check.sh
 ## Scope rule
 
 For now the project should only receive fixes and cleanup for the current panel/node/runtime architecture. Do not add new product features unless explicitly requested.
+
+
+

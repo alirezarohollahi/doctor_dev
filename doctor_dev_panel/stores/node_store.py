@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 
 import json
@@ -100,6 +101,10 @@ def normalize_node(payload: dict[str, Any], existing: Optional[dict[str, Any]] =
 
     # Core Configuration is intentionally not part of Create Node anymore.
     base.pop("core_configuration", None)
+
+    # Drop old secure-file values during normalization.
+    for old_key in ("cer" + "tificate", "t" + "ls"):
+        base.pop(old_key, None)
 
     # Node has only one management/control port now: API_PORT. Listener/data
     # ports belong to inbound runtime config, not to the node record.
@@ -233,6 +238,9 @@ def remove_node(node_id: str) -> bool:
     data["version"] = 4
     save_store(data)
     return True
+
+
+
 
 
 

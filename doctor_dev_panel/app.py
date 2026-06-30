@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 
 import logging
@@ -134,3 +135,6 @@ async def spa_fallback(full_path: str):
     if path.startswith("assets/") or path in {"favicon.ico", "robots.txt", "manifest.json"}:
         raise HTTPException(status_code=404, detail="Static asset not found.")
     return FileResponse(str(WEB_DIR / "index.html"))
+
+
+

@@ -1,3 +1,4 @@
+
 import socket
 import sys
 import time
@@ -19,4 +20,7 @@ with socket.create_connection((HOST, PORT), timeout=5) as sock:
         print(f"[REPLY] {data.decode('utf-8', errors='replace')}")
 
         time.sleep(1)
+
+
+
 

@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 
 import unittest
@@ -41,3 +42,5 @@ class WebStaticAssetTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+

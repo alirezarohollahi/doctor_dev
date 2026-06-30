@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 
 import logging
@@ -83,3 +84,6 @@ async def admins(user: str = Depends(require_admin)) -> dict:
 @router.get("/health")
 async def health() -> dict:
     return {"status": "ok", "app": APP_TITLE, "version": __version__}
+
+
+

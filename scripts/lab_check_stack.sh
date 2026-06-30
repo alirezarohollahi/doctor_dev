@@ -1,3 +1,4 @@
+
 #!/usr/bin/env bash
 set -Eeuo pipefail
 NODE_A_KEY="lab-node-a-key-11111111-1111-1111-1111-111111111111"
@@ -17,3 +18,6 @@ curl -fsS http://127.0.0.1:9002/health; echo
 
 echo "Node B runtime:"
 curl -fsS -H "Authorization: Bearer ${NODE_B_KEY}" http://127.0.0.1:9002/runtime; echo
+
+
+

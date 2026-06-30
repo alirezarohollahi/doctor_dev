@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python3
 from __future__ import annotations
 
@@ -11,7 +12,6 @@ import uvicorn
 from doctor_dev_panel.env_loader import load_env_file
 
 
-_TRUE_VALUES = {"1", "true", "yes", "on", "enabled"}
 _NODE_MODES = {"node", "doctor-node", "doctor-dev-node", "agent", "worker"}
 _PANEL_MODES = {"panel", "doctor-panel", "doctor-dev-panel", "admin", "web"}
 _MODE_ENV_NAMES = (
@@ -32,12 +32,6 @@ def _env_value(*names: str) -> str:
             return str(value).strip()
     return ""
 
-
-def _env_flag(*names: str, default: bool = False) -> bool:
-    value = _env_value(*names)
-    if not value:
-        return default
-    return value.lower() in _TRUE_VALUES
 
 
 def _normalize_mode(value: Optional[str]) -> Optional[str]:
@@ -152,9 +146,6 @@ def run_panel(args: argparse.Namespace, env_path: Optional[Path]) -> None:
     log_path = setup_panel_logging()
     log_level = "debug" if is_debug_enabled() else os.getenv("UVICORN_LOG_LEVEL", "info")
 
-    ssl_cert = os.getenv("SSL_CERT_PATH") or os.getenv("SSL_CERT_FILE") or None
-    ssl_key = os.getenv("SSL_KEY_PATH") or os.getenv("SSL_KEY_FILE") or None
-    use_tls = _env_flag("USE_TLS", default=False) and bool(ssl_cert and ssl_key)
 
     print(f"Doctor Dev mode: panel")
     print(f"Doctor Dev env file: {env_path or '(not loaded)'}")
@@ -166,8 +157,6 @@ def run_panel(args: argparse.Namespace, env_path: Optional[Path]) -> None:
         port=port,
         log_level=log_level,
         reload=os.getenv("APP_ENV") == "development",
-        ssl_certfile=ssl_cert if use_tls else None,
-        ssl_keyfile=ssl_key if use_tls else None,
     )
 
 
@@ -187,9 +176,6 @@ def run_node(args: argparse.Namespace, env_path: Optional[Path]) -> None:
     os.environ["DOCTOR_DEV_NODE_BOUND_API_PORT"] = str(port)
 
     log_path = setup_node_logging()
-    ssl_cert = os.getenv("SSL_CERT_FILE") or os.getenv("SSL_CERT_PATH") or None
-    ssl_key = os.getenv("SSL_KEY_FILE") or os.getenv("SSL_KEY_PATH") or None
-    use_tls = bool(ssl_cert and ssl_key)
 
     print(f"Doctor Dev mode: node")
     print(f"Doctor Dev env file: {env_path or '(not loaded)'}")
@@ -200,8 +186,6 @@ def run_node(args: argparse.Namespace, env_path: Optional[Path]) -> None:
         host=host,
         port=port,
         log_level="debug" if is_debug_enabled() else os.getenv("UVICORN_LOG_LEVEL", "info"),
-        ssl_certfile=ssl_cert if use_tls else None,
-        ssl_keyfile=ssl_key if use_tls else None,
     )
 
 
@@ -217,6 +201,9 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+
 
 
 

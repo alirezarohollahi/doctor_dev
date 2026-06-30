@@ -1,3 +1,4 @@
+
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
@@ -128,10 +129,7 @@ case "$cmd" in
     elif [[ "$sub" == "show" ]]; then
       port="$(safe_env_get API_PORT)"; port="${port:-62051}"
       key="$(safe_env_get API_KEY)"
-      cert_file="$(safe_env_get SSL_CERT_FILE)"
-      scheme="http"; curl_opts="-fsS"
-      if [[ -n "$cert_file" ]]; then scheme="https"; curl_opts="-fkS"; fi
-      curl $curl_opts -H "Authorization: Bearer $key" "${scheme}://127.0.0.1:${port}/config" || { cecho "${YELLOW}Cannot read node config from API port ${port}.${RESET}"; exit 1; }
+      curl -fsS -H "Authorization: Bearer $key" "http://127.0.0.1:${port}/config" || { cecho "${YELLOW}Cannot read node config from API port ${port}.${RESET}"; exit 1; }
       echo
     else
       cecho "${YELLOW}Usage: ${CLI_NAME} config [edit|show]${RESET}"; exit 2
@@ -139,10 +137,7 @@ case "$cmd" in
     ;;
   health)
     port="$(safe_env_get API_PORT)"; port="${port:-62051}"
-    cert_file="$(safe_env_get SSL_CERT_FILE)"
-    scheme="http"; curl_opts="-fsS"
-    if [[ -n "$cert_file" ]]; then scheme="https"; curl_opts="-fkS"; fi
-    curl $curl_opts "${scheme}://127.0.0.1:${port}/health" || { cecho "${YELLOW}Local health check failed. Is the node API running on API_PORT ${port}?${RESET}"; exit 1; }
+    curl -fsS "http://127.0.0.1:${port}/health" || { cecho "${YELLOW}Local health check failed. Is the node API running on API_PORT ${port}?${RESET}"; exit 1; }
     echo
     ;;
   update)
@@ -155,6 +150,9 @@ case "$cmd" in
   help|-h|--help) help_screen ;;
   *) cecho "${RED}Unknown command: $cmd${RESET}"; echo; help_screen; exit 2 ;;
 esac
+
+
+
 
 
 

@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 
 import math
@@ -40,6 +41,9 @@ def node_id_or_empty(value: Any) -> str:
 def core_id_or_empty(value: Any) -> str:
     text = clean_identifier(value)
     return text if is_valid_core_id(text) else ""
+
+
+
 
 
 

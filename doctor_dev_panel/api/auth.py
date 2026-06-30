@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 
 import os
@@ -18,7 +19,7 @@ async def login(body: LoginBody) -> JSONResponse:
         raise HTTPException(status_code=401, detail="Invalid username or password.")
 
     response = JSONResponse({"ok": True, "username": body.username})
-    secure_cookie = os.getenv("COOKIE_SECURE", "0") == "1" or os.getenv("USE_TLS", "0") == "1"
+    secure_cookie = os.getenv("COOKIE_SECURE", "0") == "1"
     response.set_cookie(
         SESSION_COOKIE,
         make_session(body.username),
@@ -40,3 +41,6 @@ async def logout() -> JSONResponse:
 @router.get("/api/auth/me")
 async def me(user: str = Depends(require_admin)) -> dict:
     return {"ok": True, "username": user}
+
+
+

@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import ssl
 from http.client import RemoteDisconnected
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
@@ -69,25 +68,14 @@ def _format_attempts(attempts: list[str]) -> str:
     return " | ".join(cleaned[-4:])
 
 
-def _read_url(
-    url: str, api_key: str = "", *, certificate: str = "", timeout: float = 4.0
-) -> tuple[int, dict]:
+def _read_url(url: str, api_key: str = "", *, timeout: float = 4.0) -> tuple[int, dict]:
     headers = {"Accept": "application/json", "User-Agent": "DoctorDevPanel/NodeCheck"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     req = Request(url, headers=headers)
     if is_debug_enabled():
-        logger.debug(
-            "panel.node_api.request %s",
-            debug_json({"method": "GET", "url": url, "headers": headers, "certificate_supplied": bool(certificate.strip())}),
-        )
-    context = None
-    if url.startswith("https://"):
-        if certificate.strip():
-            context = ssl.create_default_context(cadata=certificate)
-        else:
-            context = ssl._create_unverified_context()  # noqa: SLF001
-    with urlopen(req, timeout=timeout, context=context) as response:  # noqa: S310 - admin configured node URL
+        logger.debug("panel.node_api.request %s", debug_json({"method": "GET", "url": url, "headers": headers}))
+    with urlopen(req, timeout=timeout) as response:  # noqa: S310 - admin configured node URL
         raw = response.read(1024 * 64).decode("utf-8", errors="replace")
         try:
             data = json.loads(raw) if raw else {}
@@ -98,27 +86,21 @@ def _read_url(
         return int(response.status), data
 
 
-def node_scheme_candidates(address: str, certificate: str = "") -> tuple[str, list[str]]:
+def node_scheme_candidates(address: str) -> tuple[str, list[str]]:
     host, explicit_scheme = _node_host(address)
     if explicit_scheme:
         return host, [explicit_scheme]
-    # A stored certificate means "trust this certificate if the control API is HTTPS".
-    # It must not force HTTPS because many nodes expose the control API over HTTP
-    # while using certificates for data-plane or reverse-proxy paths. Try HTTPS
-    # first when a certificate exists, then fall back to HTTP if the TLS handshake
-    # is closed by the remote side.
-    return host, (["https", "http"] if certificate.strip() else ["http", "https"])
+    return host, ["http"]
 
 
-def node_api_urls(node: dict, path: str) -> list[tuple[str, str, str]]:
-    certificate = str(node.get("certificate") or "").strip()
-    host, schemes = node_scheme_candidates(str(node.get("address", "")), certificate)
+def node_api_urls(node: dict, path: str) -> list[tuple[str, str]]:
+    host, schemes = node_scheme_candidates(str(node.get("address", "")))
     port = int(node.get("api_port") or 62051)
-    return [(f"{scheme}://{host}:{port}{path}", scheme, certificate) for scheme in schemes]
+    return [(f"{scheme}://{host}:{port}{path}", scheme) for scheme in schemes]
 
 
 def read_node_export(node: dict) -> dict:
-    host, schemes = node_scheme_candidates(str(node.get("address", "")), str(node.get("certificate") or ""))
+    host, schemes = node_scheme_candidates(str(node.get("address", "")))
     port = int(node.get("api_port") or 62051)
     api_key = str(node.get("api_key") or "")
     attempts: list[str] = []
@@ -126,12 +108,7 @@ def read_node_export(node: dict) -> dict:
         for scheme in schemes:
             url = f"{scheme}://{host}:{port}{path}"
             try:
-                _, data = _read_url(
-                    url,
-                    api_key=api_key,
-                    certificate=str(node.get("certificate") or ""),
-                    timeout=_env_float("DOCTOR_DEV_PANEL_NODE_SYNC_TIMEOUT", 3.0),
-                )
+                _, data = _read_url(url, api_key=api_key, timeout=_env_float("DOCTOR_DEV_PANEL_NODE_SYNC_TIMEOUT", 3.0))
                 if isinstance(data, dict):
                     return data
             except HTTPError as exc:
@@ -147,8 +124,7 @@ def read_node_export(node: dict) -> dict:
 
 
 def check_node_sync(payload: dict) -> dict:
-    certificate = str(payload.get("certificate") or "").strip()
-    host, schemes = node_scheme_candidates(str(payload.get("address", "")), certificate)
+    host, schemes = node_scheme_candidates(str(payload.get("address", "")))
     # api_port is the node management API. Inbound/listener ports live inside
     # runtime config and must not be treated as a second fixed node port.
     port = int(payload.get("api_port") or 62051)
@@ -164,9 +140,7 @@ def check_node_sync(payload: dict) -> dict:
                 continue
             url = base + endpoint
             try:
-                status_code, data = _read_url(
-                    url, key, certificate=certificate if scheme == "https" else "", timeout=_env_float("DOCTOR_DEV_PANEL_NODE_CHECK_TIMEOUT", 4.0)
-                )
+                status_code, data = _read_url(url, key, timeout=_env_float("DOCTOR_DEV_PANEL_NODE_CHECK_TIMEOUT", 4.0))
                 if 200 <= status_code < 300:
                     return {
                         "ok": True,
@@ -175,14 +149,13 @@ def check_node_sync(payload: dict) -> dict:
                         "http_status": status_code,
                         "using_api_port": port,
                         "using_control_scheme": scheme,
-                        "using_tls_certificate": bool(certificate and scheme == "https"),
                         "response": data,
                         "message": "Node connection is healthy.",
                     }
                 last_error = f"{url} returned HTTP {status_code}"
             except HTTPError as exc:
                 last_error = f"{url} returned HTTP {exc.code}"
-            except (RemoteDisconnected, URLError, TimeoutError, OSError, ssl.SSLError, ValueError) as exc:
+            except (RemoteDisconnected, URLError, TimeoutError, OSError, ValueError) as exc:
                 last_error = f"{url} failed: {exc}"
             attempts.append(last_error)
     return {
@@ -205,14 +178,9 @@ def read_node_api(node: dict, path: str, *, timeout: float | None = None) -> dic
         timeout = _env_float("DOCTOR_DEV_PANEL_NODE_API_TIMEOUT", 5.0)
     attempts: list[str] = []
     api_key = str(node.get("api_key") or "")
-    for url, scheme, certificate in node_api_urls(node, path):
+    for url, scheme in node_api_urls(node, path):
         try:
-            status_code, data = _read_url(
-                url,
-                api_key,
-                certificate=certificate if scheme == "https" else "",
-                timeout=timeout,
-            )
+            status_code, data = _read_url(url, api_key, timeout=timeout)
             if 200 <= status_code < 300:
                 return data
             attempts.append(f"{url} returned HTTP {status_code}")
@@ -222,12 +190,12 @@ def read_node_api(node: dict, path: str, *, timeout: float | None = None) -> dic
                     "This node is running an older agent. Update the node service, restart it, then try again."
                 ) from exc
             raise NodeAPIError(f"Node returned {_http_error_detail(exc)} while handling {path}.") from exc
-        except (RemoteDisconnected, URLError, TimeoutError, OSError, ssl.SSLError, ValueError) as exc:
+        except (RemoteDisconnected, URLError, TimeoutError, OSError, ValueError) as exc:
             attempts.append(f"{url} failed: {exc}")
             continue
     raise NodeAPIError(
         "Node API is unreachable while handling "
-        f"{path}. Check the API port, TLS/certificate, and node service. "
+        f"{path}. Check the API port and node service. "
         f"Attempts: {_format_attempts(attempts)}"
     )
 
@@ -247,21 +215,15 @@ def post_node_api(node: dict, path: str, payload: dict, *, timeout: float | None
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     attempts: list[str] = []
-    for url, scheme, certificate in node_api_urls(node, path):
-        context = None
-        if scheme == "https":
-            if certificate.strip():
-                context = ssl.create_default_context(cadata=certificate)
-            else:
-                context = ssl._create_unverified_context()  # noqa: SLF001
+    for url, scheme in node_api_urls(node, path):
         if is_debug_enabled():
             logger.debug(
                 "panel.node_api.request %s",
-                debug_json({"method": "POST", "url": url, "headers": headers, "payload_bytes": len(body), "certificate_supplied": bool(certificate.strip())}),
+                debug_json({"method": "POST", "url": url, "headers": headers, "payload_bytes": len(body)}),
             )
         req = Request(url, data=body, headers=headers, method="POST")
         try:
-            with urlopen(req, timeout=timeout, context=context) as response:  # noqa: S310
+            with urlopen(req, timeout=timeout) as response:  # noqa: S310
                 raw = response.read(1024 * 256).decode("utf-8", errors="replace")
                 data = json.loads(raw) if raw else {}
                 if is_debug_enabled():
@@ -286,11 +248,11 @@ def post_node_api(node: dict, path: str, payload: dict, *, timeout: float | None
                     "This node does not support configuration apply yet. Update the node service and restart it."
                 ) from exc
             raise NodeAPIError(f"Node returned {_http_error_detail(exc)} while handling {path}.") from exc
-        except (RemoteDisconnected, URLError, TimeoutError, OSError, ssl.SSLError, ValueError, json.JSONDecodeError) as exc:
+        except (RemoteDisconnected, URLError, TimeoutError, OSError, ValueError, json.JSONDecodeError) as exc:
             attempts.append(f"{url} failed: {exc}")
             continue
     raise NodeAPIError(
         "Node API is unreachable while applying configuration. "
-        "Check that the API port points to the node control-plane and that TLS/certificate settings match the node service. "
+        "Check that the API port points to the node control-plane and that the node service is running. "
         f"Attempts: {_format_attempts(attempts)}"
     )

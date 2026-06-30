@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 
 import asyncio
@@ -227,3 +228,6 @@ async def api_apply_node_config(node_id: str, user: str = Depends(require_admin)
         set_node_cores_apply_result(node_id, ok=False, error=str(exc))
         logger.warning("node config apply failed: node_id=%s error=%s", node_id, exc)
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+

@@ -1,3 +1,4 @@
+
 const loginCard = document.querySelector('.login-card');
 const brandCard = document.querySelector('.brand-card');
 const dashboard = document.querySelector('#dashboard');
@@ -84,6 +85,9 @@ togglePassword.addEventListener('click', () => {
 });
 
 checkSession();
+
+
+
 
 
 
