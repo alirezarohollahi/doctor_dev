@@ -8,7 +8,7 @@ import { renderDashboard } from "./views/dashboard.js";
 import { defaultNode, renderNodes } from "./views/nodes.js";
 import { defaultBalancer, defaultCore, defaultDependency, defaultEndpoint, defaultInbound, renderCores } from "./views/cores.js";
 import { renderRuntime } from "./views/runtime.js";
-import { renderLogs } from "./views/logs.js";
+import { renderLogs, renderLogLines, visibleLogLines } from "./views/logs.js";
 import { renderIntegrity } from "./views/integrity.js";
 import { renderSettings } from "./views/settings.js";
 
@@ -36,6 +36,7 @@ window.addEventListener("popstate", () => {
 document.addEventListener("click", onClick);
 document.addEventListener("submit", onSubmit);
 document.addEventListener("change", onChange);
+document.addEventListener("input", onInput);
 
 document.getElementById("modalRoot").addEventListener("click", (event) => {
   if (event.target.matches("[data-modal-close]")) closeModal();
@@ -191,10 +192,22 @@ async function onSubmit(event) {
   }
 }
 
+function onInput(event) {
+  const target = event.target;
+  if (target.closest("#logsForm")) {
+    updateLogFilters(target.form);
+    refreshLogsInPlace();
+  }
+}
+
 async function onChange(event) {
   const target = event.target;
   if (target.closest("#logsForm")) {
     updateLogFilters(target.form);
+    if (target.name === "q") {
+      refreshLogsInPlace();
+      return;
+    }
     await loadLogs({ quiet: true });
     render();
     return;
@@ -265,9 +278,11 @@ async function handleAction(action, el) {
   if (action === "remove-dependency") { await removeDependency(Number(el.dataset.index)); return; }
   if (action === "validate-advanced") { await validateAdvanced(); return; }
   if (action === "preview-draft-core") { state.corePreview = buildCorePayload(); routeToCore(state.draftCore?.id || state.selectedCoreId || "new", "preview"); render(); return; }
+  if (action === "toggle-ui-collapse") { toggleUiCollapse(el.dataset.collapseKey); render(); return; }
+  if (action === "set-core-collapse") { setCoreCollapseScope(el.dataset.scope, el.dataset.mode === "close"); render(); return; }
   if (action === "refresh-logs") { await loadLogs(); render(); return; }
-  if (action === "copy-logs") { await navigator.clipboard.writeText((state.logs.lines || []).join("\n")); showToast("Visible logs copied", "good"); return; }
-  if (action === "clear-visible-logs") { state.logs.lines = []; render(); return; }
+  if (action === "copy-logs") { await navigator.clipboard.writeText(visibleLogLines(state.logs).join("\n")); showToast("Visible logs copied", "good"); return; }
+  if (action === "clear-visible-logs") { state.logs.lines = []; state.logs.allLines = []; render(); return; }
   if (action === "refresh-integrity") { state.integrity = await api.integrity(); render(); return; }
   if (action === "repair-data") { await repairData(); return; }
 }
@@ -473,11 +488,62 @@ async function validateAdvanced() {
 
 async function loadLogs({ quiet = false } = {}) {
   try {
-    const res = await api.logs(state.logs);
-    state.logs = { ...state.logs, ...res, error: res.ok === false ? (res.error || "Could not load logs") : "" };
+    const requestedSearch = state.logs.q || "";
+    const res = await api.logs({ ...state.logs, q: "" });
+    const rawLines = Array.isArray(res.lines) ? res.lines : [];
+    state.logs = {
+      ...state.logs,
+      ...res,
+      q: requestedSearch,
+      allLines: rawLines,
+      lines: rawLines,
+      error: res.ok === false ? (res.error || "Could not load logs") : "",
+    };
   } catch (err) {
     state.logs.error = err.message || "Could not load logs";
     if (!quiet) showToast(state.logs.error, "bad");
+  }
+}
+
+function refreshLogsInPlace() {
+  const box = document.getElementById("logBox");
+  const meta = document.getElementById("logMeta");
+  if (!box) return;
+  const visible = visibleLogLines(state.logs);
+  const total = (state.logs.allLines || state.logs.lines || []).length;
+  box.innerHTML = renderLogLines(visible) || "No logs found for this filter.";
+  if (meta) {
+    const count = total === visible.length ? `${visible.length} lines` : `${visible.length} / ${total} lines`;
+    meta.textContent = `${count} · ${state.logs.path || state.logs.source || ""}`;
+  }
+}
+
+function toggleUiCollapse(key) {
+  if (!key) return;
+  state.uiCollapsed = state.uiCollapsed || {};
+  state.uiCollapsed[key] = !state.uiCollapsed[key];
+}
+
+function setCoreCollapseScope(scope, collapsed) {
+  const core = state.draftCore;
+  if (!core) return;
+  state.uiCollapsed = state.uiCollapsed || {};
+  const base = `core:${core.id || "draft"}`;
+  if (scope === "inbounds") {
+    (core.inbounds || []).forEach((_ib, i) => { state.uiCollapsed[`${base}:inbound:${i}`] = collapsed; });
+    return;
+  }
+  if (scope === "dependencies") {
+    (core.dependencies || []).forEach((_dep, i) => { state.uiCollapsed[`${base}:dependency:${i}`] = collapsed; });
+    return;
+  }
+  if (scope === "balancers") {
+    (core.balancers || []).forEach((balancer, bi) => {
+      state.uiCollapsed[`${base}:balancer:${bi}`] = collapsed;
+      (balancer.endpoints || []).forEach((_endpoint, ei) => {
+        state.uiCollapsed[`${base}:balancer:${bi}:endpoint:${ei}`] = collapsed;
+      });
+    });
   }
 }
 
@@ -496,3 +562,6 @@ async function repairData() {
   showToast("Repair complete", "good");
   render();
 }
+
+
+

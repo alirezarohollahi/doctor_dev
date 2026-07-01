@@ -20,7 +20,8 @@ EXCLUDED_DIRS = {
     "out",
     ".vscode",
     ".idea",
-    ".venv"
+    ".venv",
+    "RUN"
 }
 
 # پسوندهای باینری (این فایل‌ها وارد نمی‌شوند)

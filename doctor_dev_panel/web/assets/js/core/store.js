@@ -9,7 +9,8 @@ export const state = {
   runtimeCache: null,
   integrity: null,
   logSources: [],
-  logs: { source: "panel", level: "all", q: "", limit: 300, lines: [], path: "", error: "", auto: false },
+  logs: { source: "panel", level: "all", q: "", limit: 300, lines: [], allLines: [], path: "", error: "", auto: false },
+  uiCollapsed: {},
   selectedNodeId: "",
   selectedNodeTab: "overview",
   selectedCoreId: "",
@@ -33,3 +34,6 @@ export function setView(view, options = {}) {
 export function startLoading(key) { state.loading.add(key); }
 export function stopLoading(key) { state.loading.delete(key); }
 export function isLoading(key) { return state.loading.has(key); }
+
+
+
